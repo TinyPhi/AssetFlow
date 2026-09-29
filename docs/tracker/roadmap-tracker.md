@@ -22,7 +22,7 @@ Status marks: `☐` not started · `◐` in progress · `☑` done · `⛔` bloc
 | P1-03 | Project docs | Each file matches its plan section | ☑ |
 | P1-04 | .github files (written, not pushed) | Files exist and match §B12.7 and §C5.8 | ☑ |
 | P1-05 | ADRs 0001–0018 | 18 ADRs, status accepted | ☑ |
-| P1-06 | Provenance record | Every §B14 row has a provenance entry (status: planned) | ☐ |
+| P1-06 | Provenance record | Every §B14 row has a provenance entry (status: planned) | ☑ |
 
 ## P2 — Tooling and Local CI (Milestone M1.2)
 
