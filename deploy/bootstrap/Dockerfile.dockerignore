@@ -1,0 +1,5 @@
+# SPDX-FileCopyrightText: 2026 TinyPhi
+# SPDX-License-Identifier: AGPL-3.0-only
+# Build context of deploy/bootstrap/Dockerfile is the repository root: send only the script.
+*
+!scripts/bootstrap_zitadel.py

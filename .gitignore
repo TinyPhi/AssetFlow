@@ -6,6 +6,12 @@
 .env
 .env.*
 !.env.example
+# Local development secrets and Zitadel bootstrap results (scripts/bootstrap.sh, setup.bat)
+.env.local
+.env.local.tmp
+# First-instance credentials if a Zitadel bootstrap key or PAT is ever copied out of its volume
+bootstrap-key.json
+*.pat
 .secrets/
 *.pem
 *.key

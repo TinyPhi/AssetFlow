@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 TinyPhi
 # SPDX-License-Identifier: AGPL-3.0-only
 # Policy: assetflow-operator (§B11.4, decision 51).
-# For the human operator running scripts/openbao-apply.py and scripts/zitadel-apply.py after
+# For the human operator running scripts/openbao-apply.py and scripts/bootstrap_zitadel.py after
 # bootstrap, so the root token can be revoked. Not attached to any AppRole.
 
 # Engines and auth methods used by AssetFlow

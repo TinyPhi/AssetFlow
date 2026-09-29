@@ -1,9 +1,0 @@
-# SPDX-FileCopyrightText: 2026 TinyPhi
-# SPDX-License-Identifier: AGPL-3.0-only
-# OpenTofu state holds client secrets and keys: keep it local, never commit it.
-.terraform/
-*.tfstate
-*.tfstate.*
-*.tfplan
-crash.log
-*.auto.tfvars

@@ -6,7 +6,10 @@ SPDX-License-Identifier: AGPL-3.0-only
 # Full profile startup
 
 **Master plan:** §B11.4 startup flow, decision 51, M1.6-T8 (setup plan P2-12)
-**Files:** `deploy/compose.full.yml`, `scripts/smoke-full.py`
+**Files:** `deploy/compose.full.yml`, `scripts/bootstrap.sh`, `scripts/bootstrap_zitadel.py`, `scripts/smoke-full.py`
+
+Local development without OpenBao uses only the identity stack: `scripts/bootstrap.sh` (Windows:
+`setup.bat`) or `make bootstrap`, see `docs/operations/zitadel.md` section 2.
 
 ## 1. Order
 
@@ -16,14 +19,15 @@ Compose enforces the order with `depends_on` and health conditions:
 openbao ──(operators unseal; healthy = unsealed)
   ├─> postgres-secrets (agent, healthy = file rendered) ─> postgres (healthy = pg_isready)
   └─> zitadel-secrets  (agent, healthy = files rendered) ─> zitadel-db (healthy)
-        ─> zitadel-init (completed) ─> zitadel-setup (completed) ─> zitadel (healthy = zitadel ready)
+        ─> zitadel (start-from-init: init + setup + start; healthy = zitadel ready)
+              ─> zitadel-bootstrap (one-off: make zitadel-apply; results into OpenBao)
 api ── waits for openbao, postgres and zitadel to be healthy
 ```
 
 This follows the four steps of §B11.4:
 
 1. All credentials are in OpenBao beforehand (`openbao-apply --generate-missing`, operators,
-   `zitadel-apply`).
+   the Zitadel bootstrap `make zitadel-apply`).
 2. The start procedure gives each container only its own AppRole login, as read-only files
    (`/run/secrets/<name>_role_id`, `/run/secrets/<name>_secret_id`), and never copies a
    credential into environment variables, `.env` files or images.
@@ -43,8 +47,9 @@ docker compose -f deploy/compose.full.yml up -d openbao
 export BAO_ADDR=https://127.0.0.1:8200 BAO_CACERT=deploy/.secrets/openbao-tls/ca.pem
 read -rs BAO_TOKEN && export BAO_TOKEN                    # operator token
 python scripts/openbao-apply.py --issue-secret-ids        # fresh, short-lived secret ids
+docker compose -f deploy/compose.full.yml up -d --wait zitadel
+ASSETFLOW_ENV=production make zitadel-apply               # first time, and after config changes
 docker compose -f deploy/compose.full.yml up -d --wait
-python scripts/zitadel-apply.py                           # first time, and after config changes
 python scripts/smoke-full.py
 ```
 
@@ -57,8 +62,14 @@ make up-full                      # first time: make up-full GENERATE_MISSING=1 
 make smoke-full
 ```
 
+Or the identity part in one command (OpenBao, openbao-apply, Zitadel, bootstrap):
+
+```bash
+ASSETFLOW_ENV=production scripts/bootstrap.sh
+```
+
 Non-secret settings can be overridden from the shell: `ZITADEL_DOMAIN`,
-`ZITADEL_EXTERNALPORT`, `ZITADEL_EXTERNALSECURE`, `OPENBAO_HOST_PORT`, `POSTGRES_HOST_PORT`,
+`ZITADEL_EXTERNALPORT`, `ZITADEL_EXTERNALSECURE`, `ZITADEL_TLS_MODE` (`external` behind TLS), `APP_URL`, `API_URL`, `OPENBAO_HOST_PORT`, `POSTGRES_HOST_PORT`,
 `API_HOST_PORT`, `ASSETFLOW_NET_CIDR`, `ASSETFLOW_ENV`.
 
 ## 3. Smoke test

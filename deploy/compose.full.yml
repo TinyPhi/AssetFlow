@@ -4,7 +4,7 @@
 #
 # Startup order (docs/operations/startup.md):
 #   openbao (healthy only when unsealed) -> OpenBao agents render secret files (healthy) ->
-#   postgres, zitadel-db -> zitadel-init -> zitadel-setup -> zitadel (healthy) -> api
+#   postgres, zitadel-db -> zitadel (start-from-init, healthy) -> zitadel-bootstrap (one-off) -> api
 #
 # Credentials: every container gets only its own AppRole login (role id + secret id) as
 # read-only files under /run/secrets, written by scripts/openbao-apply.py into
@@ -148,29 +148,31 @@ services:
     networks:
       - assetflow_net
 
-  # Official prod-like layout: separate init, setup and start.
-  zitadel-init:
-    image: ghcr.io/zitadel/zitadel:v4.19.2
+  # Gives the bootstrap volume to the zitadel user (uid 1000), so Zitadel runs as non-root.
+  zitadel-volume-init:
+    image: postgres:16-alpine
     restart: "no"
-    command: ["init", "--config", "/zitadel/config.yaml", "--config", "/run/zitadel/zitadel-secrets.yaml"]
-    volumes:
-      - ./zitadel/config.yaml:/zitadel/config.yaml:ro
-      - zitadel_secrets:/run/zitadel:ro
-    depends_on:
-      zitadel-db:
-        condition: service_healthy
-    networks:
-      - assetflow_net
-
-  zitadel-setup:
-    image: ghcr.io/zitadel/zitadel:v4.19.2
-    restart: "no"
-    # Root only to write the first-instance machine key into the bootstrap volume (as upstream).
     user: "0"
+    entrypoint: ["sh", "-c", "chown 1000:1000 /zitadel/bootstrap && chmod 0700 /zitadel/bootstrap"]
+    network_mode: none
+    volumes:
+      - zitadel_bootstrap:/zitadel/bootstrap
+
+  # One service: init + setup (first instance, steps.yaml) + start. Credentials are files
+  # rendered by the zitadel-secrets agent: --masterkeyFile, a second --config (database
+  # passwords) and a second --steps (first-admin password). On the first start Zitadel writes
+  # the key of the first-instance machine user into zitadel_bootstrap; the bootstrap moves it
+  # into OpenBao, rotates it and deletes the file.
+  zitadel:
+    image: ghcr.io/zitadel/zitadel:v4.19.3
+    restart: unless-stopped
     command:
-      - setup
+      - start-from-init
       - --masterkeyFile
       - /run/zitadel/masterkey
+      # "disabled" on localhost; "external" behind the TLS reverse proxy (with ZITADEL_EXTERNALSECURE=true).
+      - --tlsMode
+      - ${ZITADEL_TLS_MODE:-disabled}
       - --config
       - /zitadel/config.yaml
       - --config
@@ -181,47 +183,58 @@ services:
       - /run/zitadel/zitadel-steps-secrets.yaml
     environment:
       <<: *zitadel-external
+    ports:
+      - "${ZITADEL_EXTERNALPORT:-8081}:8080"
     volumes:
       - ./zitadel/config.yaml:/zitadel/config.yaml:ro
       - ./zitadel/steps.yaml:/zitadel/steps.yaml:ro
       - zitadel_secrets:/run/zitadel:ro
       - zitadel_bootstrap:/zitadel/bootstrap
     depends_on:
-      zitadel-init:
-        condition: service_completed_successfully
-    networks:
-      - assetflow_net
-
-  zitadel:
-    image: ghcr.io/zitadel/zitadel:v4.19.2
-    restart: unless-stopped
-    command:
-      - start
-      - --masterkeyFile
-      - /run/zitadel/masterkey
-      - --config
-      - /zitadel/config.yaml
-      - --config
-      - /run/zitadel/zitadel-secrets.yaml
-    environment:
-      <<: *zitadel-external
-    ports:
-      - "${ZITADEL_EXTERNALPORT:-8081}:8080"
-    volumes:
-      - ./zitadel/config.yaml:/zitadel/config.yaml:ro
-      - zitadel_secrets:/run/zitadel:ro
-    depends_on:
       zitadel-secrets:
         condition: service_healthy
-      zitadel-setup:
+      zitadel-db:
+        condition: service_healthy
+      zitadel-volume-init:
         condition: service_completed_successfully
     healthcheck:
-      # Distroless image: use the built-in readiness command (as upstream).
+      # Distroless image: the built-in readiness command (as upstream). It reads the config
+      # files, not --tlsMode, so config.yaml keeps TLS.Enabled false.
       test: ["CMD", "/app/zitadel", "ready", "--config", "/zitadel/config.yaml"]
       interval: 10s
       timeout: 30s
-      retries: 12
-      start_period: 20s
+      retries: 30
+      start_period: 30s
+    networks:
+      - assetflow_net
+
+  # One-off (make zitadel-apply, scripts/bootstrap.sh): ASSETFLOW_ENV=production, results to
+  # OpenBao only. BAO_TOKEN (operator token) is passed through from the operator's shell for
+  # this run; the container is removed afterwards.
+  zitadel-bootstrap:
+    profiles: [bootstrap]
+    image: assetflow-bootstrap:local
+    build:
+      context: ..
+      dockerfile: deploy/bootstrap/Dockerfile
+    restart: "no"
+    environment:
+      <<: *zitadel-external
+      ASSETFLOW_ENV: production
+      ZITADEL_BOOTSTRAP_URL: http://zitadel:8080
+      APP_URL: ${APP_URL:-http://localhost:5173}
+      API_URL: ${API_URL:-http://localhost:8080}
+      BAO_ADDR: https://openbao:8200
+      BAO_CACERT: /run/secrets/openbao_ca
+      BAO_TOKEN:
+    secrets:
+      - openbao_ca
+    volumes:
+      - ../config:/workspace/config:ro
+      - zitadel_bootstrap:/zitadel/bootstrap
+    depends_on:
+      zitadel:
+        condition: service_healthy
     networks:
       - assetflow_net
 

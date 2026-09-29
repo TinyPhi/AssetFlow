@@ -11,6 +11,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 - **Revisions / Supersedes:**
   - Revised 2026-09-29 (Decision 51): All server-side credentials and secrets live in OpenBao in production; file/env secrets used only for local development and CI; the browser and mobile clients hold zero credentials.
   - Revised 2026-09-29 (Decision 52): Multi-organization identity in Zitadel. One Zitadel organization per AssetFlow organization, sharing the AssetFlow project through project grants; active organization context is extracted from `urn:zitadel:iam:user:resourceowner:id`; Zitadel and OpenBao configured as code (OpenTofu) prior to provider boot.
+  - Revised 2026-09-29 (user-approved change to Decision 52): OpenTofu replaced by an idempotent bootstrap script calling Zitadel's official APIs (`scripts/bootstrap_zitadel.py`, `make zitadel-apply`); development writes `.env.local`, production writes OpenBao only (`docs/operations/zitadel.md`).
 
 ---
 
@@ -34,7 +35,7 @@ Storing JWT access tokens and refresh tokens in browser storage (`localStorage` 
 3. **Multi-Organization Identity Federation (Decision 52)**:
    - Zitadel is the official OIDC preset. Each AssetFlow organization maps to a dedicated Zitadel organization, sharing the core AssetFlow project through project grants.
    - The user's active organization ID is derived deterministically from the Zitadel token claim `urn:zitadel:iam:user:resourceowner:id`.
-   - Infrastructure setup (Zitadel projects, roles, OpenBao policies, AppRole credentials) is managed entirely as code (OpenTofu).
+   - Infrastructure setup (Zitadel projects, roles, OpenBao policies, AppRole credentials) is managed entirely as code (idempotent scripts against the official Zitadel and OpenBao APIs: `scripts/bootstrap_zitadel.py`, `scripts/openbao-apply.py`).
 
 ---
 
@@ -45,7 +46,7 @@ Storing JWT access tokens and refresh tokens in browser storage (`localStorage` 
 - Good: Enforces strict tenant boundary at authentication: users authenticate into their specific organization context without cross-tenant elevation.
 - Good: Adheres to zero-credential client principles (§B11.2, Decision 51).
 - Cost: Requires dedicated `/api/v1/auth/refresh` endpoint and CSRF protections for cookie-based state changes.
-- Cost: Requires OpenTofu automation scripts for provisioning Zitadel organizations and OpenBao AppRoles.
+- Cost: Requires automation scripts (and their tests) for provisioning Zitadel organizations and OpenBao AppRoles.
 
 ---
 

@@ -11,6 +11,7 @@
 Port: 8080
 
 # TLS is terminated by the reverse proxy (external TLS) or not used on localhost.
+# start-from-init also gets --tlsMode; the `zitadel ready` health check reads only this file.
 TLS:
   Enabled: false
 
@@ -29,10 +30,16 @@ Database:
         Mode: disable
 
 # Serve the login built into the Zitadel API container (no separate login container).
+# Production login defaults (strict): MFA forced, no self-registration, password change at first
+# sign-in (steps.yaml). scripts/bootstrap_zitadel.py enforces the login policy again in
+# production. Only the local development stack (deploy/compose.identity.yml) relaxes MFA.
 DefaultInstance:
   Features:
     LoginV2:
       Required: false
+  LoginPolicy:
+    ForceMFA: true
+    AllowRegister: false
 
 Log:
   Level: info
