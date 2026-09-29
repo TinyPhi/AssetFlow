@@ -52,3 +52,10 @@ Record of completed tasks, tools, and milestone verifications.
 - **What changed:** Replaced root LICENSE with unmodified AGPL-3.0-only, added LICENSES/AGPL-3.0-only.txt, added CLA.md and NOTICE, updated README.md with dual-licensing policy, added REUSE.toml, verified 100% REUSE compliance (113/113 files).
 - **Evidence:** `reuse lint` reports 113/113 compliant; zero residual Apache text outside LICENSES/; head -3 LICENSE shows GNU AFFERO GENERAL PUBLIC LICENSE.
 - **Next step:** P1-03 (Project docs).
+
+### 2026-09-29 — P1-03 Project docs
+- **Task:** P1-03
+- **What changed:** Written comprehensive governance and community documentation suite matching master plan M1.1-T2..T7 and §B12.1: `README.md`, `CONTRIBUTING.md`, `GOVERNANCE.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, `SUPPORT.md`, `MAINTAINERS.md`, `CHANGELOG.md`, and validated `CLAUDE.md`. Cleaned unused license to ensure 100% REUSE compliance (120/120 files).
+- **Evidence:** All 9 doc files present and checked against master plan sections; `reuse lint` passes with 0 errors across 120 files; `af.py` operational.
+- **Next step:** P1-04 (.github files written, not pushed).
+
