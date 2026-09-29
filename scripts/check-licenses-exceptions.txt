@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 TinyPhi
+# SPDX-License-Identifier: AGPL-3.0-only
+# Maintainer decisions for runtime dependencies whose license is not on the §C4.11 allowlist.
+# Format: <ecosystem>:<package> <license exactly as reported>   # reason, decision link
+# A new entry needs a maintainer decision recorded in the PR (master plan §C4.11).
+
+# 0BSD is a public-domain-equivalent permissive license (no attribution, no copyleft), so it does not
+# limit the commercial license. Pending maintainer confirmation (Phase 2 integration review).
+npm:tslib 0BSD

@@ -1,0 +1,349 @@
+# SPDX-FileCopyrightText: 2026 TinyPhi
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# AssetFlow single entry point (master plan §C3.2, M1.2-T2).
+# Every CI job calls one `ci-*` target, so a local run is the same as CI (§C9.3).
+# Targets whose feature does not exist yet stop with "not implemented until <plan id>":
+# they exit 0 only where a placeholder is allowed by the plan (the empty test suites, and CI
+# jobs whose input does not exist yet, which print "SKIPPED ... placeholder until <plan id>"),
+# otherwise they fail.
+
+SHELL := /bin/bash
+.SHELLFLAGS := -eu -o pipefail -c
+.DEFAULT_GOAL := help
+MAKEFLAGS += --no-print-directory
+
+# First Python 3.10+ that really runs (on Git Bash "python3" can be a Store alias that does not).
+ifeq ($(origin PYTHON), undefined)
+PYTHON := $(shell for p in python3 python; do $$p -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' >/dev/null 2>&1 && { echo $$p; break; }; done)
+endif
+
+UV       ?= uv
+UVX      ?= uvx
+NPM      ?= npm
+NPX      ?= npx
+BACKEND  := backend
+FRONTEND := frontend
+comma    := ,
+
+# Pinned tool versions (keep in step with .pre-commit-config.yaml).
+RUFF_VERSION       := 0.16.9
+REUSE_VERSION      := 6.2.0
+GITLEAKS_VERSION   := 8.30.1
+COMMITLINT_VERSION := 21.2.3
+PYTEST_VERSION     := 9.1.1
+SEMGREP_VERSION    := 1.178.0
+BANDIT_VERSION     := 1.9.4
+PIP_AUDIT_VERSION  := 2.10.1
+TRIVY_VERSION      := 0.74.0
+ZAP_IMAGE          := zaproxy/zap-stable:2.17.0
+
+COMPOSE_PROJECT := assetflow
+COMPOSE_MINIMAL := deploy/compose.minimal.yml
+COMPOSE_FULL    := deploy/compose.full.yml
+# compose.full.yml is a complete stack on its own (not an overlay of compose.minimal.yml).
+COMPOSE_FILES_MINIMAL := $(if $(wildcard $(COMPOSE_MINIMAL)),-f $(COMPOSE_MINIMAL))
+COMPOSE_FILES_FULL    := $(if $(wildcard $(COMPOSE_FULL)),-f $(COMPOSE_FULL),$(COMPOSE_FILES_MINIMAL))
+COMPOSE := docker compose -p $(COMPOSE_PROJECT)
+OPENBAO_CA := deploy/.secrets/openbao-tls/ca.pem
+
+# Frontend dependencies: `npm ci` runs again only when package-lock.json is newer than node_modules.
+FRONTEND_DEPS := $(FRONTEND)/node_modules/.package-lock.json
+
+# $(call not_implemented,<plan id>,<what>) : print a clear message and fail.
+not_implemented = { echo "make $@: $(2) is not implemented until $(1)." >&2; exit 1; }
+
+# $(call nothing_yet,<plan id>,<what>) : the input of a CI job (images, a stack) does not exist yet, so
+# nothing can be checked; say so loudly and pass. Never used for a check whose input exists.
+nothing_yet = { echo "make $@: SKIPPED, $(2) does not exist yet (placeholder until $(1)); nothing was checked."; exit 0; }
+
+# $(call pytest_suite,<dirs>,<plan id>) : run a suite; an empty placeholder suite passes with a notice.
+define pytest_suite
+cd $(BACKEND) && rc=0 && $(UV) run pytest -q $(1) || rc=$$?; \
+if [ "$$rc" -eq 5 ]; then echo "make $@: SKIPPED, no tests collected in $(1) yet (placeholder until $(2))."; exit 0; fi; \
+exit $$rc
+endef
+
+# $(call trivy,<args>) : local trivy binary, else the pinned container image.
+define trivy
+if command -v trivy >/dev/null 2>&1; then trivy $(1); \
+elif command -v docker >/dev/null 2>&1; then \
+  docker run --rm -v "$(CURDIR):/src" -v /var/run/docker.sock:/var/run/docker.sock -w /src aquasec/trivy:$(TRIVY_VERSION) $(1); \
+else echo "make $@: install trivy $(TRIVY_VERSION) or Docker." >&2; exit 1; fi
+endef
+
+# $(call pip_audit) : audit every package pinned in backend/uv.lock (hashes required).
+define pip_audit
+req="$$(mktemp)"; trap 'rm -f "$$req"' EXIT; \
+(cd $(BACKEND) && $(UV) export --frozen --no-emit-project --format requirements-txt -o "$$req" >/dev/null); \
+$(UVX) pip-audit==$(PIP_AUDIT_VERSION) --strict --disable-pip --require-hashes -r "$$req"
+endef
+
+.PHONY: help bootstrap frontend-deps up-minimal up-full down reset logs smoke-full \
+	fmt lint lint-backend lint-frontend lint-scripts typecheck \
+	test test-backend test-frontend test-isolation test-contract test-providers-live test-e2e-api loadtest \
+	migrate migration demo-users demo-data demo-data-remove config-validate new-channel docs-check \
+	reuse-lint secrets-scan commitlint license-check openbao-apply zitadel-apply verify \
+	ci-quality ci-test-backend ci-tenant-isolation ci-migrations ci-contract ci-test-frontend \
+	ci-claude-hooks ci-security-fast ci-license-check ci-docker ci-contribution-checks \
+	ci-security-full ci-gitleaks-history ci-trivy-images ci-zap-baseline \
+	check-python
+
+help: ## List targets
+	@grep -E '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*## "} {printf "  %-22s %s\n", $$1, $$2}'
+
+check-python:
+	@test -n "$(PYTHON)" || { echo "Python 3.10+ not found (set PYTHON=/path/to/python)." >&2; exit 1; }
+
+# ---------------------------------------------------------------- setup and stack
+
+bootstrap: ## Install backend and frontend dependencies (full bootstrap: M1.6-T8)
+	cd $(BACKEND) && $(UV) sync --group dev
+	cd $(FRONTEND) && $(NPM) ci
+	@echo "make bootstrap: dependencies installed. Secrets, migrations, IdP setup and demo data are not implemented until M1.6-T8."
+
+frontend-deps: $(FRONTEND_DEPS)
+
+$(FRONTEND_DEPS): $(FRONTEND)/package-lock.json
+	cd $(FRONTEND) && $(NPM) ci
+
+up-minimal: ## Start the minimal profile
+	@test -f $(COMPOSE_MINIMAL) || $(call not_implemented,P3-06,the minimal profile ($(COMPOSE_MINIMAL)))
+	$(COMPOSE) $(COMPOSE_FILES_MINIMAL) up -d
+
+# Order (docs/operations/startup.md): OpenBao -> unseal (manual, key holders) -> openbao-apply (fresh
+# secret ids) -> Zitadel -> zitadel-apply -> AssetFlow. Needs BAO_TOKEN (operator token) in the shell.
+# First run: `make up-full GENERATE_MISSING=1` with the root token (docs/operations/openbao.md section 4).
+up-full: check-python ## Start the full profile: OpenBao, unseal (manual), openbao-apply, Zitadel, AssetFlow
+	@test -f $(COMPOSE_FULL) || $(call not_implemented,P2-12,the full profile ($(COMPOSE_FULL)))
+	@test -f $(OPENBAO_CA) || { echo "make up-full: no OpenBao TLS files in deploy/.secrets/openbao-tls/. Run: sh deploy/openbao/gen-dev-tls.sh (docs/operations/openbao.md section 2)." >&2; exit 1; }
+	@echo "==> 1/5 OpenBao"
+	$(COMPOSE) $(COMPOSE_FILES_FULL) up -d openbao
+	@echo "==> 2/5 Unseal check"
+	@if ! $(COMPOSE) $(COMPOSE_FILES_FULL) exec -T openbao bao status >/dev/null 2>&1; then \
+	  echo "make up-full: OpenBao is not initialized or is sealed. MANUAL STEP: initialize it (first start only)" >&2; \
+	  echo "  and unseal it with 3 of the 5 key holders, each on their own terminal (docs/operations/openbao.md section 3):" >&2; \
+	  echo "    $(COMPOSE) $(COMPOSE_FILES_FULL) exec openbao bao operator unseal" >&2; \
+	  echo "  Then run make up-full again." >&2; exit 1; \
+	fi
+	@echo "==> 3/5 openbao-apply (fresh secret ids)"
+	$(MAKE) openbao-apply ISSUE_SECRET_IDS=1 GENERATE_MISSING=$(GENERATE_MISSING)
+	@echo "==> 4/5 Zitadel"
+	$(COMPOSE) $(COMPOSE_FILES_FULL) up -d --wait zitadel
+	$(MAKE) zitadel-apply
+	@echo "==> 5/5 AssetFlow"
+	@test -f $(BACKEND)/Dockerfile || $(call not_implemented,P3-05,the AssetFlow API image ($(BACKEND)/Dockerfile); OpenBao and Zitadel are running)
+	$(COMPOSE) $(COMPOSE_FILES_FULL) up -d --wait
+	@echo "make up-full: the full profile is up. Check it with: make smoke-full"
+
+smoke-full: check-python ## Smoke test of the running full profile (scripts/smoke-full.py; SMOKE_ARGS=--expect-sealed)
+	@if [ -f $(BACKEND)/Dockerfile ]; then $(PYTHON) scripts/smoke-full.py $(SMOKE_ARGS); else \
+	  echo "smoke-full: the AssetFlow API image is not implemented until P3-05; running with --skip-api."; \
+	  $(PYTHON) scripts/smoke-full.py --skip-api $(SMOKE_ARGS); fi
+
+down: ## Stop all services (data volumes kept)
+	$(COMPOSE) $(COMPOSE_FILES_FULL) down --remove-orphans
+
+reset: ## Stop, delete local volumes and bootstrap again (asks for confirmation)
+	@read -r -p "This deletes all local AssetFlow volumes and data. Type 'yes' to continue: " answer; \
+	  [ "$$answer" = "yes" ] || { echo "Aborted."; exit 1; }
+	$(COMPOSE) $(COMPOSE_FILES_FULL) down -v --remove-orphans
+	$(MAKE) bootstrap
+
+logs: ## Follow logs of one service: make logs s=<service>
+	$(COMPOSE) $(COMPOSE_FILES_FULL) logs -f $(s)
+
+# ---------------------------------------------------------------- quality
+
+fmt: ## Format Python (ruff) and TypeScript (prettier)
+	cd $(BACKEND) && $(UV) run ruff format . && $(UV) run ruff check --fix .
+	$(UVX) ruff@$(RUFF_VERSION) format --line-length 110 scripts
+	cd $(FRONTEND) && $(NPX) prettier --write .
+
+lint: lint-backend lint-scripts lint-frontend ## ruff, eslint, import-linter, prettier check, domain-terms check, migration lint
+
+lint-backend: check-python
+	cd $(BACKEND) && $(UV) run ruff check . && $(UV) run ruff format --check .
+	cd $(BACKEND) && $(UV) run lint-imports
+	$(PYTHON) scripts/check-domain-terms.py
+	$(PYTHON) scripts/check-migrations.py
+
+lint-scripts:
+	$(UVX) ruff@$(RUFF_VERSION) check --line-length 110 scripts
+	$(UVX) ruff@$(RUFF_VERSION) format --check --line-length 110 scripts
+
+lint-frontend: frontend-deps
+	cd $(FRONTEND) && $(NPM) run lint
+	cd $(FRONTEND) && $(NPX) prettier --check .
+
+typecheck: frontend-deps ## mypy and tsc -b
+	cd $(BACKEND) && $(UV) run mypy app
+	cd $(FRONTEND) && $(NPX) tsc -b
+
+config-validate: check-python ## Validate config/**/*.yaml
+	cd $(BACKEND) && $(UV) run --with pyyaml python -c "import pathlib, sys, yaml; files = sorted(pathlib.Path('../config').rglob('*.y*ml')); [yaml.safe_load(f.read_text(encoding='utf-8')) for f in files]; print(f'config-validate: {len(files)} YAML file(s) parse.')"
+	@echo "config-validate: schema validation (assetflow config validate config/) is not implemented until P3-01."
+
+docs-check: check-python ## Check docs links and that generated reference pages are current
+	$(PYTHON) scripts/check-docs-links.py
+	@echo "docs-check: generated reference pages do not exist yet; the up-to-date check is not implemented until P3-01/P3-03."
+
+reuse-lint: ## REUSE licensing check
+	$(UVX) --from "reuse[charset-normalizer]==$(REUSE_VERSION)" reuse lint
+
+secrets-scan: ## gitleaks over the git history, or only FROM..HEAD when FROM=<base sha> is set
+	@log_opts="$(if $(FROM),--log-opts=$(FROM)..HEAD)"; \
+	if command -v gitleaks >/dev/null 2>&1; then \
+	  gitleaks git --redact --no-banner $$log_opts .; \
+	elif command -v docker >/dev/null 2>&1; then \
+	  docker run --rm -v "$(CURDIR):/repo" -w /repo \
+	    -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*' \
+	    ghcr.io/gitleaks/gitleaks:v$(GITLEAKS_VERSION) git --redact --no-banner $$log_opts /repo; \
+	else \
+	  echo "make secrets-scan: install gitleaks $(GITLEAKS_VERSION) or Docker." >&2; exit 1; \
+	fi
+
+commitlint: ## Lint commit messages: make commitlint FROM=<base sha> [TO=HEAD]
+	@test -n "$(FROM)" || { echo "make commitlint: set FROM=<base sha> (CI passes the PR base)." >&2; exit 1; }
+	$(NPX) --yes -p @commitlint/cli@$(COMMITLINT_VERSION) -p @commitlint/config-conventional@$(COMMITLINT_VERSION) \
+	  commitlint --from "$(FROM)" --to "$(or $(TO),HEAD)"
+
+license-check: check-python frontend-deps ## Dependency licenses against the §C4.11 allowlist (pip-licenses, license-checker)
+	$(PYTHON) scripts/check-licenses.py
+
+# ---------------------------------------------------------------- tests
+
+test: test-backend test-frontend ## All backend and frontend unit and integration tests
+
+test-backend: ## Backend unit, integration and authorization-matrix tests
+	cd $(BACKEND) && $(UV) run pytest -q tests/unit tests/integration tests/authz_matrix --cov=app --cov-report=term
+
+test-frontend: frontend-deps ## Frontend tests
+	cd $(FRONTEND) && $(NPM) test
+
+test-isolation: ## Isolation and scope-leakage suites
+	@$(call pytest_suite,tests/isolation tests/scope,P3-02)
+
+test-contract: ## Provider and channel contract suites (recorded HTTP)
+	@$(call pytest_suite,tests/contract,P3-04)
+
+test-providers-live: ## Contract suites against real Zitadel, OpenBao, OTel collector, Mailpit (on demand)
+	@$(call not_implemented,M1.3 (oidc/openbao/otel/postgres providers),live provider tests)
+
+test-e2e-api: ## API E2E tests against a running stack
+	@test -n "$$(find $(BACKEND)/tests/e2e_api -name 'test_*.py' -print -quit)" || $(call not_implemented,P3-05,API E2E tests)
+	cd $(BACKEND) && $(UV) run pytest -q tests/e2e_api
+
+loadtest: ## On-demand k6 load test (USERS=100 by default; not part of CI)
+	@test -f loadtest/k6.js || $(call not_implemented,M2.4-T4,the k6 load test (loadtest/k6.js))
+	k6 run -e USERS=$(or $(USERS),100) loadtest/k6.js
+
+# ---------------------------------------------------------------- database and data
+
+migrate: ## Apply migrations
+	@test -f $(BACKEND)/alembic.ini || $(call not_implemented,P3-02,Alembic ($(BACKEND)/alembic.ini))
+	cd $(BACKEND) && $(UV) run alembic upgrade head
+
+migration: ## Create a migration from the template: make migration name=<snake_description>
+	@[[ "$(name)" =~ ^[a-z][a-z0-9_]*$$ ]] || { echo "Usage: make migration name=<snake_description>" >&2; exit 1; }
+	@test -f $(BACKEND)/alembic.ini || $(call not_implemented,P3-02,Alembic ($(BACKEND)/alembic.ini))
+	cd $(BACKEND) && $(UV) run alembic revision -m "$(name)"
+
+demo-users: ## Re-create the demo users and domain templates (no sample data)
+	@$(call not_implemented,M1.6-T8,demo users)
+
+demo-data: ## Load the sample organization (refuses when ASSETFLOW_ENV=production)
+	@if [ "$${ASSETFLOW_ENV:-}" = "production" ]; then echo "make demo-data: refused, ASSETFLOW_ENV=production." >&2; exit 1; fi
+	@$(call not_implemented,M2.4-T2,the sample organization)
+
+demo-data-remove: ## Delete the sample organization and everything in it
+	@$(call not_implemented,M2.4-T2,sample organization removal)
+
+new-channel: ## Scaffold a notification channel with tests: make new-channel name=<key>
+	@[[ "$(name)" =~ ^[a-z][a-z0-9-]*$$ ]] || { echo "Usage: make new-channel name=<key>" >&2; exit 1; }
+	@$(call not_implemented,M1.5,the channel scaffold)
+
+# ---------------------------------------------------------------- configuration as code
+
+# First run (root token): make openbao-apply GENERATE_MISSING=1. Start flow: make openbao-apply ISSUE_SECRET_IDS=1.
+openbao-apply: check-python ## Apply OpenBao engines, policies, AppRoles [GENERATE_MISSING=1] [ISSUE_SECRET_IDS=1]
+	$(PYTHON) scripts/openbao-apply.py $(if $(filter 1 yes true,$(GENERATE_MISSING)),--generate-missing) $(if $(filter 1 yes true,$(ISSUE_SECRET_IDS)),--issue-secret-ids)
+
+zitadel-apply: check-python ## Apply Zitadel project, roles and apps (OpenTofu; fails when tofu/terraform is missing)
+	$(PYTHON) scripts/zitadel-apply.py
+
+# ---------------------------------------------------------------- CI jobs (ci.yml and contribution-checks.yml, §C9.3, §C9.4)
+
+ci-quality: lint typecheck config-validate reuse-lint secrets-scan docs-check ## CI quality job (FROM=<base sha>: commitlint and a diff-only gitleaks)
+	@if [ -n "$(FROM)" ]; then $(MAKE) commitlint FROM="$(FROM)" TO="$(or $(TO),HEAD)"; \
+	 else echo "ci-quality: commitlint SKIPPED (no FROM); the commit-msg hook checks local commits, CI passes the PR base."; fi
+
+ci-test-backend: test-backend ## CI test-backend job (migrations run first once P3-02 lands)
+
+ci-tenant-isolation: test-isolation ## CI tenant-isolation job
+
+ci-migrations: ## CI migrations job: upgrade, downgrade, upgrade, schema snapshot
+	@if [ ! -d $(BACKEND)/migrations/versions ]; then echo "ci-migrations: SKIPPED, no migrations yet (placeholder until P3-02); nothing to check."; exit 0; fi; \
+	test -f $(BACKEND)/alembic.ini || $(call not_implemented,P3-02,the migration round trip); \
+	cd $(BACKEND) && $(UV) run alembic upgrade head && $(UV) run alembic downgrade -1 && $(UV) run alembic upgrade head; \
+	echo "make $@: the pg_dump --schema-only comparison with backend/migrations/schema.snapshot.sql is not implemented until P3-02." >&2; exit 1
+
+ci-contract: test-contract ## CI contract job
+
+ci-test-frontend: frontend-deps ## CI test-frontend job: tests and production build
+	cd $(FRONTEND) && $(NPM) test && $(NPM) run build
+
+ci-claude-hooks: ## CI claude-hooks job: python -m pytest .claude/hooks/tests
+	$(UV) run --no-project --python 3.12 --with pytest==$(PYTEST_VERSION) python -m pytest .claude/hooks/tests -q
+
+ci-security-fast: frontend-deps ## CI security-fast job: Semgrep, Bandit, pip-audit, npm audit, Trivy filesystem
+	$(UVX) --from semgrep==$(SEMGREP_VERSION) semgrep scan --error --metrics=off --config p/owasp-top-ten \
+	  $(if $(wildcard .semgrep),--config .semgrep) --exclude frontend/node_modules --exclude frontend/dist .
+	$(UVX) bandit==$(BANDIT_VERSION) -r $(BACKEND)/app -ll -q
+	@$(pip_audit)
+	cd $(FRONTEND) && $(NPM) audit --audit-level=high
+	@$(call trivy,fs --scanners vuln --severity HIGH$(comma)CRITICAL --ignore-unfixed --exit-code 1 --skip-dirs frontend/node_modules --skip-dirs backend/.venv .)
+
+ci-license-check: license-check ## CI license-check job (fallback without GitHub Advanced Security, §C2.5)
+
+ci-docker: ## CI docker job: build the api, worker and web images and scan them with Trivy (no push)
+	@if [ ! -f $(BACKEND)/Dockerfile ] && [ ! -f $(FRONTEND)/Dockerfile ]; then $(call nothing_yet,P3-05/P3-06 (M1.6-T7),an image Dockerfile ($(BACKEND)/Dockerfile or $(FRONTEND)/Dockerfile)); fi; \
+	images=""; \
+	if [ -f $(BACKEND)/Dockerfile ]; then \
+	  docker build -t assetflow-api:ci $(BACKEND); images="assetflow-api:ci"; \
+	  if grep -qiE '^FROM .* AS worker' $(BACKEND)/Dockerfile; then \
+	    docker build --target worker -t assetflow-worker:ci $(BACKEND); images="$$images assetflow-worker:ci"; fi; \
+	fi; \
+	if [ -f $(FRONTEND)/Dockerfile ]; then docker build -t assetflow-web:ci $(FRONTEND); images="$$images assetflow-web:ci"; fi; \
+	for image in $$images; do \
+	  $(call trivy,image --severity HIGH$(comma)CRITICAL --ignore-unfixed --exit-code 1 $$image); \
+	done
+
+ci-contribution-checks: check-python ## Contribution checks (§C9.4): make ci-contribution-checks BASE=<base sha> (PR_TITLE, PR_BODY from env)
+	@test -n "$(BASE)" || { echo "make ci-contribution-checks: set BASE=<base sha> (CI passes the PR base SHA)." >&2; exit 1; }
+	PYTHON="$(PYTHON)" bash scripts/check-contribution-guardrails.sh --base "$(BASE)"
+
+# ---------------------------------------------------------------- weekly security jobs (security.yml, §C9.2)
+
+ci-security-full: frontend-deps ## Weekly: full Semgrep, pip-audit and npm audit
+	$(UVX) --from semgrep==$(SEMGREP_VERSION) semgrep scan --error --metrics=off \
+	  --config p/owasp-top-ten --config p/python --config p/typescript --config p/react --config p/secrets \
+	  $(if $(wildcard .semgrep),--config .semgrep) --exclude frontend/node_modules --exclude frontend/dist .
+	@$(pip_audit)
+	cd $(FRONTEND) && $(NPM) audit --audit-level=high
+
+ci-gitleaks-history: ## Weekly: gitleaks over the full git history
+	$(MAKE) secrets-scan FROM=
+
+ci-trivy-images: ci-docker ## Weekly: build the images from main and scan them with Trivy
+
+ci-zap-baseline: ## Weekly: OWASP ZAP baseline (passive, unauthenticated) against compose.minimal
+	@if [ ! -f $(COMPOSE_MINIMAL) ]; then $(call nothing_yet,P3-06,the minimal profile ($(COMPOSE_MINIMAL))); fi; \
+	  $(COMPOSE) $(COMPOSE_FILES_MINIMAL) up -d --wait; \
+	  rc=0; mkdir -p .zap; \
+	  docker run --rm --network host -v "$(CURDIR)/.zap:/zap/wrk:rw" $(ZAP_IMAGE) \
+	    zap-baseline.py -t "$(or $(ZAP_TARGET),http://localhost:8080)" -I $(if $(wildcard .zap/rules.tsv),-c rules.tsv) || rc=$$?; \
+	  $(COMPOSE) $(COMPOSE_FILES_MINIMAL) down -v --remove-orphans; exit $$rc
+
+verify: ci-quality ci-test-backend ci-tenant-isolation ci-migrations ci-contract ci-test-frontend ci-claude-hooks ## Everything CI's quality and test jobs run
+	@echo "make verify: all checks passed."
