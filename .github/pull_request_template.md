@@ -21,7 +21,7 @@ Closes #
 
 ## 3. Contributor Checklist
 
-- [ ] My code adheres to the [Coding Guidelines](CONTRIBUTING.md) and neutral domain vocabulary (no industry-specific terms in code).
+- [ ] My code adheres to the [Coding Guidelines](../CONTRIBUTING.md) and neutral domain vocabulary (no industry-specific terms in code).
 - [ ] Tests have been added or updated, and coverage does not drop.
 - [ ] **Tenancy & RLS**: Any new database tables have `organization_id NOT NULL`, `FORCE ROW LEVEL SECURITY`, four fail-closed policies, an `organization_id`-first index, and isolation tests. Views are `security_invoker`.
 - [ ] **Route Security**: Any new route declares an explicit permission dependency via `ctx.scope.require(...)` or an explicit `public_route(rate_limit=...)`.
@@ -30,7 +30,7 @@ Closes #
 - [ ] **Data Hygiene**: Zero secrets, API keys, credentials, or personal data (PII) in code, tests, fixtures, or logs.
 - [ ] **Documentation**: Updated `CHANGELOG.md` and relevant guides in `docs/`.
 - [ ] **Architecture**: Linked relevant ADR (`docs/decisions/`) or technical specification (`docs/specs/`) if applicable.
-- [ ] **Contributor License Agreement**: I have read and accepted the [AssetFlow CLA](CLA.md).
+- [ ] **Contributor License Agreement**: I have read and accepted the [AssetFlow CLA](../CLA.md).
 
 ## 4. Security Notes
 
