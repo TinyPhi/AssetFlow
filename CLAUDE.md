@@ -64,7 +64,11 @@ scripts/            bootstrap.* · check-*.sh/py · new-channel.py · demo-data.
 
 | Command | Purpose |
 | --- | --- |
-| `make bootstrap` | First-time setup: deps, pre-commit, local secrets, minimal profile, migrations, demo data |
+| `make deps` | Install backend (uv) and frontend (npm) dependencies and the pre-commit hooks |
+| `make bootstrap` | Identity setup (same as `scripts/bootstrap.sh` / `setup.bat`): `.env.local` secrets, Zitadel, idempotent Zitadel bootstrap ([guide](docs/guides/setup-zitadel.md)) |
+| `make up-identity` / `make down-identity` | Start / stop the local development Zitadel |
+| `make zitadel-apply [DRY_RUN=1]` / `make openbao-apply` | Re-apply the Zitadel bootstrap / the OpenBao configuration ([guide](docs/guides/setup-openbao.md)) |
+| `make test-scripts` | Tests of the setup scripts |
 | `make up-minimal` / `make up-full` / `make down` | Start/stop a profile |
 | `make fmt` / `make lint` / `make typecheck` | ruff + prettier / linters + import-linter + domain terms + migration lint / mypy + tsc |
 | `make test` / `make test-backend ARGS="..."` / `make test-frontend` | Tests |

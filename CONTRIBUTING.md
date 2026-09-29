@@ -31,6 +31,14 @@ Every contribution must respect the core engineering non-negotiables (Master Pla
 
 ---
 
+## Local Setup
+
+1. `make deps`: backend (uv) and frontend (npm) dependencies, pre-commit hooks.
+2. `make bootstrap` (Windows: `setup.bat`): local Zitadel and its configuration; see [docs/guides/setup-zitadel.md](docs/guides/setup-zitadel.md).
+3. `make verify` before every pull request: it runs everything CI runs.
+
+Local secrets live in `.env.local` (git-ignored). Never commit it; production secrets live only in OpenBao ([docs/guides/setup-openbao.md](docs/guides/setup-openbao.md)).
+
 ## 3. Git Conventions & Branching
 
 ### Branch Names
