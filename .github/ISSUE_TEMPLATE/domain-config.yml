@@ -1,0 +1,39 @@
+# SPDX-FileCopyrightText: 2026 TinyPhi
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: Domain Template Request / Proposal
+description: Propose a new industry domain template or enhancements to existing templates (config/domains/*.yaml).
+title: "domain: "
+labels: ["type/domain-config"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        AssetFlow domain templates (§B7) define industry-specific vocabulary, asset categories, custom attributes, lifecycle states, preventive schedules, and priority matrices without code changes.
+  - type: input
+    id: industry
+    attributes:
+      label: Target Industry / Operational Domain
+      description: What operational sector does this template target?
+      placeholder: e.g., Healthcare & Hospitals, Fleet & Transportation, Data Center Infrastructure, Manufacturing Plant
+    validations:
+      required: true
+  - type: textarea
+    id: workflows
+    attributes:
+      label: Workflows & Maintenance Schedules Needed
+      description: Describe the core maintenance workflows, asset hierarchies, and compliance schedules specific to this domain.
+    validations:
+      required: true
+  - type: textarea
+    id: vocabulary
+    attributes:
+      label: Industry Vocabulary Mapping
+      description: How should standard terms (e.g. Org Unit, Asset, Work Order) be labeled in this domain? (e.g., Ward, Medical Device, Clinical Engineering Ticket).
+    validations:
+      required: true
+  - type: textarea
+    id: current_gaps
+    attributes:
+      label: Gaps in Current Engine Capabilities
+      description: Does the current domain engine schema lack expressions needed for this domain?
