@@ -22,3 +22,9 @@ Record of completed tasks, tools, and milestone verifications.
 - **What changed:** Re-measured AssetManager test suites; ran backend unit tests with coverage, ran frontend Vitest suite, cataloged Playwright specs and un-tested features in `docs/tracker/baseline-assetmanager.md`.
 - **Evidence:** Backend: 323 passed, 5 skipped (328 tests), 44% line coverage. Frontend Vitest: 164 passed across 18 files. Playwright: 17 specs across 8 files.
 - **Next step:** P0-03 (License, provenance and sensitive-file scan).
+
+### 2026-09-29 — P0-03 License, provenance and sensitive-file scan
+- **Task:** P0-03
+- **What changed:** Audited dependency licenses across Python and Node.js, cataloged bundled static assets/branding for replacement, documented NEVER COPY operational sensitive paths, and completed secret pattern scan.
+- **Evidence:** `docs/provenance-scan.md` created with dependency, asset, sensitive-file, and secret finding tables (12 findings in assetmanager, 0 in TMMS-WEB, secret values suppressed).
+- **Next step:** P0-04 (Domain-term inventory).
