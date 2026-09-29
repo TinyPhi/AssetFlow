@@ -71,5 +71,12 @@ Record of completed tasks, tools, and milestone verifications.
 - **Evidence:** `(Get-ChildItem docs/decisions).Count` equals 19 (18 ADRs + README); `reuse lint` passes on all 149 files.
 - **Next step:** P1-06 (Provenance record).
 
+### 2026-09-29 — P1-06 Provenance record
+- **Task:** P1-06
+- **What changed:** Created comprehensive provenance record `docs/provenance.md` tracking all 39 components across §B14.1 (AssetManager -> AssetFlow, 32 items) and §B14.2 (TMMS -> AssetFlow, 7 items). Recorded source snapshot commit SHAs (`babc8ccba170c9b42ee72e21f2e8beb4ab0fbc66` for AssetManager, `d422c1067a760a8e0df5ac843b4c9efe5a14c859` for TMMS-WEB). Documented clean-room rules and OpenWind IP attribution policy.
+- **Evidence:** 39 rows documented in `docs/provenance.md` matching §B14; `reuse lint` reports 150/150 files compliant (0 errors).
+- **Next step:** Phase P2 (Tooling and local CI — Milestone M1.2).
+
+
 
 
