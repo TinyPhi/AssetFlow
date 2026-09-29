@@ -1,0 +1,39 @@
+# SPDX-FileCopyrightText: 2026 TinyPhi
+# SPDX-License-Identifier: AGPL-3.0-only
+# Denylist of domain-specific and legacy terms forbidden in AssetFlow core code.
+# Source: master plan §C12 plus the P0-04 inventory (docs/tracker/domain-terms.md).
+# Matching is case-insensitive and whole-word; plural and spelling variants are listed explicitly.
+
+# Industry-specific words
+railway
+railways
+rail
+train
+loco
+locomotive
+coach
+rake
+station
+depot
+telecom
+tower
+laptop
+laptops
+desktop
+
+# Company and gateway names
+jmv
+rokkalabs
+authnexus
+auth_nexus
+
+# AssetManager-only terms
+employee
+employees
+department
+departments
+it_ops
+it-ops
+
+# Removed services
+novu
