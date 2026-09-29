@@ -51,7 +51,7 @@ Record of completed tasks, tools, and milestone verifications.
 - **Task:** P1-01
 - **What changed:** Scaffolded the 7 missing §C7.1 docs directories (`docs/tutorials/`, `docs/explanation/`, `docs/guides/channels/`, `docs/guides/admin/`, `docs/reference/api/`, `docs/operations/runbooks/`, `docs/security/incidents/`) and created `docs/index.md`, each with a descriptive README and SPDX header.
 - **Evidence:** All 7 directories present with README.md carrying AGPL-3.0 SPDX headers; Diátaxis docs layout fully represented.
-- **Status:** ◐ (Awaiting final verification check).
+- **Status:** ☑ (Verified via independent review check).
 
 ### 2026-09-29 — P1-02 License update, CLA, REUSE
 - **Task:** P1-02
@@ -67,7 +67,8 @@ Record of completed tasks, tools, and milestone verifications.
 - **Task:** P1-04
 - **What changed:** Created GitHub configuration suite conforming to §B12.7 and §C5.8: PR template (`.github/pull_request_template.md`), 7 issue templates, label taxonomy (`.github/labels.yml`), `docs/operations/ci-cd.md`. Updated `CODEOWNERS` so that `@TinyPhi/assetflow-security` is the sole owner of all security paths.
 - **Evidence:** Security paths in CODEOWNERS owned exclusively by `@TinyPhi/assetflow-security`; templates adhere to §B12.7.
-- **Status:** ◐ (Awaiting final verification check).
+- **Status:** ☑ (Verified via independent review check).
+
 
 ### 2026-09-29 — P1-05 ADRs 0001–0018
 - **Task:** P1-05
