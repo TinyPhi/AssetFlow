@@ -9,6 +9,8 @@ Welcome to the AssetFlow documentation suite, organized according to the Diátax
 
 - **[Tutorials](tutorials/)**: Hands-on learning step-by-step.
 - **[Guides](guides/)**: How-to recipes for common tasks, administration, and channels.
+  - [Set up Zitadel](guides/setup-zitadel.md): self-hosted sign-in, one Zitadel organization per AssetFlow organization.
+  - [Set up OpenBao](guides/setup-openbao.md): secrets store, policies and AppRole logins.
 - **[Reference](reference/)**: Technical facts, API schemas, and configuration models.
 - **[Explanation](explanation/)**: Deep-dive discussions on design, tenancy, and architecture.
 - **[Operations](operations/)**: Production deployment, runbooks, and scaling guides.
