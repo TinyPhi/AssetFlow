@@ -29,17 +29,18 @@ backend/app/modules/maintenance/                       @TinyPhi/assetflow-mainte
 
 # ------------------------------------------------------------------------------
 # Security-Sensitive Paths (§C5.8)
-# Mandatory review from @TinyPhi/assetflow-security required before merge.
+# Sole owner: @TinyPhi/assetflow-security (mandatory security approval)
 # ------------------------------------------------------------------------------
-backend/app/core/permissions*                          @TinyPhi/assetflow-core @TinyPhi/assetflow-security
-backend/app/core/db*                                   @TinyPhi/assetflow-core @TinyPhi/assetflow-security
-backend/app/core/auth_middleware.py                    @TinyPhi/assetflow-core @TinyPhi/assetflow-security
+backend/app/core/permissions*                          @TinyPhi/assetflow-security
+backend/app/core/db*                                   @TinyPhi/assetflow-security
+backend/app/core/auth_middleware.py                    @TinyPhi/assetflow-security
 backend/app/providers/auth/                            @TinyPhi/assetflow-security
 backend/app/providers/secrets/                         @TinyPhi/assetflow-security
 backend/app/channels/base.py                           @TinyPhi/assetflow-security
-backend/app/modules/organization/                      @TinyPhi/assetflow-core @TinyPhi/assetflow-security
-backend/app/modules/assets/qr/public*                  @TinyPhi/assetflow-assets @TinyPhi/assetflow-security
-backend/migrations/                                    @TinyPhi/assetflow-core @TinyPhi/assetflow-security
-deploy/                                                @TinyPhi/assetflow-infra @TinyPhi/assetflow-security
-.github/                                               @TinyPhi/assetflow-infra @TinyPhi/assetflow-security
-scripts/check-*                                        @TinyPhi/assetflow-infra @TinyPhi/assetflow-security
+backend/app/modules/organization/                      @TinyPhi/assetflow-security
+backend/app/modules/assets/qr/public*                  @TinyPhi/assetflow-security
+backend/migrations/                                    @TinyPhi/assetflow-security
+deploy/                                                @TinyPhi/assetflow-security
+.github/                                               @TinyPhi/assetflow-security
+scripts/check-*                                        @TinyPhi/assetflow-security
+

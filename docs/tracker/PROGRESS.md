@@ -47,35 +47,38 @@ Record of completed tasks, tools, and milestone verifications.
 - **Evidence:** 52 README.md files created; directory structure matches §B4.3 and §C7.1.
 - **Next step:** P1-02 (License update Apache-2.0 → AGPL-3.0-only, CLA, REUSE).
 
+### 2026-09-29 — P1-01 Folder layout from §B4.3 and §C7.1 (Follow-up)
+- **Task:** P1-01
+- **What changed:** Scaffolded the 7 missing §C7.1 docs directories (`docs/tutorials/`, `docs/explanation/`, `docs/guides/channels/`, `docs/guides/admin/`, `docs/reference/api/`, `docs/operations/runbooks/`, `docs/security/incidents/`) and created `docs/index.md`, each with a descriptive README and SPDX header.
+- **Evidence:** All 7 directories present with README.md carrying AGPL-3.0 SPDX headers; Diátaxis docs layout fully represented.
+- **Status:** ◐ (Awaiting final verification check).
+
 ### 2026-09-29 — P1-02 License update, CLA, REUSE
 - **Task:** P1-02
 - **What changed:** Replaced root LICENSE with unmodified AGPL-3.0-only, added LICENSES/AGPL-3.0-only.txt, added CLA.md and NOTICE, updated README.md with dual-licensing policy, added REUSE.toml, verified 100% REUSE compliance (113/113 files).
-- **Evidence:** `reuse lint` reports 113/113 compliant; zero residual Apache text outside LICENSES/; head -3 LICENSE shows GNU AFFERO GENERAL PUBLIC LICENSE.
-- **Next step:** P1-03 (Project docs).
+- **Evidence:** `reuse lint` reports compliant; zero residual Apache text outside LICENSES/; head -3 LICENSE shows GNU AFFERO GENERAL PUBLIC LICENSE.
 
 ### 2026-09-29 — P1-03 Project docs
 - **Task:** P1-03
-- **What changed:** Written comprehensive governance and community documentation suite matching master plan M1.1-T2..T7 and §B12.1: `README.md`, `CONTRIBUTING.md`, `GOVERNANCE.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, `SUPPORT.md`, `MAINTAINERS.md`, `CHANGELOG.md`, and validated `CLAUDE.md`. Cleaned unused license to ensure 100% REUSE compliance (120/120 files).
-- **Evidence:** All 9 doc files present and checked against master plan sections; `reuse lint` passes with 0 errors across 120 files; `af.py` operational.
-- **Next step:** P1-04 (.github files written, not pushed).
+- **What changed:** Written comprehensive governance and community documentation suite matching master plan M1.1-T2..T7 and §B12.1: `README.md`, `CONTRIBUTING.md`, `GOVERNANCE.md`, `SECURITY.md`, updated `CODE_OF_CONDUCT.md` to full Contributor Covenant 2.1 text (contact `conduct@tinyphi.com`), `SUPPORT.md`, `MAINTAINERS.md`, `CHANGELOG.md`, and validated `CLAUDE.md`.
+- **Evidence:** All 9 doc files present and checked against master plan sections; `reuse lint` passes with 0 errors; verified against §B11.5 and §B12.1.
 
 ### 2026-09-29 — P1-04 .github files (written, not pushed)
 - **Task:** P1-04
-- **What changed:** Created GitHub configuration suite conforming to §B12.7 and §C5.8: PR template (`.github/pull_request_template.md`), issue templates (`bug.yml`, `feature.yml`, `provider.yml`, `channel.yml`, `domain-config.yml`, `release-checklist.md`, `config.yml`), label taxonomy (`.github/labels.yml`), `CODEOWNERS` with security paths restricted to `@TinyPhi/assetflow-security`, and repository operations documentation (`docs/operations/ci-cd.md`).
-- **Evidence:** 8 new GitHub/operation files created and verified against §B12.7 and §C5.8; `reuse lint` reports 131/131 compliant (0 errors); 25/25 hook tests pass.
-- **Next step:** P1-05 (ADRs 0001–0018).
+- **What changed:** Created GitHub configuration suite conforming to §B12.7 and §C5.8: PR template (`.github/pull_request_template.md`), 7 issue templates, label taxonomy (`.github/labels.yml`), `docs/operations/ci-cd.md`. Updated `CODEOWNERS` so that `@TinyPhi/assetflow-security` is the sole owner of all security paths.
+- **Evidence:** Security paths in CODEOWNERS owned exclusively by `@TinyPhi/assetflow-security`; templates adhere to §B12.7.
+- **Status:** ◐ (Awaiting final verification check).
 
 ### 2026-09-29 — P1-05 ADRs 0001–0018
 - **Task:** P1-05
-- **What changed:** Authored all 18 Architecture Decision Records (`ADR-0001` through `ADR-0018`) in `docs/decisions/` following §C6.5 template and §B3 specifications. Cites subsequent revisions from §B17.1 (decisions 42–52). ADR-0010 (License) is `Proposed` pending Q17; the remaining 17 ADRs are `Accepted`. Indexed all ADRs in `docs/decisions/README.md`.
-- **Evidence:** `(Get-ChildItem docs/decisions).Count` equals 19 (18 ADRs + README); `reuse lint` passes on all 149 files.
-- **Next step:** P1-06 (Provenance record).
+- **What changed:** Authored all 18 Architecture Decision Records (`ADR-0001` through `ADR-0018`) in `docs/decisions/` following §C6.5 template and §B3 specifications. ADR-0011 updated with explicit revisions from Decisions 51 & 52 (OpenBao credentials + Zitadel multi-org identity). ADR-0010 (License) is `Proposed` pending Q17; the remaining 17 ADRs are `Accepted`. Indexed all ADRs in `docs/decisions/README.md`.
+- **Evidence:** `(Get-ChildItem docs/decisions).Count` equals 19 (18 ADRs + README); ADR-0011 contains Decisions 51 and 52; `reuse lint` passes on all ADRs.
 
 ### 2026-09-29 — P1-06 Provenance record
 - **Task:** P1-06
 - **What changed:** Created comprehensive provenance record `docs/provenance.md` tracking all 39 components across §B14.1 (AssetManager -> AssetFlow, 32 items) and §B14.2 (TMMS -> AssetFlow, 7 items). Recorded source snapshot commit SHAs (`babc8ccba170c9b42ee72e21f2e8beb4ab0fbc66` for AssetManager, `d422c1067a760a8e0df5ac843b4c9efe5a14c859` for TMMS-WEB). Documented clean-room rules and OpenWind IP attribution policy.
-- **Evidence:** 39 rows documented in `docs/provenance.md` matching §B14; `reuse lint` reports 150/150 files compliant (0 errors).
-- **Next step:** Phase P2 (Tooling and local CI — Milestone M1.2).
+- **Evidence:** 39 rows documented in `docs/provenance.md` matching §B14; `reuse lint` reports 100% compliance.
+
 
 
 
