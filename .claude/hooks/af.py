@@ -61,7 +61,7 @@ def parse_tracker(text: str) -> list[dict]:
     """
     tasks = []
     for line in text.splitlines():
-        m = re.match(r"^\|\s*(M\d+\.\d+-T\d+)\s*\|(.*)\|\s*$", line)
+        m = re.match(r"^\|\s*(M\d+\.\d+-T\d+|P\d+-\d+)\s*\|(.*)\|\s*$", line)
         if not m:
             continue
         cells = [c.strip() for c in m.group(2).split("|")]

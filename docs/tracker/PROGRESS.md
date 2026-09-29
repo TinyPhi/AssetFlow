@@ -34,3 +34,9 @@ Record of completed tasks, tools, and milestone verifications.
 - **What changed:** Scanned legacy codebases for single-tenant, proprietary, and industry terms; cataloged 1,898 occurrences across 140+ files; mapped each term to its neutral AssetFlow replacement in `docs/tracker/domain-terms.md`.
 - **Evidence:** `docs/tracker/domain-terms.md` created with hit counts and replacement mapping (employee → member, department → org unit, authnexus → auth provider, it_ops → operator, jmv → assetflow).
 - **Next step:** P0-05 (Repo tracker in loop format).
+
+### 2026-09-29 — P0-05 Repo tracker in loop format
+- **Task:** P0-05
+- **What changed:** Created `docs/tracker/roadmap-tracker.md` matching loop table format; verified `python .claude/hooks/af.py next-task` correctly picks the next task (P1-01); all 25 hook tests green.
+- **Evidence:** `docs/tracker/roadmap-tracker.md` present; `af.py next-task` returns valid JSON plan draft for P1-01; 25/25 pytest tests passed.
+- **Next step:** P1-01 (Folder layout from §B4.3 and §C7.1).
