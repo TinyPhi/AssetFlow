@@ -133,13 +133,14 @@ the api and worker. Secret layout (KV v2 under `secret/`):
 | `assetflow/migrator` | migration role credentials | operator / bootstrap |
 | `assetflow/postgres` | `superuser_password` | `openbao-apply --generate-missing` |
 | `assetflow/smtp` | SMTP relay credentials | operator |
-| `assetflow/idp` | `issuer`, `project_id`, `web_client_id`, `client_id`, `client_secret` | `zitadel-apply` |
+| `assetflow/idp` | `url`, `issuer`, `project_id`, `web_client_id`, `client_id`, `client_secret`, `introspection_client_id`, `introspection_client_secret` | Zitadel bootstrap (`make zitadel-apply`) |
 | `assetflow/orgs/<organization_id>/channels/<channel_id>` | channel credentials | runtime (§B6.3) |
 | `assetflow/zitadel/masterkey` | `value` (32 characters, never changes) | `openbao-apply --generate-missing` |
 | `assetflow/zitadel/database` | `admin_password`, `user_password` | `openbao-apply --generate-missing` |
 | `assetflow/zitadel/admin` | `initial_password` (change on first sign-in) | `openbao-apply --generate-missing` |
-| `assetflow/zitadel/tofu-admin-key` | `key_json` | `zitadel-apply` (moved from Zitadel setup) |
-| `assetflow/zitadel/automation-key` | `key_json` | `zitadel-apply` |
+| `assetflow/zitadel/bootstrap-key` | `key_json` | Zitadel bootstrap (rotated from the first-instance key) |
+| `assetflow/zitadel/automation-key` | `key_json` | Zitadel bootstrap |
+| `assetflow/zitadel/organizations` | `{slug: Zitadel organization id}` | Zitadel bootstrap |
 
 Check a policy with a short-lived token, for example that the api cannot read the migrator
 credentials:

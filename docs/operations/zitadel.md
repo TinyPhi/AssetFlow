@@ -5,114 +5,174 @@ SPDX-License-Identifier: AGPL-3.0-only
 
 # Zitadel operations runbook
 
-**Audience:** operators of the full profile
-**Master plan:** §B5.5, §B5.7, §B11.2, decisions 51 and 52 (setup plans P2-09 to P2-11)
-**Files:** `deploy/zitadel/{config,steps}.yaml`, `deploy/zitadel/tofu/*.tf`,
-`config/organizations/*.yaml`, `scripts/zitadel-apply.py`
+**Audience:** developers (local identity) and operators of the full profile
+**Master plan:** §B5.5, §B5.7, §B11.2, §B11.4, decisions 51 and 52 (setup plans P2-09 to P2-11, M1.6-T8)
+**Files:** `scripts/bootstrap_zitadel.py`, `scripts/bootstrap.sh`, `scripts/bootstrap.ps1`, `setup.bat`,
+`deploy/compose.identity.yml` (development), `deploy/compose.full.yml` (production),
+`deploy/zitadel/{config,steps}.yaml`, `deploy/bootstrap/Dockerfile`, `config/organizations/*.yaml`
 
-## 1. Layout
+## 1. Overview
 
-Self-hosted only (no Zitadel Cloud), following the official prod-like compose layout
-(<https://zitadel.com/docs/self-hosting/deploy/compose>) with separate steps:
+Zitadel is self-hosted (no Zitadel Cloud). One command sets it up and can be run again at any
+time; the second run reports `No changes`:
 
-| Service | Command | Purpose |
+| | Development (default) | Production (`ASSETFLOW_ENV=production`) |
 | --- | --- | --- |
-| `zitadel-secrets` | OpenBao Agent | renders the masterkey, database passwords and first-admin password from OpenBao into a tmpfs volume |
-| `zitadel-db` | PostgreSQL | Zitadel's own database server and users, never shared with AssetFlow |
-| `zitadel-init` | `zitadel init` | creates the `zitadel` database and user |
-| `zitadel-setup` | `zitadel setup` | runs migrations and creates the first instance (`steps.yaml`) |
-| `zitadel` | `zitadel start` | serves the API, console and login; healthy on `zitadel ready` |
+| Command | `scripts/bootstrap.sh` (Windows: `setup.bat`), or `make bootstrap` | `ASSETFLOW_ENV=production scripts/bootstrap.sh`, or `make up-full` |
+| Compose file | `deploy/compose.identity.yml` (project `assetflow-dev`) | `deploy/compose.full.yml` (project `assetflow`) |
+| Masterkey, passwords | generated once into `.env.local` (git-ignored) | generated once into OpenBao by `openbao-apply --generate-missing` |
+| How Zitadel gets them | `${VAR}` interpolation from `.env.local` (`--masterkeyFromEnv`) | files rendered by OpenBao Agent into tmpfs (`--masterkeyFile`, second `--config`/`--steps`) |
+| Bootstrap results | `.env.local` | OpenBao `secret/assetflow/idp` and `secret/assetflow/zitadel/*`, **never files** |
+| Login policy | relaxed (marked `DEV ONLY` in the compose file) | strict: MFA forced, no self-registration, password change at first sign-in |
 
-Credentials reach Zitadel only as files: `--masterkeyFile /run/zitadel/masterkey`, a second
-`--config` file with the database passwords and a second `--steps` file with the first-admin
-password, all rendered by the agent. `config.yaml` and `steps.yaml` hold no secrets.
+The flow follows OpenWind's setup, with three changes: no login-page scraping (the first
+credential is the official first-instance machine user), organizations are automated from
+config, and production secrets never touch a file.
 
-**External URL.** `ZITADEL_DOMAIN`, `ZITADEL_EXTERNALPORT` and `ZITADEL_EXTERNALSECURE` are set
-in the operator's shell (or a non-secret env file) and passed to Zitadel as
-`ZITADEL_EXTERNALDOMAIN`, `ZITADEL_EXTERNALPORT`, `ZITADEL_EXTERNALSECURE`. They must match the
+```
+generate secrets ──> zitadel start-from-init ──> bootstrap container ──> results
+ (.env.local or         (init + setup +            (search first, create      (.env.local or
+  OpenBao)               start, one service)        what is missing)           OpenBao)
+```
+
+## 2. Development: one command
+
+Needs only Docker (Compose v2). From the repository root:
+
+```bash
+scripts/bootstrap.sh            # Linux, macOS, WSL2, Git Bash   (or: make bootstrap)
+setup.bat                       # Windows (PowerShell 5.1+)
+```
+
+It runs four steps:
+
+1. builds the bootstrap image (`deploy/bootstrap/Dockerfile`, python:3.12-slim + uv; the
+   dependencies are pinned in the script's PEP 723 header);
+2. `bootstrap_zitadel.py init-env`: creates `.env.local` values that are missing:
+   `ZITADEL_MASTERKEY` (32 characters), `ZITADEL_ADMIN_PASSWORD` (32 characters, upper, lower,
+   digit and symbol, never `$` or `%`), `ZITADEL_DB_PASSWORD`, `ZITADEL_DB_USER_PASSWORD`.
+   Existing values are reused. It records a SHA-256 of the masterkey in the Zitadel bootstrap
+   volume and stops if the volume was created with another masterkey (section 7);
+3. starts Zitadel (`up --wait`: healthy on `/app/zitadel ready`); the first start takes about a minute;
+4. runs the bootstrap (section 4) and prints the console URL and the admin login name.
+
+The admin password is `ZITADEL_ADMIN_PASSWORD` in `.env.local`. Other commands:
+
+```bash
+scripts/bootstrap.sh --dry-run  # show what would change (setup.bat -DryRun)
+make zitadel-apply              # bootstrap only (DRY_RUN=1 for a dry run)
+make up-identity                # start again after make down-identity
+make down-identity              # stop (data kept)
+scripts/bootstrap.sh --reset    # delete the local Zitadel volumes and start over (setup.bat -Reset)
+```
+
+Containers of AssetFlow that need Zitadel join the Docker network `assetflow-dev` and call
+`http://zitadel:8080` with the header `Host: localhost:8081` (the external domain and port), so
+Zitadel finds its instance; the browser uses `http://localhost:8081`.
+
+## 3. Runtime layout
+
+Both profiles run **one** Zitadel service with `zitadel start-from-init` (init, setup of the first
+instance and start; <https://zitadel.com/docs/self-hosting/deploy/compose>), pinned to
+`ghcr.io/zitadel/zitadel:v4.19.3`, with its own PostgreSQL server (`zitadel-db`, never shared
+with AssetFlow) and the login built into the API container (`LoginV2.Required: false`).
+
+| Setting | Development | Production |
+| --- | --- | --- |
+| Masterkey | `--masterkeyFromEnv` (`ZITADEL_MASTERKEY`) | `--masterkeyFile /run/zitadel/masterkey` |
+| TLS | `--tlsMode disabled`, `ZITADEL_TLS_ENABLED=false` | `--tlsMode ${ZITADEL_TLS_MODE:-disabled}`; `external` behind the TLS proxy |
+| Health check | `/app/zitadel ready` | `/app/zitadel ready --config /zitadel/config.yaml` |
+
+`zitadel ready` reads the configuration, not the `--tlsMode` flag: with the default
+`TLS.Enabled: true` it probes https and reports `not ready` although Zitadel serves http. So TLS is
+also disabled in configuration (`ZITADEL_TLS_ENABLED=false` in development, `TLS.Enabled: false` in
+`config.yaml`), as in the upstream compose file.
+
+A one-shot `zitadel-volume-init` container gives the bootstrap volume to the zitadel user
+(uid 1000), so Zitadel itself runs as non-root and can write the first-instance key there.
+
+**External URL.** `ZITADEL_DOMAIN`, `ZITADEL_EXTERNALPORT` and `ZITADEL_EXTERNALSECURE` must match the
 public URL exactly, or Zitadel answers `Instance not found`:
 
 | TLS mode | Public URL | Settings |
 | --- | --- | --- |
 | Local (no TLS) | `http://localhost:8081` | `localhost`, `8081`, `false` (defaults) |
-| External TLS (nginx in front) | `https://id.example.com` | `id.example.com`, `443`, `true` |
+| External TLS (nginx in front) | `https://id.example.com` | `id.example.com`, `443`, `true`, and `ZITADEL_TLS_MODE=external` |
 
-`ExternalDomain` is fixed when the instance is created; changing it later needs the
-instance domain to be added in Zitadel first.
+`ExternalDomain` is fixed when the instance is created; changing it later needs the instance
+domain to be added in Zitadel first.
 
-**Login.** The login built into the API container is used (`DefaultInstance.Features.LoginV2.Required: false`),
-so no separate login container and no extra cookie secret are needed.
+## 4. The bootstrap (`scripts/bootstrap_zitadel.py`)
 
-## 2. Start
+Runs in the bootstrap container (`make zitadel-apply`) against `http://zitadel:8080`, sending the
+public `Host` header (and `X-Forwarded-Proto: https` when the public URL is https). It can also
+run on a host with uv: `uv run scripts/bootstrap_zitadel.py [--dry-run]` with
+`ZITADEL_BOOTSTRAP_URL=http://localhost:8081` (once the bootstrap key is stored). Each step
+searches first, creates only what is missing, treats HTTP 409 as success and re-applies
+settings with PUT only when they differ (Zitadel's `No changes` also counts as success):
 
-Prerequisites: OpenBao is unsealed and `openbao-apply --generate-missing` has run
-(`docs/operations/openbao.md`).
+1. wait for `/debug/ready`;
+2. authenticate with the JWT profile grant: the stored bootstrap key, else the key that Zitadel
+   wrote for the first-instance machine user `assetflow-bootstrap` (role `IAM_OWNER`,
+   `FirstInstance.Org.Machine`, `FirstInstance.MachineKeyPath`; a PAT at
+   `FirstInstance.PatPath` also works). That first key is **rotated at once**: a new key is
+   stored, the old key is revoked in Zitadel and the file is deleted from the volume;
+3. project `AssetFlow` in the platform organization `AssetFlow Platform`: assert roles on
+   authentication, check roles on authentication, check for project on authentication;
+4. project roles: `rbac.roles` from `config/assetflow.yaml` when that file exists, else the
+   §B7.2 defaults `viewer`, `technician`, `team_lead`, `asset_manager`,
+   `maintenance_planner`, `org_unit_manager`, `admin` (group `assetflow`). Roles that exist
+   only in Zitadel are kept and listed;
+5. `assetflow-web`: user-agent (public) client, authorization code with PKCE, auth method
+   `NONE` (no secret), grants authorization code and refresh token, redirect
+   `${APP_URL}/auth/callback`;
+6. `assetflow-bff`: confidential web client (client secret basic), redirect
+   `${API_URL}/api/v1/auth/callback`;
+   both clients issue **JWT access tokens** with roles asserted in access and ID tokens; dev mode
+   (http redirect URIs) only outside production;
+7. `assetflow-introspection`: an **API application** with a client secret (basic) for
+   `/oauth/v2/introspect`. Zitadel's introspection endpoint accepts API or OIDC applications of
+   the project only; a machine user's client secret is refused there (`unauthorized_client`,
+   observed on v4.19.3);
+8. machine user `assetflow-automation` with instance role `IAM_ORG_MANAGER` and a JSON key, for
+   runtime Management API calls (`assetflow org create --create-idp-org`, §B5.7);
+9. one organization and project grant per `config/organizations/*.yaml` (section 5);
+10. production only: login policy with MFA forced and self-registration off;
+11. results are written (only when they differ) and printed without secret values.
 
-```bash
-docker compose -f deploy/compose.full.yml up -d --wait zitadel
-curl -fsS http://localhost:8081/debug/healthz          # ok
-```
+A client secret or key is kept while the stored value still belongs to the object in Zitadel
+(same client id, key id still listed, introspection secret still accepted); otherwise a new one
+is generated. So a reset instance, a lost `.env.local` entry or a wrong value heals on the next run.
 
-The console is at `http://localhost:8081/ui/console`. The first admin is `admin` in the
-`AssetFlow Platform` organization; read the initial password once from
-`secret/assetflow/zitadel/admin` (`bao kv get -field=initial_password secret/assetflow/zitadel/admin`);
-Zitadel asks for a new one at first sign-in.
+**Results.**
 
-The masterkey (`secret/assetflow/zitadel/masterkey`) is fixed at the first start and must
-never change: back it up with the other key material (§B11.4).
+| `.env.local` (development) | OpenBao (production) |
+| --- | --- |
+| `ZITADEL_URL`, `ZITADEL_ISSUER` | `secret/assetflow/idp`: `url`, `issuer` |
+| `ZITADEL_PROJECT_ID` (token audience) | `secret/assetflow/idp`: `project_id` |
+| `ZITADEL_WEB_CLIENT_ID` | `secret/assetflow/idp`: `web_client_id` |
+| `ZITADEL_BFF_CLIENT_ID`, `ZITADEL_BFF_CLIENT_SECRET` | `secret/assetflow/idp`: `client_id`, `client_secret` |
+| `ZITADEL_INTROSPECTION_CLIENT_ID`, `..._SECRET` | `secret/assetflow/idp`: `introspection_client_id`, `introspection_client_secret` |
+| `ZITADEL_SERVICE_ACCOUNT_KEY` (base64 JSON key) | `secret/assetflow/zitadel/automation-key`: `key_json` |
+| `ZITADEL_BOOTSTRAP_KEY` (base64 JSON key) | `secret/assetflow/zitadel/bootstrap-key`: `key_json` |
+| `ZITADEL_ORGANIZATIONS` (`slug:id,...`) | `secret/assetflow/zitadel/organizations`: `{slug: id}` |
 
-## 3. Zitadel as code (`make zitadel-apply`)
+In production the script refuses to write any file (the `.env.local` store raises an error), and
+`init-env` refuses to run.
 
-`scripts/zitadel-apply.py` runs OpenTofu (<https://opentofu.org>) with the official provider
-(<https://registry.terraform.io/providers/zitadel/zitadel>) on `deploy/zitadel/tofu`:
-
-- project `AssetFlow`, owned by the platform organization, with the §B7.2 roles
-  (`viewer`, `technician`, `team_lead`, `asset_manager`, `maintenance_planner`,
-  `org_unit_manager`, `admin`); "assert roles on authentication", "check authorization on
-  authentication" and "check for project on authentication" are on;
-- `assetflow-web`: public user-agent client, authorization code with PKCE, **no client secret**;
-- `assetflow-bff`: confidential server client (client secret basic, refresh tokens);
-- both clients issue **JWT access tokens** with roles asserted in access and ID tokens;
-- machine user `assetflow-automation` (role `IAM_ORG_MANAGER`) and its JSON key, for
-  `assetflow org create --create-idp-org` (§B5.7);
-- one organization and one project grant per file in `config/organizations/` (section 4).
-
-Flow of credentials:
-
-1. Zitadel setup writes the key of the first-instance machine user `tofu-admin` (role
-   `IAM_OWNER`) into the `zitadel_bootstrap` volume. The first `zitadel-apply` moves it into
-   `secret/assetflow/zitadel/tofu-admin-key` and deletes it from the volume.
-2. Each run writes that key to a temporary file (mode 0600) for OpenTofu and deletes it after.
-3. After apply, the BFF client secret is written to `secret/assetflow/idp` and the automation
-   key to `secret/assetflow/zitadel/automation-key`, only when they differ. Nothing is printed.
-
-```bash
-export BAO_ADDR=https://127.0.0.1:8200 BAO_CACERT=deploy/.secrets/openbao-tls/ca.pem
-read -rs BAO_TOKEN && export BAO_TOKEN     # operator token
-python scripts/zitadel-apply.py            # second run: "Zitadel: no changes."
-python scripts/zitadel-apply.py --check    # offline: tofu init -backend=false + validate
-```
-
-OpenTofu state stays in `deploy/zitadel/tofu/terraform.tfstate` on the operator machine; it
-contains the client secret and keys, is git-ignored and must be backed up like other key
-material. Rotate the BFF secret or the automation key by tainting the resource
-(`tofu apply -replace=...`) and re-running `zitadel-apply`.
-
-If the `tofu-admin` key is lost (not in OpenBao and no longer in the volume), sign in to the
-console as the admin, create a new JSON key for `tofu-admin`, and store it with
-`bao kv put secret/assetflow/zitadel/tofu-admin-key key_json=@key.json`, then delete the file.
-
-## 4. Multi-organization setup (§B5.5, decision 52)
+## 5. Multi-organization setup (§B5.5, decision 52)
 
 - One Zitadel instance per AssetFlow installation; **one Zitadel organization per AssetFlow
   organization**. The platform organization owns the `AssetFlow` project.
 - Each file `config/organizations/<slug>.yaml` declares one organization: `slug` (must equal
   the file name), `name`, and `idp.granted_roles` (the project roles that organization may
-  assign; a subset of the project roles). `zitadel-apply` creates the Zitadel organization and
-  a project grant with those roles. Organization admins then assign roles to their users.
-- Zitadel assigns the organization id. `zitadel-apply` prints it per slug
-  (`tofu output organization_ids`); `assetflow org create --idp-org <id>` stores it in
-  `organizations.idp_organization_id`.
+  assign; unknown roles stop the run). The bootstrap creates the Zitadel organization
+  (v2 `POST /v2/organizations`, found again by name) and a project grant with those roles;
+  when the roles in the file change, the grant is updated. Organization admins then assign
+  roles to their users.
+- Zitadel assigns the organization id. The bootstrap prints
+  `organization <slug>: idp_organization_id <id>` and stores the map (table above);
+  `assetflow org create --idp-org <id>` stores it in `organizations.idp_organization_id`.
 - The samples `example-alpha` and `example-beta` use neutral names (no real companies).
 
 **Sign-in request (Zitadel preset).** The AssetFlow sign-in page asks for the organization
@@ -134,19 +194,61 @@ existing organization; otherwise sign-in stops with a toast message and nothing 
 (for example machine users with client credentials) must add the scope
 `urn:zitadel:iam:org:projects:roles` to get them.
 
-Observed on a local stack (P2-11 check, machine user of `example-alpha` with client
-credentials): the token had the project id in `aud` and
-`urn:zitadel:iam:user:resourceowner:id` = alpha's id. Asking for
-`urn:zitadel:iam:org:id:{beta}` still returned a token, but without the
-`urn:zitadel:iam:org:id` claim and with alpha as resource owner, so the comparison above is
-what rejects an organization A token for organization B. The interactive sign-in (login page
-restricted by the org scope) is covered by the Phase 1 sign-in tests (M1.3-T8).
+Observed on a local stack (v4.19.3, fresh volumes, machine user of `example-alpha` with the
+project role `technician` through the project grant, client credentials): the JWT access token
+had the project id in `aud`, `urn:zitadel:iam:user:resourceowner:id` = alpha's id, the roles in
+`urn:zitadel:iam:org:project:{projectId}:roles` (`{"technician": {"<alpha id>": ...}}`), its
+signature verified against `/oauth/v2/keys`, and `assetflow-introspection` introspected it as
+`active`. Earlier (P2-11) asking for `urn:zitadel:iam:org:id:{beta}` still returned a token, but
+with alpha as resource owner, so the comparison above is what rejects an organization A token for
+organization B. The interactive sign-in is covered by the Phase 1 sign-in tests (M1.3-T8).
 
-## 5. Troubleshooting
+## 6. Production
+
+Prerequisites: OpenBao is unsealed, the operator token is in the shell, TLS files exist
+(`docs/operations/openbao.md`). Then either `make up-full` (whole stack) or:
+
+```bash
+read -rs BAO_TOKEN && export BAO_TOKEN
+ASSETFLOW_ENV=production scripts/bootstrap.sh     # openbao-apply, Zitadel, bootstrap into OpenBao
+ASSETFLOW_ENV=production make zitadel-apply       # bootstrap only, after config changes
+```
+
+`openbao-apply --generate-missing` creates the masterkey, database passwords and the first-admin
+password in OpenBao once (check-and-set: never overwritten). The bootstrap container receives
+`BAO_TOKEN` from the operator's shell for that run only and reads the OpenBao CA from a compose
+secret. The first admin is `admin` in `AssetFlow Platform` (login name printed by the bootstrap);
+read the initial password once with
+`bao kv get -field=initial_password secret/assetflow/zitadel/admin`; Zitadel asks for a new one at
+first sign-in, and MFA setup is required.
+
+The masterkey (`secret/assetflow/zitadel/masterkey`) is fixed at the first start and must never
+change: back it up with the other key material (§B11.4).
+
+## 7. Recovery
+
+- **Masterkey changed or lost** (`init-env` stops with "created with a different masterkey", or
+  Zitadel logs a decryption error): Zitadel encrypts its keys with the masterkey and cannot use
+  another one. Restore the original value (development: the old `.env.local`; production:
+  OpenBao backup). Development only: `scripts/bootstrap.sh --reset` deletes the local Zitadel
+  volumes and starts a fresh instance with the secrets in `.env.local`.
+- **Database password mismatch** (`password authentication failed`): same cause and remedy.
+- **Bootstrap key lost** (not in the store, first-instance key already rotated): sign in to the
+  console as the admin, open the machine user `assetflow-bootstrap`, create a JSON key and store
+  it: development `ZITADEL_BOOTSTRAP_KEY=<base64 of the key file>` in `.env.local`; production
+  `bao kv put secret/assetflow/zitadel/bootstrap-key key_json=@key.json`. Delete the file.
+- **Rotate a secret**: delete the value from the store (for example `ZITADEL_BFF_CLIENT_SECRET`)
+  and run the bootstrap; it generates a new one. For the automation key, delete the key in the
+  console first.
+- **Masterkey / volume consistency**: the bootstrap volume holds `.masterkey.sha256` (a hash,
+  not the key); it is written on the first `init-env`.
+
+## 8. Troubleshooting
 
 - `Instance not found`: the Host / port / scheme of the request differs from
-  `ZITADEL_DOMAIN` / `ZITADEL_EXTERNALPORT` / `ZITADEL_EXTERNALSECURE`.
-- `zitadel-setup` fails with a masterkey error: the masterkey in OpenBao changed after the
-  first start; restore the original value.
-- `zitadel-apply` cannot authenticate: check that `tofu-admin` still exists and its key in
-  OpenBao is valid (section 3).
+  `ZITADEL_DOMAIN` / `ZITADEL_EXTERNALPORT` / `ZITADEL_EXTERNALSECURE`. Containers calling
+  `http://zitadel:8080` must send `Host: <domain>:<port>`.
+- Container `unhealthy` while the log says `server is listening`: `zitadel ready` probes https;
+  TLS must also be disabled in configuration (section 3).
+- `no Zitadel credential`: see "Bootstrap key lost" above.
+- Logs: `docker compose -f deploy/compose.identity.yml --env-file .env.local logs zitadel`.

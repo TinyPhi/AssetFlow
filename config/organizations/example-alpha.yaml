@@ -1,10 +1,11 @@
 # SPDX-FileCopyrightText: 2026 TinyPhi
 # SPDX-License-Identifier: AGPL-3.0-only
 # Sample AssetFlow organization (§B5.5, decision 52). Neutral example name, not a real company.
-# Applied to Zitadel by make zitadel-apply (deploy/zitadel/tofu/organizations.tf): one Zitadel
+# Applied to Zitadel by make zitadel-apply (scripts/bootstrap_zitadel.py): one Zitadel
 # organization plus a project grant for AssetFlow with the roles below. The slug must equal
-# the file name. The Zitadel organization id is assigned by Zitadel; zitadel-apply prints it
-# (output organization_ids) and "assetflow org create --idp-org <id>" stores it in
+# the file name. The Zitadel organization id is assigned by Zitadel; the bootstrap prints it and
+# stores it in ZITADEL_ORGANIZATIONS (.env.local) or secret/assetflow/zitadel/organizations
+# (production), and "assetflow org create --idp-org <id>" stores it in
 # organizations.idp_organization_id. Tokens carry it in urn:zitadel:iam:user:resourceowner:id.
 
 slug: example-alpha

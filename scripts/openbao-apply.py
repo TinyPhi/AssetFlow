@@ -71,18 +71,20 @@ def _random(length: int, alphabet: str = ALNUM) -> str:
 
 
 def _admin_password() -> str:
-    # Satisfies Zitadel's default complexity policy (upper, lower, digit, symbol).
+    # Satisfies Zitadel's default complexity policy (upper, lower, digit, symbol); 24 characters,
+    # never $ or % (safe in compose and shell interpolation).
     core = _random(20)
     return (
         core
         + secrets.choice(string.ascii_uppercase)
         + secrets.choice(string.ascii_lowercase)
-        + (secrets.choice(string.digits) + secrets.choice("!#%+-.:=?@_"))
+        + (secrets.choice(string.digits) + secrets.choice("!#+-.:=?@_"))
     )
 
 
 # Values that --generate-missing may create. Everything else (SMTP, IdP client secret,
-# channel secrets, database roles) is written by operators, zitadel-apply or migrations.
+# channel secrets, database roles) is written by operators, the Zitadel bootstrap
+# (scripts/bootstrap_zitadel.py) or migrations.
 GENERATED_SECRETS: dict[str, Any] = {
     "assetflow/zitadel/masterkey": lambda: {"value": _random(32)},
     "assetflow/zitadel/database": lambda: {

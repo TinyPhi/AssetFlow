@@ -8,7 +8,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 Developer workflow scripts and CI checks (master plan §B10, §C3.2, §C9). Run them through `make`
 (see `make help`); CI calls the same `make ci-*` targets.
 
-Each check is a Python 3.10+ script (standard library only) with a `.sh` wrapper that finds a working
+Each check is a Python 3.10+ script (standard library only, except `bootstrap_zitadel.py`) with a `.sh` wrapper that finds a working
 Python on Linux, macOS and Git Bash on Windows (set `PYTHON=...` to choose one). Exit code 0 means
 pass, 1 means a rule was broken, 2 means the check could not run.
 
@@ -20,7 +20,9 @@ pass, 1 means a rule was broken, 2 means the check could not run.
 | `check-docs-links.sh` | No broken relative links in Markdown files | `make docs-check` |
 | `check-licenses.sh` | Dependency licenses on the §C4.11 allowlist (pip-licenses for `backend/uv.lock`, license-checker for `frontend/node_modules`); copyleft always fails; other licenses fail for runtime dependencies unless recorded in `check-licenses-exceptions.txt` | `make license-check`, `make ci-license-check` |
 | `openbao-apply.sh` | OpenBao engines, policies, AppRoles (`--generate-missing` first run, `--issue-secret-ids` start flow) | `make openbao-apply [GENERATE_MISSING=1] [ISSUE_SECRET_IDS=1]`, `make up-full` |
-| `zitadel-apply.sh` | Zitadel project, roles and apps with OpenTofu (fails when neither `tofu` nor `terraform` is installed) | `make zitadel-apply`, `make up-full` |
+| `bootstrap.sh`, `bootstrap.ps1` (+ `setup.bat` in the root) | One-command identity setup with Docker only: `.env.local` secrets (development) or OpenBao (`ASSETFLOW_ENV=production`), Zitadel, bootstrap; `--dry-run`, `--reset` | `make bootstrap`, `setup.bat` |
+| `bootstrap_zitadel.py` | Idempotent Zitadel bootstrap through the official APIs: project, roles, apps, machine users, one organization and project grant per `config/organizations/*.yaml`; results to `.env.local` or OpenBao. Not standard library only: its pinned dependencies are in its PEP 723 header; runs in `deploy/bootstrap/Dockerfile` or with `uv run` | `make zitadel-apply [DRY_RUN=1]`, `make up-full` |
+| `tests/` | pytest suite of `bootstrap_zitadel.py` against a mocked Zitadel and OpenBao (`httpx.MockTransport`) | `make test-scripts` (part of `make ci-quality` and `make verify`) |
 | `smoke-full.sh` | Smoke test of the running full profile | `make smoke-full` |
 
 Each check also takes file or directory paths, which is how the rules are tried against a bad sample.

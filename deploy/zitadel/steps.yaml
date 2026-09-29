@@ -6,9 +6,10 @@
 # /run/zitadel/zitadel-steps-secrets.yaml (second --steps).
 
 FirstInstance:
-  # Key of the tofu-admin machine user, read once by scripts/zitadel-apply.py,
-  # stored in OpenBao (secret/assetflow/zitadel/tofu-admin-key) and then deleted.
-  MachineKeyPath: /zitadel/bootstrap/tofu-admin-key.json
+  # Key of the first-instance machine user (IAM_OWNER), written once by start-from-init.
+  # scripts/bootstrap_zitadel.py uses it once, stores a new key in OpenBao
+  # (secret/assetflow/zitadel/bootstrap-key), revokes this one and deletes the file.
+  MachineKeyPath: /zitadel/bootstrap/bootstrap-key.json
   Org:
     # Platform organization: owns the AssetFlow project (§B5.5).
     Name: AssetFlow Platform
@@ -22,8 +23,8 @@ FirstInstance:
       PasswordChangeRequired: true
     Machine:
       Machine:
-        Username: tofu-admin
-        Name: OpenTofu administration
+        Username: assetflow-bootstrap
+        Name: AssetFlow bootstrap
       MachineKey:
         # 1 = JSON key file
         Type: 1

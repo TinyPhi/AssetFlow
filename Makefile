@@ -27,6 +27,7 @@ FRONTEND := frontend
 comma    := ,
 
 # Pinned tool versions (keep in step with .pre-commit-config.yaml).
+# scripts/bootstrap_zitadel.py pins its own dependencies (PEP 723 header); test-scripts uses them.
 RUFF_VERSION       := 0.16.9
 REUSE_VERSION      := 6.2.0
 GITLEAKS_VERSION   := 8.30.1
@@ -38,6 +39,11 @@ PIP_AUDIT_VERSION  := 2.10.1
 TRIVY_VERSION      := 0.74.0
 ZAP_IMAGE          := zaproxy/zap-stable:2.17.0
 
+# scripts/ has no pyproject: ruff defaults plus the project line length. EXE001/EXE002 depend on the
+# file mode, which differs between Windows (bind mounts look executable) and a Linux checkout (git
+# stores 644); scripts always run through python or their .sh wrapper, so the rules are ignored.
+RUFF_SCRIPTS := --line-length 110 --extend-ignore EXE001,EXE002
+
 COMPOSE_PROJECT := assetflow
 COMPOSE_MINIMAL := deploy/compose.minimal.yml
 COMPOSE_FULL    := deploy/compose.full.yml
@@ -45,6 +51,8 @@ COMPOSE_FULL    := deploy/compose.full.yml
 COMPOSE_FILES_MINIMAL := $(if $(wildcard $(COMPOSE_MINIMAL)),-f $(COMPOSE_MINIMAL))
 COMPOSE_FILES_FULL    := $(if $(wildcard $(COMPOSE_FULL)),-f $(COMPOSE_FULL),$(COMPOSE_FILES_MINIMAL))
 COMPOSE := docker compose -p $(COMPOSE_PROJECT)
+# Local development identity stack (Zitadel only; secrets in the git-ignored .env.local).
+COMPOSE_IDENTITY := docker compose -f deploy/compose.identity.yml --env-file .env.local
 OPENBAO_CA := deploy/.secrets/openbao-tls/ca.pem
 
 # Frontend dependencies: `npm ci` runs again only when package-lock.json is newer than node_modules.
@@ -79,9 +87,9 @@ req="$$(mktemp)"; trap 'rm -f "$$req"' EXIT; \
 $(UVX) pip-audit==$(PIP_AUDIT_VERSION) --strict --disable-pip --require-hashes -r "$$req"
 endef
 
-.PHONY: help bootstrap frontend-deps up-minimal up-full down reset logs smoke-full \
+.PHONY: help bootstrap deps frontend-deps up-minimal up-full up-identity down-identity down reset logs smoke-full \
 	fmt lint lint-backend lint-frontend lint-scripts typecheck \
-	test test-backend test-frontend test-isolation test-contract test-providers-live test-e2e-api loadtest \
+	test test-backend test-frontend test-scripts test-isolation test-contract test-providers-live test-e2e-api loadtest \
 	migrate migration demo-users demo-data demo-data-remove config-validate new-channel docs-check \
 	reuse-lint secrets-scan commitlint license-check openbao-apply zitadel-apply verify \
 	ci-quality ci-test-backend ci-tenant-isolation ci-migrations ci-contract ci-test-frontend \
@@ -97,10 +105,15 @@ check-python:
 
 # ---------------------------------------------------------------- setup and stack
 
-bootstrap: ## Install backend and frontend dependencies (full bootstrap: M1.6-T8)
+# One command, Docker only (docs/operations/zitadel.md). Windows without make: setup.bat.
+# ARGS=--dry-run | --reset. ASSETFLOW_ENV=production: full profile, results in OpenBao.
+bootstrap: ## Identity setup: .env.local secrets, Zitadel, idempotent bootstrap [ARGS=--dry-run|--reset]
+	bash scripts/bootstrap.sh $(ARGS)
+	@echo "make bootstrap: identity is ready. Install the code dependencies with: make deps. Migrations and demo data are not implemented until M1.6-T8."
+
+deps: ## Install backend and frontend dependencies
 	cd $(BACKEND) && $(UV) sync --group dev
 	cd $(FRONTEND) && $(NPM) ci
-	@echo "make bootstrap: dependencies installed. Secrets, migrations, IdP setup and demo data are not implemented until M1.6-T8."
 
 frontend-deps: $(FRONTEND_DEPS)
 
@@ -112,7 +125,7 @@ up-minimal: ## Start the minimal profile
 	$(COMPOSE) $(COMPOSE_FILES_MINIMAL) up -d
 
 # Order (docs/operations/startup.md): OpenBao -> unseal (manual, key holders) -> openbao-apply (fresh
-# secret ids) -> Zitadel -> zitadel-apply -> AssetFlow. Needs BAO_TOKEN (operator token) in the shell.
+# secret ids) -> Zitadel -> zitadel-apply (bootstrap into OpenBao) -> AssetFlow. Needs BAO_TOKEN (operator token) in the shell.
 # First run: `make up-full GENERATE_MISSING=1` with the root token (docs/operations/openbao.md section 4).
 up-full: check-python ## Start the full profile: OpenBao, unseal (manual), openbao-apply, Zitadel, AssetFlow
 	@test -f $(COMPOSE_FULL) || $(call not_implemented,P2-12,the full profile ($(COMPOSE_FULL)))
@@ -130,11 +143,18 @@ up-full: check-python ## Start the full profile: OpenBao, unseal (manual), openb
 	$(MAKE) openbao-apply ISSUE_SECRET_IDS=1 GENERATE_MISSING=$(GENERATE_MISSING)
 	@echo "==> 4/5 Zitadel"
 	$(COMPOSE) $(COMPOSE_FILES_FULL) up -d --wait zitadel
-	$(MAKE) zitadel-apply
+	$(MAKE) zitadel-apply ASSETFLOW_ENV=production
 	@echo "==> 5/5 AssetFlow"
 	@test -f $(BACKEND)/Dockerfile || $(call not_implemented,P3-05,the AssetFlow API image ($(BACKEND)/Dockerfile); OpenBao and Zitadel are running)
 	$(COMPOSE) $(COMPOSE_FILES_FULL) up -d --wait
 	@echo "make up-full: the full profile is up. Check it with: make smoke-full"
+
+up-identity: ## Start the local development Zitadel (after make bootstrap)
+	@test -s .env.local || { echo "make up-identity: no .env.local yet; run make bootstrap (or setup.bat) first." >&2; exit 1; }
+	$(COMPOSE_IDENTITY) up -d --wait zitadel
+
+down-identity: ## Stop the local development Zitadel (data kept; make bootstrap ARGS=--reset deletes it)
+	$(COMPOSE_IDENTITY) --profile bootstrap down --remove-orphans
 
 smoke-full: check-python ## Smoke test of the running full profile (scripts/smoke-full.py; SMOKE_ARGS=--expect-sealed)
 	@if [ -f $(BACKEND)/Dockerfile ]; then $(PYTHON) scripts/smoke-full.py $(SMOKE_ARGS); else \
@@ -148,6 +168,7 @@ reset: ## Stop, delete local volumes and bootstrap again (asks for confirmation)
 	@read -r -p "This deletes all local AssetFlow volumes and data. Type 'yes' to continue: " answer; \
 	  [ "$$answer" = "yes" ] || { echo "Aborted."; exit 1; }
 	$(COMPOSE) $(COMPOSE_FILES_FULL) down -v --remove-orphans
+	@if [ -f .env.local ]; then $(COMPOSE_IDENTITY) --profile bootstrap down -v --remove-orphans; fi
 	$(MAKE) bootstrap
 
 logs: ## Follow logs of one service: make logs s=<service>
@@ -169,7 +190,7 @@ lint-backend: check-python
 	$(PYTHON) scripts/check-migrations.py
 
 lint-scripts:
-	$(UVX) ruff@$(RUFF_VERSION) check --line-length 110 scripts
+	$(UVX) ruff@$(RUFF_VERSION) check $(RUFF_SCRIPTS) scripts
 	$(UVX) ruff@$(RUFF_VERSION) format --check --line-length 110 scripts
 
 lint-frontend: frontend-deps
@@ -221,6 +242,10 @@ test-backend: ## Backend unit, integration and authorization-matrix tests
 test-frontend: frontend-deps ## Frontend tests
 	cd $(FRONTEND) && $(NPM) test
 
+test-scripts: ## Tests of the setup scripts (scripts/tests; bootstrap_zitadel.py against a mocked Zitadel)
+	$(UV) run --no-project --python 3.12 --with-requirements scripts/bootstrap_zitadel.py \
+	  --with pytest==$(PYTEST_VERSION) python -m pytest scripts/tests -q -p no:cacheprovider
+
 test-isolation: ## Isolation and scope-leakage suites
 	@$(call pytest_suite,tests/isolation tests/scope,P3-02)
 
@@ -269,12 +294,21 @@ new-channel: ## Scaffold a notification channel with tests: make new-channel nam
 openbao-apply: check-python ## Apply OpenBao engines, policies, AppRoles [GENERATE_MISSING=1] [ISSUE_SECRET_IDS=1]
 	$(PYTHON) scripts/openbao-apply.py $(if $(filter 1 yes true,$(GENERATE_MISSING)),--generate-missing) $(if $(filter 1 yes true,$(ISSUE_SECRET_IDS)),--issue-secret-ids)
 
-zitadel-apply: check-python ## Apply Zitadel project, roles and apps (OpenTofu; fails when tofu/terraform is missing)
-	$(PYTHON) scripts/zitadel-apply.py
+# Idempotent Zitadel bootstrap in a container (scripts/bootstrap_zitadel.py): project, roles, apps,
+# machine users, one organization + project grant per config/organizations/*.yaml. Development
+# writes .env.local; ASSETFLOW_ENV=production writes OpenBao (BAO_TOKEN from the shell), never files.
+zitadel-apply: ## Apply the Zitadel configuration (dev: .env.local; ASSETFLOW_ENV=production: OpenBao) [DRY_RUN=1]
+	@if [ "$(ASSETFLOW_ENV)" = "production" ]; then \
+	  test -n "$${BAO_TOKEN:-}" || { echo "make zitadel-apply: set BAO_TOKEN (operator token)." >&2; exit 1; }; \
+	  $(COMPOSE) -f $(COMPOSE_FULL) --profile bootstrap run --rm --build zitadel-bootstrap apply $(if $(filter 1 yes true,$(DRY_RUN)),--dry-run); \
+	else \
+	  test -s .env.local || { echo "make zitadel-apply: no .env.local yet; run make bootstrap first." >&2; exit 1; }; \
+	  $(COMPOSE_IDENTITY) --profile bootstrap run --rm --build zitadel-bootstrap apply $(if $(filter 1 yes true,$(DRY_RUN)),--dry-run); \
+	fi
 
 # ---------------------------------------------------------------- CI jobs (ci.yml and contribution-checks.yml, §C9.3, §C9.4)
 
-ci-quality: lint typecheck config-validate reuse-lint secrets-scan docs-check ## CI quality job (FROM=<base sha>: commitlint and a diff-only gitleaks)
+ci-quality: lint typecheck config-validate reuse-lint secrets-scan docs-check test-scripts ## CI quality job (FROM=<base sha>: commitlint and a diff-only gitleaks)
 	@if [ -n "$(FROM)" ]; then $(MAKE) commitlint FROM="$(FROM)" TO="$(or $(TO),HEAD)"; \
 	 else echo "ci-quality: commitlint SKIPPED (no FROM); the commit-msg hook checks local commits, CI passes the PR base."; fi
 

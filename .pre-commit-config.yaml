@@ -19,7 +19,8 @@ repos:
     hooks:
       # backend/ uses backend/pyproject.toml; scripts/ uses ruff defaults with the project line length.
       - id: ruff-check
-        args: [--fix, --line-length=110]
+        # EXE001/EXE002 depend on file modes that differ between Windows and Linux checkouts (Makefile).
+        args: [--fix, --line-length=110, --extend-ignore=EXE001,EXE002]
         files: ^(backend|scripts)/
       - id: ruff-format
         args: [--line-length=110]
