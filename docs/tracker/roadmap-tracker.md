@@ -28,23 +28,23 @@ Status marks: `☐` not started · `◐` in progress · `☑` done · `⛔` bloc
 
 | ID | Task | Done when | Status |
 | --- | --- | --- | --- |
-| P2-01 | Backend project | uv run pytest and uv run mypy app pass on the skeleton | ☐ |
-| P2-02 | Frontend project | npm run build and npm test pass | ☐ |
-| P2-03 | Makefile (single entry point) | make verify passes on the skeleton | ☐ |
-| P2-04 | Check scripts | Each script fails on a bad sample and passes on the skeleton | ☐ |
-| P2-05 | Pre-commit and local secret scan | Hooks run on a local commit | ☐ |
-| P2-06 | CI workflow files (dormant) | Every workflow parses (actionlint) and each job maps to a make target | ☐ |
+| P2-01 | Backend project | uv run pytest and uv run mypy app pass on the skeleton | ☑ |
+| P2-02 | Frontend project | npm run build and npm test pass | ☑ |
+| P2-03 | Makefile (single entry point) | make verify passes on the skeleton | ☑ |
+| P2-04 | Check scripts | Each script fails on a bad sample and passes on the skeleton | ☑ |
+| P2-05 | Pre-commit and local secret scan | Hooks run on a local commit | ☑ |
+| P2-06 | CI workflow files (dormant) | Every workflow parses (actionlint) and each job maps to a make target | ☑ |
 
 ## P2b — Identity and secrets foundation: Zitadel and OpenBao as config (before P3)
 
 | ID | Task | Done when | Status |
 | --- | --- | --- | --- |
-| P2-07 | OpenBao server from config | OpenBao starts from the HCL config, initializes, unseals by the runbook and reports healthy. | ☐ |
-| P2-08 | OpenBao as code: engines, policies, AppRole | A second `make openbao-apply` reports no changes; each AppRole can read only its own paths. | ☐ |
-| P2-09 | Zitadel self-hosted (official compose) | Zitadel console reachable at the configured domain; credentials came only from OpenBao. | ☐ |
-| P2-10 | Zitadel as code: project, roles, apps | A second `make zitadel-apply` reports no changes; a test sign-in gets a JWT with project roles. | ☐ |
-| P2-11 | Multi-organization in Zitadel | Two orgs from config; each signs in only to its own AssetFlow organization. | ☐ |
-| P2-12 | Startup wiring and smoke test | Smoke test passes from a clean machine; a sealed OpenBao stops AssetFlow with a clear error. | ☐ |
+| P2-07 | OpenBao server from config | OpenBao starts from the HCL config, initializes, unseals by the runbook and reports healthy. | ☑ |
+| P2-08 | OpenBao as code: engines, policies, AppRole | A second `make openbao-apply` reports no changes; each AppRole can read only its own paths. | ☑ |
+| P2-09 | Zitadel self-hosted (official compose) | Zitadel console reachable at the configured domain; credentials came only from OpenBao. | ☑ |
+| P2-10 | Zitadel as code: project, roles, apps | A second `make zitadel-apply` reports no changes; a test sign-in gets a JWT with project roles. | ☑ |
+| P2-11 | Multi-organization in Zitadel | Two orgs from config; each signs in only to its own AssetFlow organization. | ☑ |
+| P2-12 | Startup wiring and smoke test | Smoke test passes from a clean machine; a sealed OpenBao stops AssetFlow with a clear error. | ☑ |
 
 ## P3 — Bootable Backend, Web Shell and Minimal Stack (Parts of M1.3, M1.6)
 

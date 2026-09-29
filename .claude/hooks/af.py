@@ -19,7 +19,9 @@ Plan approval is HUMAN-ONLY: there is no `plan approve` command.
 from __future__ import annotations
 
 import json
+import os
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -173,11 +175,21 @@ def cmd_plan(args: list[str]) -> None:
 # ------------------------------------------------------------------ verify
 
 
+def _argv(command: str) -> list[str]:
+    """Split a loop.json verify command into argv (no shell, so nothing is interpreted).
+
+    POSIX rules on Linux/macOS; on Windows, keep backslashes in paths and drop the quotes.
+    """
+    if os.name == "nt":
+        return [p[1:-1] if len(p) > 1 and p[0] == p[-1] == '"' else p for p in shlex.split(command, posix=False)]
+    return shlex.split(command)
+
+
 def cmd_verify() -> None:
     results: dict[str, int] = {}
     for command in s.config()["verify_commands"]:
         print(f"$ {command}", flush=True)
-        proc = subprocess.run(command, shell=True, cwd=str(s.repo_root()))
+        proc = subprocess.run(_argv(command), cwd=str(s.repo_root()))
         results[command] = proc.returncode
         if proc.returncode != 0:
             print(f"  -> exit {proc.returncode}", flush=True)
