@@ -65,4 +65,11 @@ Record of completed tasks, tools, and milestone verifications.
 - **Evidence:** 8 new GitHub/operation files created and verified against §B12.7 and §C5.8; `reuse lint` reports 131/131 compliant (0 errors); 25/25 hook tests pass.
 - **Next step:** P1-05 (ADRs 0001–0018).
 
+### 2026-09-29 — P1-05 ADRs 0001–0018
+- **Task:** P1-05
+- **What changed:** Authored all 18 Architecture Decision Records (`ADR-0001` through `ADR-0018`) in `docs/decisions/` following §C6.5 template and §B3 specifications. Cites subsequent revisions from §B17.1 (decisions 42–52). ADR-0010 (License) is `Proposed` pending Q17; the remaining 17 ADRs are `Accepted`. Indexed all ADRs in `docs/decisions/README.md`.
+- **Evidence:** `(Get-ChildItem docs/decisions).Count` equals 19 (18 ADRs + README); `reuse lint` passes on all 149 files.
+- **Next step:** P1-06 (Provenance record).
+
+
 
