@@ -46,3 +46,9 @@ Record of completed tasks, tools, and milestone verifications.
 - **What changed:** Scaffolding complete for all 52 architectural directories across backend (app, providers, engines, modules, workers, migrations, tests), frontend (app, features, components, lib, styles), config, deploy, docs, scripts, and loadtest, each with a descriptive README.md.
 - **Evidence:** 52 README.md files created; directory structure matches §B4.3 and §C7.1.
 - **Next step:** P1-02 (License update Apache-2.0 → AGPL-3.0-only, CLA, REUSE).
+
+### 2026-09-29 — P1-02 License update, CLA, REUSE
+- **Task:** P1-02
+- **What changed:** Replaced root LICENSE with unmodified AGPL-3.0-only, added LICENSES/AGPL-3.0-only.txt, added CLA.md and NOTICE, updated README.md with dual-licensing policy, added REUSE.toml, verified 100% REUSE compliance (113/113 files).
+- **Evidence:** `reuse lint` reports 113/113 compliant; zero residual Apache text outside LICENSES/; head -3 LICENSE shows GNU AFFERO GENERAL PUBLIC LICENSE.
+- **Next step:** P1-03 (Project docs).
