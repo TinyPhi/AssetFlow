@@ -1,0 +1,5 @@
+# SPDX-FileCopyrightText: 2026 TinyPhi
+# SPDX-License-Identifier: AGPL-3.0-only
+# AppRole logins and TLS material written by scripts/openbao-apply.py and
+# deploy/openbao/gen-dev-tls.sh. Never commit.
+.secrets/

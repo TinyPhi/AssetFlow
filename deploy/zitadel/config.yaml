@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: 2026 TinyPhi
+# SPDX-License-Identifier: AGPL-3.0-only
+# Zitadel runtime configuration for AssetFlow (§B5.5, §B11.2, decision 51).
+# Reference: https://zitadel.com/docs/self-hosting/manage/configure
+# No secrets here. Passwords come from the OpenBao-rendered file
+# /run/zitadel/zitadel-secrets.yaml (second --config); the masterkey from --masterkeyFile.
+# ExternalDomain, ExternalPort and ExternalSecure are set by compose through
+# ZITADEL_EXTERNALDOMAIN, ZITADEL_EXTERNALPORT and ZITADEL_EXTERNALSECURE and must match
+# the public URL exactly, or Zitadel answers "Instance not found".
+
+Port: 8080
+
+# TLS is terminated by the reverse proxy (external TLS) or not used on localhost.
+TLS:
+  Enabled: false
+
+Database:
+  Postgres:
+    Host: zitadel-db
+    Port: 5432
+    Database: zitadel
+    User:
+      Username: zitadel
+      SSL:
+        Mode: disable
+    Admin:
+      Username: postgres
+      SSL:
+        Mode: disable
+
+# Serve the login built into the Zitadel API container (no separate login container).
+DefaultInstance:
+  Features:
+    LoginV2:
+      Required: false
+
+Log:
+  Level: info
