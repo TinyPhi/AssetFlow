@@ -28,3 +28,9 @@ Record of completed tasks, tools, and milestone verifications.
 - **What changed:** Audited dependency licenses across Python and Node.js, cataloged bundled static assets/branding for replacement, documented NEVER COPY operational sensitive paths, and completed secret pattern scan.
 - **Evidence:** `docs/provenance-scan.md` created with dependency, asset, sensitive-file, and secret finding tables (12 findings in assetmanager, 0 in TMMS-WEB, secret values suppressed).
 - **Next step:** P0-04 (Domain-term inventory).
+
+### 2026-09-29 — P0-04 Domain-term inventory
+- **Task:** P0-04
+- **What changed:** Scanned legacy codebases for single-tenant, proprietary, and industry terms; cataloged 1,898 occurrences across 140+ files; mapped each term to its neutral AssetFlow replacement in `docs/tracker/domain-terms.md`.
+- **Evidence:** `docs/tracker/domain-terms.md` created with hit counts and replacement mapping (employee → member, department → org unit, authnexus → auth provider, it_ops → operator, jmv → assetflow).
+- **Next step:** P0-05 (Repo tracker in loop format).
