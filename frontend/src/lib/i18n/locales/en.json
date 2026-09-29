@@ -1,0 +1,9 @@
+{
+  "app": {
+    "shell": {
+      "title": "AssetFlow",
+      "tagline": "Industrial asset and maintenance management system.",
+      "status_ready": "Core platform initialized and ready."
+    }
+  }
+}
