@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: 2026 TinyPhi
+# SPDX-License-Identifier: AGPL-3.0-only
+# Never commit TLS keys, init output, unseal keys or tokens.
+*.pem
+*.key
+init*.json
+init*.txt
