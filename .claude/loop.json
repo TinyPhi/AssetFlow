@@ -1,0 +1,98 @@
+{
+  "$comment": "Single source of truth for the AssetFlow delivery loop. Hooks, af.py and the docs read this file. Paths are repo-relative, forward slashes, Python regex.",
+  "tracker": "docs/tracker/roadmap-tracker.md",
+  "progress_file": "docs/tracker/PROGRESS.md",
+  "blockers_file": "docs/tracker/BLOCKERS.md",
+  "verify_commands": [
+    "make verify",
+    "make test-isolation"
+  ],
+  "ship_ttl_minutes": 60,
+  "source_patterns": [
+    "^backend/app/.*\\.py$",
+    "^backend/workers/.*\\.py$",
+    "^backend/migrations/.*\\.(py|sql)$",
+    "^frontend/src/.*\\.(ts|tsx)$",
+    "^config/.*\\.ya?ml$",
+    "^deploy/.*",
+    "^scripts/.*"
+  ],
+  "test_patterns": [
+    "^backend/tests/",
+    "^frontend/src/.*\\.test\\.(ts|tsx)$",
+    "^loadtest/",
+    "^frontend/e2e/"
+  ],
+  "doc_patterns": [
+    "^docs/",
+    "^README\\.md$",
+    "^CLAUDE\\.md$",
+    "^CHANGELOG\\.md$",
+    "^CONTRIBUTING\\.md$",
+    "^SECURITY\\.md$",
+    "^GOVERNANCE\\.md$"
+  ],
+  "security_paths": [
+    "^backend/app/core/permissions",
+    "^backend/app/core/db",
+    "^backend/app/core/auth_middleware\\.py$",
+    "^backend/app/providers/auth/",
+    "^backend/app/providers/secrets/",
+    "^backend/app/channels/base\\.py$",
+    "^backend/app/modules/organization/",
+    "^backend/app/modules/assets/qr/public",
+    "^backend/migrations/",
+    "^deploy/",
+    "^\\.github/workflows/",
+    "^scripts/check-"
+  ],
+  "migration_patterns": [
+    "^backend/migrations/(?!env\\.py$|script\\.py\\.mako$).*\\.(py|sql)$"
+  ],
+  "isolation_test_patterns": [
+    "^backend/tests/isolation/",
+    "^backend/tests/scope/"
+  ],
+  "protected": {
+    "never": [
+      "(^|/)\\.env($|\\.(?!example$))",
+      "^\\.secrets/",
+      "(^|/)\\.git/"
+    ],
+    "offlimits": [
+      "^\\.github/workflows/",
+      "^docs/decisions/ADR-",
+      "^LICENSE$",
+      "^CLA\\.md$",
+      "^NOTICE$"
+    ],
+    "protected_branches": [
+      "main"
+    ]
+  },
+  "docs_skip_allowed_types": [
+    "test",
+    "refactor",
+    "chore",
+    "ci",
+    "build",
+    "style"
+  ],
+  "commit_types": [
+    "feat",
+    "fix",
+    "docs",
+    "test",
+    "refactor",
+    "perf",
+    "chore",
+    "security",
+    "ci",
+    "build",
+    "style",
+    "revert"
+  ],
+  "forbidden_commit_scopes": [
+    "claude"
+  ]
+}

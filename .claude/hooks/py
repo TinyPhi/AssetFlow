@@ -1,0 +1,12 @@
+#!/bin/sh
+# Launcher: runs a hook with a working Python 3 (Linux, macOS, Windows Git Bash).
+# Windows ships a "python3" Store stub that does nothing, so each candidate is test-run.
+# Usage from settings.json: sh "$CLAUDE_PROJECT_DIR/.claude/hooks/py" edit_gate.py
+dir=$(dirname "$0")
+for c in python3 python "py -3"; do
+  if $c -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)" >/dev/null 2>&1; then
+    exec $c "$dir/$1"
+  fi
+done
+echo "[assetflow-loop] Python 3.10+ not found; hooks inactive" >&2
+exit 0
