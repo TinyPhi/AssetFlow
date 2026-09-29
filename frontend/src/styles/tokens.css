@@ -1,0 +1,36 @@
+/* SPDX-FileCopyrightText: 2026 TinyPhi */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* Semantic design tokens (§B10, §C4.9). Components use only the Tailwind names mapped
+   from these variables (bg-surface, text-danger, ...), never raw palette colors or hex. */
+:root {
+  --color-background: 248 250 252;
+  --color-surface: 255 255 255;
+  --color-foreground: 15 23 42;
+  --color-muted: 71 85 105;
+  --color-border: 226 232 240;
+  --color-primary: 3 105 161;
+  --color-primary-foreground: 255 255 255;
+  --color-success: 4 120 87;
+  --color-success-surface: 236 253 245;
+  --color-warning: 180 83 9;
+  --color-danger: 185 28 28;
+  --color-focus: 2 132 199;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-background: 2 6 23;
+    --color-surface: 15 23 42;
+    --color-foreground: 241 245 249;
+    --color-muted: 148 163 184;
+    --color-border: 51 65 85;
+    --color-primary: 56 189 248;
+    --color-primary-foreground: 2 6 23;
+    --color-success: 52 211 153;
+    --color-success-surface: 6 78 59;
+    --color-warning: 251 191 36;
+    --color-danger: 248 113 113;
+    --color-focus: 56 189 248;
+  }
+}
