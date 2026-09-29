@@ -80,7 +80,8 @@ Record of completed tasks, tools, and milestone verifications.
 - **What changed:** Created comprehensive provenance record `docs/provenance.md` tracking all 39 components across §B14.1 (AssetManager -> AssetFlow, 32 items) and §B14.2 (TMMS -> AssetFlow, 7 items). Recorded source snapshot commit SHAs (`babc8ccba170c9b42ee72e21f2e8beb4ab0fbc66` for AssetManager, `d422c1067a760a8e0df5ac843b4c9efe5a14c859` for TMMS-WEB). Documented clean-room rules and OpenWind IP attribution policy.
 - **Evidence:** 39 rows documented in `docs/provenance.md` matching §B14; `reuse lint` reports 100% compliance.
 
-
-
-
-
+### 2026-09-30 — P2-01 to P2-12 Tooling, local CI, Zitadel and OpenBao
+- **Task:** P2-01 to P2-12
+- **What changed:** backend and frontend projects, Makefile, check scripts, pre-commit, CI workflows; OpenBao and Zitadel as code with multi-organization; Zitadel setup reworked OpenWind style (decision 53); setup guides in docs/guides/.
+- **Evidence:** make verify passed in Docker; actionlint clean; REUSE compliant; 25 hook tests and 12 bootstrap tests pass; live Zitadel bootstrap 19 changes then 'No changes'; org A token resourceowner:id == org A; gitleaks: no leaks. PR #2.
+- **Next step:** P3-01 (config loader).

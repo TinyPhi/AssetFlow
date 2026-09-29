@@ -27,9 +27,23 @@ For detailed architectural decisions, see the [Architecture Decision Records (AD
 
 ---
 
+## Getting Started
+
+Requirements: Docker with Compose v2, Python 3.12 with [uv](https://docs.astral.sh/uv/), Node.js 24, GNU make (Linux/macOS, or WSL2/Git Bash on Windows).
+
+```bash
+make deps          # backend and frontend dependencies, pre-commit hooks
+make bootstrap     # local identity: .env.local secrets, Zitadel, idempotent bootstrap (Windows: setup.bat)
+make verify        # everything CI runs
+```
+
+Setup guides: [Set up Zitadel](docs/guides/setup-zitadel.md) · [Set up OpenBao](docs/guides/setup-openbao.md). Production: [docs/operations/](docs/operations/).
+
+---
+
 ## Roadmap & Status
 
-AssetFlow is currently in **Phase 1: Standards, Governance & Core Skeleton** (Gate G0 → Milestone M1.1).
+Setup phases P0–P2 are done (repository skeleton, governance, tooling and local CI, Zitadel and OpenBao as code). Next: **P3, the bootable backend and web shell** (master milestones M1.3 and M1.6).
 Active milestones, progress logs, and verification criteria are tracked transparently in [`docs/tracker/roadmap-tracker.md`](docs/tracker/roadmap-tracker.md) and [`docs/tracker/PROGRESS.md`](docs/tracker/PROGRESS.md).
 
 ---
