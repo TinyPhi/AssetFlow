@@ -40,3 +40,9 @@ Record of completed tasks, tools, and milestone verifications.
 - **What changed:** Created `docs/tracker/roadmap-tracker.md` matching loop table format; verified `python .claude/hooks/af.py next-task` correctly picks the next task (P1-01); all 25 hook tests green.
 - **Evidence:** `docs/tracker/roadmap-tracker.md` present; `af.py next-task` returns valid JSON plan draft for P1-01; 25/25 pytest tests passed.
 - **Next step:** P1-01 (Folder layout from §B4.3 and §C7.1).
+
+### 2026-09-29 — P1-01 Folder layout from §B4.3 and §C7.1
+- **Task:** P1-01
+- **What changed:** Scaffolding complete for all 52 architectural directories across backend (app, providers, engines, modules, workers, migrations, tests), frontend (app, features, components, lib, styles), config, deploy, docs, scripts, and loadtest, each with a descriptive README.md.
+- **Evidence:** 52 README.md files created; directory structure matches §B4.3 and §C7.1.
+- **Next step:** P1-02 (License update Apache-2.0 → AGPL-3.0-only, CLA, REUSE).
