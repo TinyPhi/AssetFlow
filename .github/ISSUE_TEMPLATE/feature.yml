@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: 2026 TinyPhi
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: Feature Request
+description: Propose a new feature, capability, or architectural enhancement for AssetFlow.
+title: "feat: "
+labels: ["type/feature", "needs-spec"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please outline your proposal. AssetFlow follows a strict **generic & neutral** design principle: industry-specific rules belong in declarative domain templates (`config/domains/*.yaml`), not in core code.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem or limitation are you trying to solve?
+      placeholder: "A clear description of what the challenge or friction is..."
+    validations:
+      required: true
+  - type: textarea
+    id: audience
+    attributes:
+      label: Who Needs This?
+      description: What persona or organization role benefits from this capability?
+      placeholder: "Asset managers, field technicians, maintenance leads, compliance officers..."
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed Solution
+      description: Describe the solution you propose. How does it fit into the modular architecture?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What alternate designs, plugins, or workarounds did you consider?
+  - type: dropdown
+    id: config_vs_code
+    attributes:
+      label: Implementation Mechanism
+      description: Can this capability be expressed through declarative domain configuration or does it require core code changes?
+      options:
+        - "Domain configuration template (config/domains/*.yaml)"
+        - "Core backend engine / provider extension"
+        - "Web frontend UX improvement"
+        - "Unsure / needs discussion"
+    validations:
+      required: true

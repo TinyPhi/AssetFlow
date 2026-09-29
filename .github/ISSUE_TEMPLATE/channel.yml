@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2026 TinyPhi
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: Notification Channel Proposal
+description: Propose a new outbound notification channel (e.g., Slack, Microsoft Teams, SMS, WhatsApp).
+title: "channel: "
+labels: ["type/channel", "good first issue"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Notification channels (§B6.3) deliver events from the background worker dispatcher. They are executed asynchronously and must support encrypted credential storage, egress allowlisting, retries, and dead-lettering.
+  - type: input
+    id: channel_name
+    attributes:
+      label: Destination Service
+      description: Name of the notification destination.
+      placeholder: e.g., Slack Incoming Webhook, Microsoft Teams Webhook, Twilio SMS, Telegram
+    validations:
+      required: true
+  - type: textarea
+    id: auth_method
+    attributes:
+      label: Authentication Method
+      description: How does AssetFlow authenticate with the destination? (e.g., Webhook URL token, Bearer OAuth2 token, API key)
+    validations:
+      required: true
+  - type: textarea
+    id: egress_hosts
+    attributes:
+      label: Outbound Egress Hosts
+      description: Which domain names or IP ranges does this channel need network egress to? (Used for network firewall allowlists).
+      placeholder: e.g., hooks.slack.com, api.telegram.org
+    validations:
+      required: true
+  - type: textarea
+    id: personal_data
+    attributes:
+      label: Personal Data Handling (Privacy & DPDP/GDPR)
+      description: What personal data fields (if any) are sent across this channel? (e.g., recipient email, phone number, member display name).
+    validations:
+      required: true
+  - type: textarea
+    id: maintainer_commitment
+    attributes:
+      label: Maintainer Commitment
+      description: Are you willing to author and help maintain this channel plugin?
+    validations:
+      required: true

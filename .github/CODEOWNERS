@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: 2026 TinyPhi
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# ==============================================================================
+# AssetFlow CODEOWNERS
+# Follows §B12.7 and §C5.8. Security-sensitive paths require @TinyPhi/assetflow-security.
+# ==============================================================================
+
+# Default maintainer group across the entire repository
+*                                                      @TinyPhi/assetflow-maintainers
+
+# Architectural Decisions & Steering
+docs/decisions/                                        @TinyPhi/assetflow-steering
+
+# Frontend Web Application
+frontend/                                              @TinyPhi/assetflow-web
+
+# Configuration & Templates
+config/                                                @TinyPhi/assetflow-maintainers
+
+# Backend Core & Engines
+backend/app/core/                                      @TinyPhi/assetflow-core
+backend/app/engines/                                   @TinyPhi/assetflow-core
+backend/workers/                                       @TinyPhi/assetflow-core
+
+# Business Modules
+backend/app/modules/assets/                            @TinyPhi/assetflow-assets
+backend/app/modules/maintenance/                       @TinyPhi/assetflow-maintenance
+
+# ------------------------------------------------------------------------------
+# Security-Sensitive Paths (§C5.8)
+# Mandatory review from @TinyPhi/assetflow-security required before merge.
+# ------------------------------------------------------------------------------
+backend/app/core/permissions*                          @TinyPhi/assetflow-core @TinyPhi/assetflow-security
+backend/app/core/db*                                   @TinyPhi/assetflow-core @TinyPhi/assetflow-security
+backend/app/core/auth_middleware.py                    @TinyPhi/assetflow-core @TinyPhi/assetflow-security
+backend/app/providers/auth/                            @TinyPhi/assetflow-security
+backend/app/providers/secrets/                         @TinyPhi/assetflow-security
+backend/app/channels/base.py                           @TinyPhi/assetflow-security
+backend/app/modules/organization/                      @TinyPhi/assetflow-core @TinyPhi/assetflow-security
+backend/app/modules/assets/qr/public*                  @TinyPhi/assetflow-assets @TinyPhi/assetflow-security
+backend/migrations/                                    @TinyPhi/assetflow-core @TinyPhi/assetflow-security
+deploy/                                                @TinyPhi/assetflow-infra @TinyPhi/assetflow-security
+.github/                                               @TinyPhi/assetflow-infra @TinyPhi/assetflow-security
+scripts/check-*                                        @TinyPhi/assetflow-infra @TinyPhi/assetflow-security

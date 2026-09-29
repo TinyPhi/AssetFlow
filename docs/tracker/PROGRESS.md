@@ -59,3 +59,10 @@ Record of completed tasks, tools, and milestone verifications.
 - **Evidence:** All 9 doc files present and checked against master plan sections; `reuse lint` passes with 0 errors across 120 files; `af.py` operational.
 - **Next step:** P1-04 (.github files written, not pushed).
 
+### 2026-09-29 — P1-04 .github files (written, not pushed)
+- **Task:** P1-04
+- **What changed:** Created GitHub configuration suite conforming to §B12.7 and §C5.8: PR template (`.github/pull_request_template.md`), issue templates (`bug.yml`, `feature.yml`, `provider.yml`, `channel.yml`, `domain-config.yml`, `release-checklist.md`, `config.yml`), label taxonomy (`.github/labels.yml`), `CODEOWNERS` with security paths restricted to `@TinyPhi/assetflow-security`, and repository operations documentation (`docs/operations/ci-cd.md`).
+- **Evidence:** 8 new GitHub/operation files created and verified against §B12.7 and §C5.8; `reuse lint` reports 131/131 compliant (0 errors); 25/25 hook tests pass.
+- **Next step:** P1-05 (ADRs 0001–0018).
+
+
