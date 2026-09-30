@@ -82,3 +82,14 @@ async def test_client_identifier_resolution() -> None:
     }
     req2 = Request(scope2)
     assert get_client_identifier(req2) == "ip:203.0.113.195"
+
+
+async def test_client_identifier_ignores_invalid_forwarded_ip() -> None:
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/",
+        "headers": [(b"x-forwarded-for", b"not-an-ip")],
+        "client": ("192.0.2.7", 12345),
+    }
+    assert get_client_identifier(Request(scope)) == "ip:192.0.2.7"

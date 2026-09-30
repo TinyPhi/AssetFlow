@@ -16,7 +16,9 @@ FROM nginxinc/nginx-unprivileged:alpine-slim AS runtime
 
 # Copy build artifacts to non-root nginx html directory
 COPY --from=builder --chown=101:101 /app/dist /usr/share/nginx/html
-COPY --chown=101:101 ../deploy/nginx/default.conf /etc/nginx/conf.d/default.conf
+# The nginx configuration (deploy/nginx/default.conf) is mounted by compose; it lies outside this build context.
+
+USER 101
 
 EXPOSE 8080
 

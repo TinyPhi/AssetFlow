@@ -9,6 +9,7 @@ Implements sliding window counters for rate limiting with RFC 9457
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import time
 from collections import defaultdict, deque
 
@@ -68,8 +69,12 @@ def get_client_identifier(request: Request) -> str:
     # Forwarded headers (e.g. from nginx edge proxy)
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
-        client_ip = forwarded.split(",")[0].strip()
-        return f"ip:{client_ip}"
+        try:
+            client_ip = ipaddress.ip_address(forwarded.split(",")[0].strip())
+        except ValueError:
+            client_ip = None
+        if client_ip is not None:
+            return f"ip:{client_ip}"  # nosemgrep: directly-returned-format-string (non-Flask)
 
     if request.client and request.client.host:
         return f"ip:{request.client.host}"

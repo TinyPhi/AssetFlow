@@ -14,5 +14,7 @@ RUN uv pip install --system --no-cache --requirements /app/bootstrap_zitadel.py
 # Runs as root only to read the first-instance key from the Zitadel bootstrap volume and
 # delete it; files written into the checkout are given to the checkout's owner.
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 ASSETFLOW_ROOT=/workspace
+# nosemgrep: dockerfile.security.missing-user-entrypoint.missing-user-entrypoint
 ENTRYPOINT ["python", "/app/bootstrap_zitadel.py"]
+# nosemgrep: dockerfile.security.missing-user.missing-user
 CMD ["apply"]
