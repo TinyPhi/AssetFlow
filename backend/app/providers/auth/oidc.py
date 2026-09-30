@@ -314,7 +314,7 @@ class OidcAuthProvider(AuthProvider):
                 await client.post(endpoint, data=data)
         except httpx.HTTPError as exc:
             # Revocation is best-effort over network; local revocation is already recorded
-            logger.debug("Remote token revocation failed: %s", exc)
+            logger.debug("Remote revocation request failed: %s", type(exc).__name__)
 
     async def health(self) -> dict[str, Any]:
         """Health status of OIDC provider without exposing secrets."""

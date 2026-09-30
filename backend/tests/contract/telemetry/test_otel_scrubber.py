@@ -21,7 +21,7 @@ def test_scrub_value_pii_and_secrets() -> None:
         "client_secret": "bao_secret_token",
         "nested": {
             "contact": "Contact john.doe@acme.com for support",
-            "api_key": "api-12345678",
+            "api_key": "not-a-real-key",
             "safe_counter": 42,
         },
         "tags": ["token: 123", "normal_tag"],
