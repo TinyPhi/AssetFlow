@@ -6,12 +6,30 @@ AssetFlow is designed for high reliability, strict multi-tenant security, and cl
 
 ---
 
-## 1. Contributor License Agreement (CLA)
+If you discover a security vulnerability, do not open a public issue. Email
+[security@tinyphi.com](mailto:security@tinyphi.com) with a description.
 
-AssetFlow uses a **Contributor License Agreement** ([`CLA.md`](CLA.md)), not a Developer Certificate of Origin (DCO).
-- All contributors must agree to the CLA before pull requests can be merged.
-- **Do not include `Signed-off-by` lines** in your git commits.
-- Contributors retain copyright and full ownership of their contributions while granting TinyPhi a license to steward and distribute the work.
+## 1. Contribution Terms & CLA
+
+**Draft terms — not yet reviewed by a lawyer.** Submitting a pull request means you agree to the
+terms below, or to [`CLA.md`](CLA.md) directly. The CLA Assistant bot asks you to sign by comment
+on your first PR.
+
+1. **The contribution is your own original work**, or you have sufficient rights to submit it, and
+   you've disclosed in the PR description if it includes or is based on someone else's work.
+2. **You irrevocably assign to Abhinav Mishra all copyright and patent rights in your
+   contribution**, in exchange for a license back to you to keep using your own contribution
+   however you like. This is an assignment of ownership, not just a license — see
+   [`CLA.md`](CLA.md) for the full terms.
+3. **If your employer has rights to intellectual property you create**, you confirm you have
+   permission to contribute on this basis, or your employer has waived that right for this
+   Project. If this applies to you, say so before contributing.
+
+AssetFlow uses a CLA, not a Developer Certificate of Origin (DCO): **do not include `Signed-off-by`
+lines** in your git commits.
+
+AssetFlow is released under the [GNU Affero General Public License v3.0](LICENSE). The assignment
+above is what lets the project also be offered under a separate commercial license.
 
 ---
 
