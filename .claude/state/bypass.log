@@ -1,0 +1,1 @@
+2026-09-30T09:28:54.362Z commit-gate SHIP_BYPASS=1 set -e; cd /Users/ab/P/TinyPhi/AssetFlow && git checkout -q -b main 2>/dev/null || true; git add -A && SHIP_BYPASS=1 git commit -q -m "chore: add AGPL-3.0 license, contributor assignment agreement and (repo=/Users/ab/P/TinyPhi/AssetFlow)
