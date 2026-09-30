@@ -90,7 +90,7 @@ endef
 .PHONY: help bootstrap deps frontend-deps up-minimal up-full up-identity down-identity down reset logs smoke-full \
 	fmt lint lint-backend lint-frontend lint-scripts typecheck \
 	test test-backend test-frontend test-scripts test-isolation test-contract test-providers-live test-e2e-api loadtest \
-	migrate migration demo-users demo-data demo-data-remove config-validate new-channel docs-check \
+	migrate migration schema-snapshot demo-users demo-data demo-data-remove config-validate new-channel docs-check error-codes \
 	reuse-lint secrets-scan commitlint license-check openbao-apply zitadel-apply verify \
 	ci-quality ci-test-backend ci-tenant-isolation ci-migrations ci-contract ci-test-frontend \
 	ci-claude-hooks ci-security-fast ci-license-check ci-docker ci-contribution-checks \
@@ -201,13 +201,17 @@ typecheck: frontend-deps ## mypy and tsc -b
 	cd $(BACKEND) && $(UV) run mypy app
 	cd $(FRONTEND) && $(NPX) tsc -b
 
-config-validate: check-python ## Validate config/**/*.yaml
-	cd $(BACKEND) && $(UV) run --with pyyaml python -c "import pathlib, sys, yaml; files = sorted(pathlib.Path('../config').rglob('*.y*ml')); [yaml.safe_load(f.read_text(encoding='utf-8')) for f in files]; print(f'config-validate: {len(files)} YAML file(s) parse.')"
-	@echo "config-validate: schema validation (assetflow config validate config/) is not implemented until P3-01."
+config-validate: check-python ## Validate config/assetflow.yaml (schema, production guards) and parse config/**/*.yaml
+	cd $(BACKEND) && $(UV) run python -c "import pathlib, yaml; files = sorted(pathlib.Path('../config').rglob('*.y*ml')); [yaml.safe_load(f.read_text(encoding='utf-8')) for f in files]; print(f'config-validate: {len(files)} YAML file(s) parse.')"
+	cd $(BACKEND) && $(UV) run python -m app.core.config validate ../config/assetflow.yaml
+	cd $(BACKEND) && ASSETFLOW_ENV=test $(UV) run python -m app.core.config validate ../config/assetflow.yaml
+
+error-codes: ## Regenerate docs/reference/error-codes.md from the backend error registry
+	$(UV) run --project $(BACKEND) python scripts/gen-error-codes.py
 
 docs-check: check-python ## Check docs links and that generated reference pages are current
 	$(PYTHON) scripts/check-docs-links.py
-	@echo "docs-check: generated reference pages do not exist yet; the up-to-date check is not implemented until P3-01/P3-03."
+	$(UV) run --project $(BACKEND) python scripts/gen-error-codes.py --check
 
 reuse-lint: ## REUSE licensing check
 	$(UVX) --from "reuse[charset-normalizer]==$(REUSE_VERSION)" reuse lint
@@ -274,6 +278,9 @@ migration: ## Create a migration from the template: make migration name=<snake_d
 	@test -f $(BACKEND)/alembic.ini || $(call not_implemented,P3-02,Alembic ($(BACKEND)/alembic.ini))
 	cd $(BACKEND) && $(UV) run alembic revision -m "$(name)"
 
+schema-snapshot: ## Regenerate backend/migrations/schema.snapshot.sql from an EMPTY database (ASSETFLOW_MIGRATION_DATABASE_URL)
+	UV="$(UV)" bash scripts/check-schema-snapshot.sh update
+
 demo-users: ## Re-create the demo users and domain templates (no sample data)
 	@$(call not_implemented,M1.6-T8,demo users)
 
@@ -316,11 +323,9 @@ ci-test-backend: test-backend ## CI test-backend job (migrations run first once 
 
 ci-tenant-isolation: test-isolation ## CI tenant-isolation job
 
-ci-migrations: ## CI migrations job: upgrade, downgrade, upgrade, schema snapshot
-	@if [ ! -d $(BACKEND)/migrations/versions ]; then echo "ci-migrations: SKIPPED, no migrations yet (placeholder until P3-02); nothing to check."; exit 0; fi; \
-	test -f $(BACKEND)/alembic.ini || $(call not_implemented,P3-02,the migration round trip); \
-	cd $(BACKEND) && $(UV) run alembic upgrade head && $(UV) run alembic downgrade -1 && $(UV) run alembic upgrade head; \
-	echo "make $@: the pg_dump --schema-only comparison with backend/migrations/schema.snapshot.sql is not implemented until P3-02." >&2; exit 1
+ci-migrations: ## CI migrations job: upgrade, downgrade, upgrade, schema snapshot (scripts/check-schema-snapshot.sh)
+	@if [ ! -d $(BACKEND)/migrations/versions ]; then echo "ci-migrations: SKIPPED, no migrations yet (placeholder until P3-02); nothing to check."; exit 0; fi
+	UV="$(UV)" bash scripts/check-schema-snapshot.sh check
 
 ci-contract: test-contract ## CI contract job
 

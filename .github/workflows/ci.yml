@@ -172,6 +172,7 @@ jobs:
           --health-retries 10
     env:
       ASSETFLOW_DATABASE_URL: postgresql://postgres@localhost:5432/assetflow
+      ASSETFLOW_TEST_DATABASE_URL: postgresql://postgres@localhost:5432/assetflow
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -210,6 +211,7 @@ jobs:
           --health-retries 10
     env:
       ASSETFLOW_DATABASE_URL: postgresql://postgres@localhost:5432/assetflow
+      ASSETFLOW_MIGRATION_DATABASE_URL: postgresql://postgres@localhost:5432/assetflow
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
