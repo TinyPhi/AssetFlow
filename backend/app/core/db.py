@@ -90,6 +90,17 @@ class _TransactionSettings:
 # Pools created by init_pool that need per-transaction settings, keyed by id(pool). The pool object is
 # kept in the value and compared by identity, so a reused id can never pick up another pool's settings.
 _PER_TRANSACTION: dict[int, tuple[Pool, _TransactionSettings]] = {}
+_DEFAULT_POOL_CONTAINER: dict[str, Pool | None] = {"pool": None}
+
+
+def get_db_pool() -> Pool | None:
+    """Return the global default database pool, or None if not set."""
+    return _DEFAULT_POOL_CONTAINER["pool"]
+
+
+def set_db_pool(pool: Pool | None) -> None:
+    """Set the global default database pool."""
+    _DEFAULT_POOL_CONTAINER["pool"] = pool
 
 
 def _role_settings(cfg: DatabaseSettings, role: DbRole) -> DbRoleSettings:
