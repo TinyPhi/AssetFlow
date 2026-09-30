@@ -30,7 +30,7 @@ Closes #
 - [ ] **Data Hygiene**: Zero secrets, API keys, credentials, or personal data (PII) in code, tests, fixtures, or logs.
 - [ ] **Documentation**: Updated `CHANGELOG.md` and relevant guides in `docs/`.
 - [ ] **Architecture**: Linked relevant ADR (`docs/decisions/`) or technical specification (`docs/specs/`) if applicable.
-- [ ] **Contributor License Agreement**: I have read the [Contribution Terms](../blob/main/CONTRIBUTING.md#1-contribution-terms) and signed the [Contributor Assignment Agreement](../blob/main/CLA.md) (the CLA Assistant bot asks on your first PR).
+- [ ] **Contributor License Agreement**: I have read the [Contribution Terms](https://github.com/TinyPhi/AssetFlow/blob/main/CONTRIBUTING.md#1-contribution-terms) and signed the [Contributor Assignment Agreement](https://github.com/TinyPhi/AssetFlow/blob/main/CLA.md) (the CLA Assistant bot asks on your first PR).
 - [ ] **Third-Party Work**: Any third-party work included in this PR is identified, with its source and license.
 
 ## 4. Security Notes
