@@ -6,7 +6,7 @@ FROM ghcr.io/astral-sh/uv:0.5.21 AS uv-installer
 FROM python:3.12-slim AS runtime
 
 # Install libpq and runtime utilities
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     libpq5 \
