@@ -2,3 +2,4 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Synthetic fixture value in a scrubber test (historic commit; fixed in the tree).
 321e93b40bb060813abda35a04233db29a88c73f:backend/tests/contract/telemetry/test_otel_scrubber.py:generic-api-key:24
+15d9cedea08cb3349e6fb507ed5ca04b6f8e8a23:backend/tests/contract/telemetry/test_otel_scrubber.py:generic-api-key:24
