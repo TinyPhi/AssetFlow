@@ -9,7 +9,7 @@ AssetFlow is designed for high reliability, strict multi-tenant security, and cl
 If you discover a security vulnerability, do not open a public issue. Email
 [security@tinyphi.com](mailto:security@tinyphi.com) with a description.
 
-## 1. Contribution Terms & CLA
+## 1. Contribution Terms
 
 **Draft terms — not yet reviewed by a lawyer.** Submitting a pull request means you agree to the
 terms below, or to [`CLA.md`](CLA.md) directly. The CLA Assistant bot asks you to sign by comment
