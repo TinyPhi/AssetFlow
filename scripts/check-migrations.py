@@ -24,6 +24,9 @@ Exceptions:
   * Worker claim policies (§B9.3): on `outbox` and `maintenance_schedules` only, extra policies
     `FOR SELECT` or `FOR UPDATE` granted `TO assetflow_worker` (and no other role) may omit the
     organization comparison. The four organization policies are still required.
+  * Organization resolver (§B5.2): on a platform table only, one extra policy `FOR SELECT` granted
+    `TO assetflow_resolver` (and no other role) may omit the organization comparison; it lets the
+    SECURITY DEFINER sign-in resolver read (id, idp_organization_id, status) before any context is set.
 
 Usage:
     check-migrations.py            lint backend/migrations/versions/*.py and *.sql
@@ -43,6 +46,7 @@ DEFAULT_DIR = REPO_ROOT / "backend" / "migrations" / "versions"
 PLATFORM_MARKER = "check-migrations: platform-table"
 WORKER_ROLE = "assetflow_worker"
 WORKER_CLAIM_TABLES = {"outbox", "maintenance_schedules"}
+RESOLVER_ROLE = "assetflow_resolver"
 POLICY_COMMANDS = ("SELECT", "INSERT", "UPDATE", "DELETE")
 
 IDENT = r'(?:"[^"]+"|[A-Za-z_][A-Za-z0-9_$]*)'
@@ -371,6 +375,7 @@ def lint_table(table: Table, label: str) -> list[str]:
 
     compare = re.compile(rf"(?<![A-Za-z0-9_\"]){column}\"?\s*=\s*{ORG_CONTEXT}", re.IGNORECASE)
     covered: set[str] = set()
+    resolver_policies = 0
     for p in table.policies:
         uses_org = bool(compare.search(p.using) or compare.search(p.check))
         is_worker_claim = (
@@ -381,9 +386,13 @@ def lint_table(table: Table, label: str) -> list[str]:
                 f"{label}: policy '{p.name}' on '{t}' must be FOR SELECT/INSERT/UPDATE/DELETE, not ALL"
             )
             continue
+        is_resolver = table.platform and p.roles == [RESOLVER_ROLE] and p.command == "SELECT"
         if not uses_org:
             if is_worker_claim:
                 continue  # §B9.3 worker claim-policy exception
+            if is_resolver and resolver_policies == 0:
+                resolver_policies += 1
+                continue  # §B5.2 organization resolver exception (one policy, platform table only)
             problems.append(
                 f"{label}: policy '{p.name}' on '{t}' must compare {column} = "
                 "NULLIF(current_setting('app.organization_id', true), '')::uuid"

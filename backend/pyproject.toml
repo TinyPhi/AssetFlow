@@ -15,7 +15,10 @@ dependencies = [
     "pydantic~=2.13.5",
     "pydantic-settings~=2.15.0",
     "alembic~=1.20.0",
+    "sqlalchemy[asyncio]~=2.1.1",
     "httpx~=0.28.1",
+    "pyyaml~=6.0.3",
+    "cryptography~=46.0.7",
 ]
 
 [dependency-groups]
@@ -27,6 +30,8 @@ dev = [
     "pytest-cov>=5.0.0",
     "hypothesis>=6.112.0",
     "import-linter>=2.0",
+    "types-pyyaml>=6.0.12.20260906",
+    "asyncpg-stubs>=0.31.3",
 ]
 
 [build-system]
