@@ -95,6 +95,14 @@ def is_secret_ref(value: str) -> bool:
     return not any(segment in {".", ".."} for segment in segments)
 
 
+def parse_secret_ref(ref: str) -> tuple[str, str, str]:
+    """Parse ``secret://<area>/<name>#<key>`` into ``(area, name, key)``."""
+    match = SECRET_REF_PATTERN.match(ref)
+    if match is None or not is_secret_ref(ref):
+        raise ValueError(f"Invalid secret reference: {ref!r}")
+    return match.group("area"), match.group("name"), match.group("key")
+
+
 class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -345,7 +353,7 @@ _USAGE = "usage: python -m app.core.config validate <file>\n"
 def main(argv: Sequence[str] | None = None) -> int:
     """``validate <file>``: exit 0 when the file is valid, 1 otherwise (§B7.4)."""
     args: list[str] = list(sys.argv[1:] if argv is None else argv)
-    if len(args) != 2 or args[0] != "validate":  # noqa: PLR2004 - "validate" plus one file
+    if len(args) != 2 or args[0] != "validate":
         sys.stderr.write(_USAGE)
         return 1
     try:
