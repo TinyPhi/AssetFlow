@@ -23,7 +23,12 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DENYLIST_FILE = REPO_ROOT / "scripts" / "check-domain-terms.txt"
-SCOPE_DIRS = (REPO_ROOT / "backend" / "app", REPO_ROOT / "frontend" / "src", REPO_ROOT / "config")
+SCOPE_DIRS = (
+    REPO_ROOT / "backend" / "app",
+    REPO_ROOT / "frontend" / "src",
+    REPO_ROOT / "config",
+    REPO_ROOT / "docs" / "specs",
+)
 # Industry words may appear in domain templates and notification templates (§C12).
 ALLOWED_DIRS = (REPO_ROOT / "config" / "domains", REPO_ROOT / "config" / "templates")
 TEXT_SUFFIXES = {
