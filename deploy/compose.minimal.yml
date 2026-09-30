@@ -1,0 +1,103 @@
+# SPDX-FileCopyrightText: 2026 TinyPhi <conduct@tinyphi.com>
+# SPDX-License-Identifier: AGPL-3.0-only
+# AssetFlow minimal profile (§B13.1, M1.6-T7).
+#
+# Minimal development & demo stack:
+#   - postgres: database with RLS and schema
+#   - mailpit: local email testing & inbox
+#   - api: FastAPI backend (mock auth, file secrets, inmemory events)
+#   - web: Nginx web shell & reverse proxy to API
+#
+# Non-root, read-only containers with tmpfs and strict resource bounds.
+
+name: assetflow-minimal
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME:-assetflow}
+      POSTGRES_USER: ${DATABASE_USER:-assetflow_app}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-assetflow_dev_password}
+    ports:
+      - "127.0.0.1:${DATABASE_PORT:-5432}:5432"
+    volumes:
+      - postgres_minimal_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER:-assetflow_app} -d ${DATABASE_NAME:-assetflow}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - assetflow_minimal_net
+
+  mailpit:
+    image: axllent/mailpit:v1.21.8
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+    networks:
+      - assetflow_minimal_net
+
+  api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASSETFLOW_ENV: development
+      ASSETFLOW_AUTH_PROVIDER: mock
+      ASSETFLOW_SECRETS_PROVIDER: file
+      ASSETFLOW_TELEMETRY_PROVIDER: noop
+      ASSETFLOW_EVENTS_PROVIDER: inmemory
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: ${DATABASE_NAME:-assetflow}
+      DATABASE_USER: ${DATABASE_USER:-assetflow_app}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-assetflow_dev_password}
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - assetflow_minimal_net
+
+  web:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8080}:8080"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+      - /var/cache/nginx
+      - /var/run
+    networks:
+      - assetflow_minimal_net
+
+volumes:
+  postgres_minimal_data:
+
+networks:
+  assetflow_minimal_net:
+    driver: bridge
