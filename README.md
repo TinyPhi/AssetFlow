@@ -52,7 +52,7 @@ Active milestones, progress logs, and verification criteria are tracked transpar
 
 We welcome community contributions! Please review:
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — Contribution guidelines, Conventional Commits, and Definition of Done.
-- [`CLA.md`](CLA.md) — Contributor License Agreement.
+- [`CLA.md`](CLA.md) — Contributor Assignment Agreement; the CLA Assistant bot asks you to sign on your first pull request.
 - [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) — Community standards.
 - [`SECURITY.md`](SECURITY.md) — Vulnerability reporting policy.
 
