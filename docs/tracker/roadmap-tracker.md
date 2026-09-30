@@ -50,12 +50,12 @@ Status marks: `☐` not started · `◐` in progress · `☑` done · `⛔` bloc
 
 | ID | Task | Done when | Status |
 | --- | --- | --- | --- |
-| P3-01 | Config loader | Invalid config stops boot with an exact path; tests cover it | ☐ |
-| P3-02 | Database access and first migration | Migration check passes; isolation test passes; upgrade->downgrade->upgrade works | ☐ |
-| P3-03 | Errors, envelope, IDs | Every error class maps to a code in the generated reference | ☐ |
-| P3-04 | Provider interfaces and registry | A dummy provider is selected by config; contract test skeleton runs | ☐ |
-| P3-05 | App factory and health | API starts locally and health returns every provider's state | ☐ |
-| P3-06 | Web shell and compose.minimal | make up-minimal shows the web shell calling the health API | ☐ |
+| P3-01 | Config loader | Invalid config stops boot with an exact path; tests cover it | ☑ |
+| P3-02 | Database access and first migration | Migration check passes; isolation test passes; upgrade->downgrade->upgrade works | ☑ |
+| P3-03 | Errors, envelope, IDs | Every error class maps to a code in the generated reference | ☑ |
+| P3-04 | Provider interfaces and registry | A dummy provider is selected by config; contract test skeleton runs | ☑ |
+| P3-05 | App factory and health | API starts locally and health returns every provider's state | ☑ |
+| P3-06 | Web shell and compose.minimal | make up-minimal shows the web shell calling the health API | ◐ |
 
 ## P4 — Port Inventory for Master Phase 2
 
