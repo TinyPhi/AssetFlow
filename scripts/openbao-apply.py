@@ -45,8 +45,8 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parent.parent
 POLICY_DIR = REPO_ROOT / "deploy" / "openbao" / "policies"
 OPERATOR_POLICY_DIR = REPO_ROOT / "deploy" / "openbao" / "operator"
-SECRETS_DIR = REPO_ROOT / "deploy" / ".secrets"
-DEFAULT_CACERT = SECRETS_DIR / "openbao-tls" / "ca.pem"
+CREDENTIALS_DIR = REPO_ROOT / "deploy" / ".secrets"
+DEFAULT_CACERT = CREDENTIALS_DIR / "openbao-tls" / "ca.pem"
 
 TRANSIT_KEY = "assetflow-fields"
 YEAR_SECONDS = 365 * 24 * 3600
@@ -85,15 +85,31 @@ def _admin_password() -> str:
 # Values that --generate-missing may create. Everything else (SMTP, IdP client secret,
 # channel secrets, database roles) is written by operators, the Zitadel bootstrap
 # (scripts/bootstrap_zitadel.py) or migrations.
-GENERATED_SECRETS: dict[str, Any] = {
-    "assetflow/zitadel/masterkey": lambda: {"value": _random(32)},
-    "assetflow/zitadel/database": lambda: {
-        "admin_password": _random(32),
-        "user_password": _random(32),
-    },
-    "assetflow/zitadel/admin": lambda: {"initial_password": _admin_password()},
-    "assetflow/postgres": lambda: {"superuser_password": _random(32)},
-}
+GENERATED_PATHS: tuple[str, ...] = (
+    "assetflow/zitadel/masterkey",
+    "assetflow/zitadel/database",
+    "assetflow/zitadel/admin",
+    "assetflow/postgres",
+)
+
+
+def _generate_value(path: str) -> dict[str, str]:
+    """Fresh random KV payload for one of GENERATED_PATHS."""
+    factories: dict[str, Any] = {
+        "assetflow/zitadel/masterkey": lambda: {"value": _random(32)},
+        "assetflow/zitadel/database": lambda: {
+            "admin_password": _random(32),
+            "user_password": _random(32),
+        },
+        "assetflow/zitadel/admin": lambda: {"initial_password": _admin_password()},
+        "assetflow/postgres": lambda: {"superuser_password": _random(32)},
+    }
+    return factories[path]()
+
+
+def _response_field(payload: dict[str, Any], field: str) -> str:
+    """One string field from an OpenBao response's ``data`` object."""
+    return str(payload["data"][field])
 
 
 class BaoError(RuntimeError):
@@ -223,41 +239,41 @@ class Applier:
         self.changed(f"AppRole role {name}")
 
     def login_files(self, name: str, issue: bool) -> None:
-        role_dir = SECRETS_DIR / name
+        role_dir = CREDENTIALS_DIR / name
         role_dir.mkdir(parents=True, exist_ok=True)
         _chmod(role_dir, 0o700)
-        role_id = self.bao.ok("GET", f"auth/approle/role/{name}/role-id")["data"]["role_id"]
-        if _write_if_different(role_dir / "role_id", role_id):
+        identifier = _response_field(self.bao.ok("GET", f"auth/approle/role/{name}/role-id"), "role_id")
+        if _write_if_different(role_dir / "role_id", identifier):
             self.changed(f"role id file for {name}")
 
-        secret_file = role_dir / "secret_id"
+        login_file = role_dir / "secret_id"
         valid = False
-        if secret_file.exists() and not issue:
-            existing = secret_file.read_text(encoding="utf-8").strip()
+        if login_file.exists() and not issue:
+            current = login_file.read_text(encoding="utf-8").strip()
             status, payload = self.bao.call(
                 "POST",
                 f"auth/approle/role/{name}/secret-id/lookup",
-                {"secret_id": existing},
+                {"secret_id": current},
             )
             valid = status == 200 and bool(payload.get("data"))
         if not valid:
-            secret_id = self.bao.ok("POST", f"auth/approle/role/{name}/secret-id", {})["data"]["secret_id"]
-            _write_if_different(secret_file, secret_id)
-            self.changed(f"issued secret id for {name}")
+            issued = self.bao.ok("POST", f"auth/approle/role/{name}/secret-id", {})
+            _write_if_different(login_file, _response_field(issued, "secret_id"))
+            self.changed(f"issued login credential for {name}")
 
     # -- generated values ----------------------------------------------------------
     def generate_missing(self) -> None:
-        for path, factory in GENERATED_SECRETS.items():
+        for path in GENERATED_PATHS:
             if self.bao.get(f"secret/metadata/{path}") is not None:
                 continue
             status, payload = self.bao.call(
                 "POST",
                 f"secret/data/{path}",
-                {"options": {"cas": 0}, "data": factory()},
+                {"options": {"cas": 0}, "data": _generate_value(path)},
             )
             if status >= 400:
                 raise BaoError(f"write secret/{path}: HTTP {status} {payload.get('errors', '')}")
-            self.changed(f"generated secret/{path} (value not shown)")
+            self.changed(f"generated kv entry {path} (value not shown)")
 
 
 def _same(current: Any, desired: Any) -> bool:
