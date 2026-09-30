@@ -16,10 +16,14 @@ import pytest
 from app.core.config import AppConfig, ConfigError, load_config
 from app.core.problems import SecretsUnavailableError
 from app.providers.auth.mock import MockAuthProvider
+from app.providers.auth.oidc import OidcAuthProvider
 from app.providers.events.inmemory import InMemoryEventBusProvider
+from app.providers.events.postgres import PostgresEventBusProvider
 from app.providers.registry import ProviderRegistry
 from app.providers.secrets.file import FileSecretsProvider
+from app.providers.secrets.openbao import OpenBaoSecretsProvider
 from app.providers.telemetry.noop import NoOpTelemetryProvider
+from app.providers.telemetry.otel import OtelTelemetryProvider
 
 DATABASE = """
 database:
@@ -59,29 +63,19 @@ def test_config_selects_builtin_providers(tmp_path: Path) -> None:
     assert registry.types == {"auth": "mock", "secrets": "file", "telemetry": "noop", "events": "inmemory"}
 
 
-def test_fallbacks_when_pillars_missing(tmp_path: Path) -> None:
-    registry = ProviderRegistry.from_config(config(tmp_path, "{}\n"))
-    assert registry.types == {"auth": "mock", "secrets": "file", "telemetry": "noop", "events": "inmemory"}
-
-
-@pytest.mark.parametrize(
-    ("pillar", "type_name"),
-    [("auth", "oidc"), ("secrets", "openbao"), ("telemetry", "otel"), ("events", "postgres")],
-)
-def test_planned_providers_fail_clearly(tmp_path: Path, pillar: str, type_name: str) -> None:
-    default = {"auth": "mock", "secrets": "file", "telemetry": "noop", "events": "inmemory"}[pillar]
-    providers = FULL.replace(f"{pillar}: {{type: {default}", f"{pillar}: {{type: {type_name}")
-    if pillar == "secrets":
-        providers = providers.replace(", settings: {directory: secrets}", "")
-    with pytest.raises(ConfigError) as exc:
-        ProviderRegistry.from_config(config(tmp_path, providers))
-    assert exc.value.errors == [(f"providers.{pillar}.type", f"'{type_name}' is not available until M1.4")]
-
-
-def test_oidc_is_not_silently_replaced_by_mock(tmp_path: Path) -> None:
-    cfg = config(tmp_path, FULL.replace("auth: {type: mock}", "auth: {type: oidc}"), env="development")
-    with pytest.raises(ConfigError, match=r"not available until M1.4"):
-        ProviderRegistry.from_config(cfg)
+def test_config_selects_production_providers(tmp_path: Path) -> None:
+    prod_providers = """
+    auth: {type: oidc, settings: {issuer: "http://localhost:8080", client_id: "assetflow"}}
+    secrets: {type: openbao, settings: {address: "http://localhost:8200"}}
+    telemetry: {type: otel, settings: {endpoint: "http://localhost:4317"}}
+    events: {type: postgres, settings: {notify_channel: "outbox_events"}}
+    """
+    registry = ProviderRegistry.from_config(config(tmp_path, prod_providers))
+    assert isinstance(registry.auth, OidcAuthProvider)
+    assert isinstance(registry.secrets, OpenBaoSecretsProvider)
+    assert isinstance(registry.telemetry, OtelTelemetryProvider)
+    assert isinstance(registry.events, PostgresEventBusProvider)
+    assert registry.types == {"auth": "oidc", "secrets": "openbao", "telemetry": "otel", "events": "postgres"}
 
 
 def test_unknown_type_names_path(tmp_path: Path) -> None:

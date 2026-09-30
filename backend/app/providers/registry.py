@@ -16,19 +16,23 @@ import inspect
 import logging
 from collections.abc import Callable
 from importlib.metadata import EntryPoint, entry_points
-from typing import Any, NoReturn
+from typing import Any
 
 from app.core.config import FALLBACK_PROVIDERS, PILLARS, AppConfig, ConfigError, Pillar, is_secret_ref
 from app.core.problems import SecretsUnavailableError
 from app.providers.auth.base import AuthProvider
 from app.providers.auth.mock import MockAuthProvider
+from app.providers.auth.oidc import OidcAuthProvider
 from app.providers.context import ProviderContext
 from app.providers.events.base import EventBusProvider
 from app.providers.events.inmemory import InMemoryEventBusProvider
+from app.providers.events.postgres import PostgresEventBusProvider
 from app.providers.secrets.base import SecretsProvider
 from app.providers.secrets.file import FileSecretsProvider
+from app.providers.secrets.openbao import OpenBaoSecretsProvider
 from app.providers.telemetry.base import TelemetryProvider
 from app.providers.telemetry.noop import NoOpTelemetryProvider
+from app.providers.telemetry.otel import OtelTelemetryProvider
 
 logger = logging.getLogger(__name__)
 
@@ -37,21 +41,23 @@ ProviderFactory = Callable[[dict[str, Any], ProviderContext], object]
 ENTRY_POINT_GROUP = "assetflow.providers.{pillar}"
 
 
-def _not_yet(pillar: Pillar, type_name: str, milestone: str) -> ProviderFactory:
-    def factory(settings: dict[str, Any], context: ProviderContext) -> NoReturn:
-        raise ConfigError([(f"providers.{pillar}.type", f"{type_name!r} is not available until {milestone}")])
-
-    return factory
-
-
-#: Built-in providers per pillar. Planned defaults fail with a clear message until they land.
+#: Built-in providers per pillar.
 BUILTIN_FACTORIES: dict[Pillar, dict[str, ProviderFactory]] = {
-    "auth": {"mock": MockAuthProvider.from_settings, "oidc": _not_yet("auth", "oidc", "M1.4")},
-    "secrets": {"file": FileSecretsProvider.from_settings, "openbao": _not_yet("secrets", "openbao", "M1.4")},
-    "telemetry": {"noop": NoOpTelemetryProvider.from_settings, "otel": _not_yet("telemetry", "otel", "M1.4")},
+    "auth": {
+        "mock": MockAuthProvider.from_settings,
+        "oidc": OidcAuthProvider.from_settings,
+    },
+    "secrets": {
+        "file": FileSecretsProvider.from_settings,
+        "openbao": OpenBaoSecretsProvider.from_settings,
+    },
+    "telemetry": {
+        "noop": NoOpTelemetryProvider.from_settings,
+        "otel": OtelTelemetryProvider.from_settings,
+    },
     "events": {
         "inmemory": InMemoryEventBusProvider.from_settings,
-        "postgres": _not_yet("events", "postgres", "M1.4"),
+        "postgres": PostgresEventBusProvider.from_settings,
     },
 }
 
