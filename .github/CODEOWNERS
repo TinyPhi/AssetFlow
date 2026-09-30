@@ -1,0 +1,3 @@
+# Code owners — maintainer review for CI and repo config (including the CLA workflow).
+
+/.github/                @abmish @PrabhuVijit
