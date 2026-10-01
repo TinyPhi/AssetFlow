@@ -120,8 +120,9 @@ frontend-deps: $(FRONTEND_DEPS)
 $(FRONTEND_DEPS): $(FRONTEND)/package-lock.json
 	cd $(FRONTEND) && $(NPM) ci
 
-up-minimal: ## Start the minimal profile
+up-minimal: check-python ## Start the minimal profile
 	@test -f $(COMPOSE_MINIMAL) || $(call not_implemented,P3-06,the minimal profile ($(COMPOSE_MINIMAL)))
+	$(PYTHON) scripts/gen-minimal-secrets.py
 	$(COMPOSE) $(COMPOSE_FILES_MINIMAL) up -d
 
 # Order (docs/operations/startup.md): OpenBao -> unseal (manual, key holders) -> openbao-apply (fresh
@@ -163,6 +164,7 @@ smoke-full: check-python ## Smoke test of the running full profile (scripts/smok
 
 down: ## Stop all services (data volumes kept)
 	$(COMPOSE) $(COMPOSE_FILES_FULL) down --remove-orphans
+	$(COMPOSE) $(COMPOSE_FILES_MINIMAL) down --remove-orphans
 
 reset: ## Stop, delete local volumes and bootstrap again (asks for confirmation)
 	@read -r -p "This deletes all local AssetFlow volumes and data. Type 'yes' to continue: " answer; \
@@ -378,6 +380,7 @@ ci-trivy-images: ci-docker ## Weekly: build the images from main and scan them w
 
 ci-zap-baseline: ## Weekly: OWASP ZAP baseline (passive, unauthenticated) against compose.minimal
 	@if [ ! -f $(COMPOSE_MINIMAL) ]; then $(call nothing_yet,P3-06,the minimal profile ($(COMPOSE_MINIMAL))); fi; \
+	  $(PYTHON) scripts/gen-minimal-secrets.py; \
 	  $(COMPOSE) $(COMPOSE_FILES_MINIMAL) up -d --wait; \
 	  rc=0; mkdir -p .zap; \
 	  docker run --rm --network host -v "$(CURDIR)/.zap:/zap/wrk:rw" $(ZAP_IMAGE) \
