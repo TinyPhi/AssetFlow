@@ -25,6 +25,7 @@ x-assetflow-labels: &assetflow-labels
 services:
   postgres:
     labels: *assetflow-labels
+    container_name: assetflow-postgres
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
@@ -48,6 +49,7 @@ services:
 
   mailpit:
     labels: *assetflow-labels
+    container_name: assetflow-mailpit
     image: axllent/mailpit:v1.21.8
     restart: unless-stopped
     ports:
@@ -58,6 +60,7 @@ services:
 
   migrate:
     labels: *assetflow-labels
+    container_name: assetflow-migrate
     build:
       context: ../backend
       dockerfile: Dockerfile
@@ -86,6 +89,7 @@ services:
 
   api:
     labels: *assetflow-labels
+    container_name: assetflow-api
     build:
       context: ../backend
       dockerfile: Dockerfile
@@ -129,6 +133,7 @@ services:
 
   web:
     labels: *assetflow-labels
+    container_name: assetflow-web
     build:
       context: ../frontend
       dockerfile: Dockerfile
