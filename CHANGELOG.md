@@ -18,10 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Tooling & local CI (P2-01 to P2-06)**: backend project (uv, FastAPI stub, ruff, mypy strict, pytest, import-linter contracts); frontend project (Vite, React 19, strict TypeScript, ESLint with jsx-a11y, vitest); Makefile with `make verify` as the single local gate; check scripts (domain terms, migration lint, contribution guardrails, license allowlist, docs links); pre-commit and commitlint; CI workflows (ci, security, contribution checks, CLA, scorecard, dependabot).
 - **Identity & secrets (P2-07 to P2-12)**: OpenBao from HCL config with policies, KV v2, transit and AppRole applied by `scripts/openbao-apply.py`; self-hosted Zitadel with one-command setup (`scripts/bootstrap.sh`, `setup.bat`) and the idempotent `scripts/bootstrap_zitadel.py`: project, roles, apps, automation user, one Zitadel organization per `config/organizations/*.yaml` with project grants; startup order and smoke test.
 - **Guides**: `docs/guides/setup-zitadel.md` and `docs/guides/setup-openbao.md`.
+- **Database roles standard (P5-00)**: ADR-0019 standardizing database group roles (`NOLOGIN`) and dedicated process login users (`assetflow_<kind>_login`), operations documentation, and consistency test.
 
 ### Changed
 - Zitadel configuration moved from OpenTofu to the bootstrap script (master plan decision 53).
 - Loop helper `af.py verify` runs verify commands without a shell.
+- Standardized database login user naming to `assetflow_<kind>_login` across `deploy/postgres/init-minimal.sh`, `config/assetflow.yaml`, and `deploy/compose.minimal.yml`.
+- Minimal profile: roles and logins are applied by a one-shot `db-roles` service on every start (not only on a new database); existing `assetflow_<kind>_user` logins are renamed automatically.
 
 ### Earlier (P0–P1)
 - **Repository Architecture & Layout**: Created directory skeleton conforming to §B4.3 modular monolith and §C7.1 documentation structure.
