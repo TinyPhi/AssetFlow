@@ -22,7 +22,7 @@ name: assetflow
 # OpenBao Agent sidecars stay running: a tmpfs volume keeps its files only while a container
 # uses it, and the agent re-renders files when a value is rotated in OpenBao (§B11.4).
 x-openbao-agent: &openbao-agent
-  image: openbao/openbao:2.6.3
+  image: openbao/openbao:2.7.0
   restart: unless-stopped
   depends_on:
     openbao:
@@ -39,7 +39,7 @@ x-zitadel-external: &zitadel-external
 services:
   # ---------------------------------------------------------------- secrets
   openbao:
-    image: openbao/openbao:2.6.3
+    image: openbao/openbao:2.7.0
     restart: unless-stopped
     # Production server mode (no -dev). The entrypoint loads every file in /openbao/config.
     command: ["server"]
