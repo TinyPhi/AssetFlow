@@ -43,13 +43,13 @@ database:
   port: "${ASSETFLOW_DB_PORT:-5432}"
   name: "${ASSETFLOW_DB_NAME:-assetflow}"
   api:
-    user: "${ASSETFLOW_DB_API_USER:-assetflow_api_user}"
+    user: "${ASSETFLOW_DB_API_USER:-assetflow_api_login}"
     password: "secret://database/api#password"
   worker:
-    user: "${ASSETFLOW_DB_WORKER_USER:-assetflow_worker_user}"
+    user: "${ASSETFLOW_DB_WORKER_USER:-assetflow_worker_login}"
     password: "secret://database/worker#password"
   migrator:
-    user: "${ASSETFLOW_DB_MIGRATOR_USER:-assetflow_migrator_user}"
+    user: "${ASSETFLOW_DB_MIGRATOR_USER:-assetflow_migrator_login}"
     password: "secret://database/migrator#password"
   behind_pgbouncer: false
   statement_timeout_ms: 15000

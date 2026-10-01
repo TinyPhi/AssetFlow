@@ -35,9 +35,8 @@ services:
       - "127.0.0.1:${DATABASE_PORT:-15432}:5432"
     volumes:
       - postgres_minimal_data:/var/lib/postgresql/data
-      # Only the database credentials the init script reads, not the whole secrets directory.
-      - ../.secrets/database:/run/secrets/database:ro
-      - ./postgres/init-minimal.sh:/docker-entrypoint-initdb.d/01-init-minimal.sh:ro
+      # The bootstrap user's password only; roles and logins are applied by the db-roles service.
+      - ../.secrets/database/postgres:/run/secrets/database/postgres:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d ${ASSETFLOW_DB_NAME:-assetflow}"]
       interval: 5s
@@ -56,6 +55,30 @@ services:
     networks:
       - assetflow_minimal_net
 
+  # One-shot: applies roles, logins and passwords (deploy/postgres/init-minimal.sh) on every start,
+  # so existing databases follow ADR-0019 too. Idempotent.
+  db-roles:
+    labels: *assetflow-labels
+    image: postgres:16-alpine
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_DB: ${ASSETFLOW_DB_NAME:-assetflow}
+      PGPASSWORD_FILE: /run/secrets/database/postgres/password
+    volumes:
+      # The database credentials the script applies, not the whole secrets directory.
+      - ../.secrets/database:/run/secrets/database:ro
+      - ./postgres/init-minimal.sh:/opt/assetflow/init-minimal.sh:ro
+    entrypoint: ["/bin/sh", "/opt/assetflow/init-minimal.sh"]
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - assetflow_minimal_net
+
   migrate:
     labels: *assetflow-labels
     build:
@@ -63,8 +86,8 @@ services:
       dockerfile: Dockerfile
     restart: "no"
     depends_on:
-      postgres:
-        condition: service_healthy
+      db-roles:
+        condition: service_completed_successfully
     environment:
       ASSETFLOW_DB_NAME: ${ASSETFLOW_DB_NAME:-assetflow}
     volumes:
@@ -75,7 +98,7 @@ services:
       - -c
       - |
         MIGRATOR_PW=$$(cat /run/secrets/database/migrator/password)
-        export ASSETFLOW_MIGRATION_DATABASE_URL="postgresql://assetflow_migrator_user:$${MIGRATOR_PW}@postgres:5432/$${ASSETFLOW_DB_NAME:-assetflow}"
+        export ASSETFLOW_MIGRATION_DATABASE_URL="postgresql://assetflow_migrator_login:$${MIGRATOR_PW}@postgres:5432/$${ASSETFLOW_DB_NAME:-assetflow}"
         exec uv run --no-sync alembic upgrade head
     security_opt:
       - no-new-privileges:true
@@ -105,9 +128,9 @@ services:
       ASSETFLOW_DB_HOST: postgres
       ASSETFLOW_DB_PORT: "5432"
       ASSETFLOW_DB_NAME: ${ASSETFLOW_DB_NAME:-assetflow}
-      ASSETFLOW_DB_API_USER: assetflow_api_user
-      ASSETFLOW_DB_WORKER_USER: assetflow_worker_user
-      ASSETFLOW_DB_MIGRATOR_USER: assetflow_migrator_user
+      ASSETFLOW_DB_API_USER: assetflow_api_login
+      ASSETFLOW_DB_WORKER_USER: assetflow_worker_login
+      ASSETFLOW_DB_MIGRATOR_USER: assetflow_migrator_login
       ASSETFLOW_SECRETS_DIR: /run/secrets
     volumes:
       - ../config:/app/config:ro
