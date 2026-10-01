@@ -14,7 +14,7 @@ name: assetflow-minimal
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DATABASE_NAME:-assetflow}

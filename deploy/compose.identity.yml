@@ -23,7 +23,7 @@ x-zitadel-public: &zitadel-public
 
 services:
   zitadel-db:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
@@ -42,7 +42,7 @@ services:
 
   # Gives the bootstrap volume to the zitadel user (uid 1000), so Zitadel runs as non-root.
   zitadel-volume-init:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     restart: "no"
     user: "0"
     entrypoint: ["sh", "-c", "chown 1000:1000 /zitadel/bootstrap && chmod 0700 /zitadel/bootstrap"]
