@@ -102,3 +102,10 @@ def test_init_script_renames_legacy_logins() -> None:
     assert "RENAME TO" in content
     for role in ROLES:
         assert f"'{role}'" in content, f"legacy rename does not cover {role!r}"
+
+
+def test_every_service_has_an_assetflow_container_name() -> None:
+    # Other projects run containers on the same machine; names must be assetflow-<service>.
+    services = yaml.safe_load(COMPOSE_FILE.read_text(encoding="utf-8"))["services"]
+    for name, service in services.items():
+        assert service.get("container_name") == f"assetflow-{name}", name

@@ -61,6 +61,7 @@ services:
   # so existing databases follow ADR-0019 too. Idempotent.
   db-roles:
     labels: *assetflow-labels
+    container_name: assetflow-db-roles
     image: postgres:16-alpine
     restart: "no"
     depends_on:
