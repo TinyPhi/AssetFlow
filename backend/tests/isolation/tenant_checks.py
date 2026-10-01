@@ -32,15 +32,21 @@ async def assert_tenant_isolation(
     table: str,
     insert_sql: str,
     update_column: str = "name",
+    *,
+    role: str = "api",
+    can_update: bool = True,
+    can_delete: bool = True,
 ) -> tuple[uuid.UUID, uuid.UUID]:
     """Prove row-level isolation for `table`; returns the ids of the rows created for A and B.
 
     `insert_sql` takes $1 = id, $2 = organization_id and $3 = a unique token (see `token`).
+    `role` is the login that writes the table; `can_update` / `can_delete` say whether it holds
+    those privileges (without them the statement must fail before row-level security applies).
     """
     for name in (table, update_column):
         if not IDENTIFIER.fullmatch(name):
             raise ValueError(f"not a plain identifier: {name!r}")
-    pool = await make_pool("api")
+    pool = await make_pool(role)
     row_a, row_b = uuid.uuid4(), uuid.uuid4()
     for row, org in ((row_a, db.org_a), (row_b, db.org_b)):
         async with tenant_transaction(pool, org) as conn:
@@ -57,8 +63,16 @@ async def assert_tenant_isolation(
     async with tenant_transaction(pool, db.org_a) as conn:
         rows = await conn.fetch(select_sql, ids)
         assert [r["id"] for r in rows] == [row_a]
-        assert await conn.execute(update_sql, row_b) == "UPDATE 0"
-        assert await conn.execute(delete_sql, row_b) == "DELETE 0"
+        for sql, allowed, done in (
+            (update_sql, can_update, "UPDATE 0"),
+            (delete_sql, can_delete, "DELETE 0"),
+        ):
+            if allowed:
+                assert await conn.execute(sql, row_b) == done
+            else:
+                with pytest.raises(asyncpg.InsufficientPrivilegeError, match="permission denied"):
+                    async with conn.transaction():
+                        await conn.execute(sql, row_a)
         with pytest.raises(asyncpg.InsufficientPrivilegeError, match="row-level security"):
             await conn.execute(insert_sql, uuid.uuid4(), db.org_b, token())
     return row_a, row_b

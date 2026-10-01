@@ -21,6 +21,25 @@ $$;
 
 ALTER FUNCTION platform.resolve_organization(p_idp_organization_id text) OWNER TO assetflow_resolver;
 
+CREATE TABLE public.audit_events (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    actor_member_id uuid,
+    action text NOT NULL,
+    entity_type text NOT NULL,
+    entity_id uuid NOT NULL,
+    role_used text,
+    scope_type text,
+    scope_id uuid,
+    before_state jsonb,
+    after_state jsonb,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+ALTER TABLE ONLY public.audit_events FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.audit_events OWNER TO assetflow_migrator;
+
 CREATE TABLE public.locations (
     id uuid NOT NULL,
     organization_id uuid NOT NULL,
@@ -136,6 +155,40 @@ ALTER TABLE ONLY public.organizations FORCE ROW LEVEL SECURITY;
 
 ALTER TABLE public.organizations OWNER TO assetflow_migrator;
 
+CREATE TABLE public.outbox (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    event_type text NOT NULL,
+    aggregate_type text NOT NULL,
+    aggregate_id uuid NOT NULL,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL,
+    claimed_by text,
+    claimed_at timestamp with time zone,
+    processed_at timestamp with time zone,
+    attempts integer DEFAULT 0 NOT NULL,
+    last_error text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_outbox__attempts CHECK ((attempts >= 0)),
+    CONSTRAINT ck_outbox__payload_object CHECK ((jsonb_typeof(payload) = 'object'::text))
+);
+
+ALTER TABLE ONLY public.outbox FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.outbox OWNER TO assetflow_migrator;
+
+CREATE TABLE public.processed_events (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    consumer_name text NOT NULL,
+    event_id uuid NOT NULL,
+    processed_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+ALTER TABLE ONLY public.processed_events FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.processed_events OWNER TO assetflow_migrator;
+
 CREATE TABLE public.role_grants (
     id uuid NOT NULL,
     organization_id uuid NOT NULL,
@@ -216,6 +269,9 @@ ALTER TABLE ONLY public.working_calendars FORCE ROW LEVEL SECURITY;
 
 ALTER TABLE public.working_calendars OWNER TO assetflow_migrator;
 
+ALTER TABLE ONLY public.audit_events
+    ADD CONSTRAINT audit_events_pkey PRIMARY KEY (id);
+
 ALTER TABLE ONLY public.locations
     ADD CONSTRAINT locations_pkey PRIMARY KEY (id);
 
@@ -240,6 +296,12 @@ ALTER TABLE ONLY public.organizations
 ALTER TABLE ONLY public.organizations
     ADD CONSTRAINT organizations_slug_key UNIQUE (slug);
 
+ALTER TABLE ONLY public.outbox
+    ADD CONSTRAINT outbox_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.processed_events
+    ADD CONSTRAINT processed_events_pkey PRIMARY KEY (id);
+
 ALTER TABLE ONLY public.role_grants
     ADD CONSTRAINT role_grants_pkey PRIMARY KEY (id);
 
@@ -248,6 +310,9 @@ ALTER TABLE ONLY public.team_members
 
 ALTER TABLE ONLY public.teams
     ADD CONSTRAINT teams_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.audit_events
+    ADD CONSTRAINT uq_audit_events__org_id_id UNIQUE (organization_id, id);
 
 ALTER TABLE ONLY public.locations
     ADD CONSTRAINT uq_locations__org_id_code UNIQUE (organization_id, code);
@@ -282,6 +347,15 @@ ALTER TABLE ONLY public.organization_modules
 ALTER TABLE ONLY public.organization_modules
     ADD CONSTRAINT uq_organization_modules__organization_id_module_key UNIQUE (organization_id, module_key);
 
+ALTER TABLE ONLY public.outbox
+    ADD CONSTRAINT uq_outbox__org_id_id UNIQUE (organization_id, id);
+
+ALTER TABLE ONLY public.processed_events
+    ADD CONSTRAINT uq_processed_events__org_id_consumer_event UNIQUE (organization_id, consumer_name, event_id);
+
+ALTER TABLE ONLY public.processed_events
+    ADD CONSTRAINT uq_processed_events__org_id_id UNIQUE (organization_id, id);
+
 ALTER TABLE ONLY public.role_grants
     ADD CONSTRAINT uq_role_grants__org_id_id UNIQUE (organization_id, id);
 
@@ -305,6 +379,12 @@ ALTER TABLE ONLY public.working_calendars
 
 ALTER TABLE ONLY public.working_calendars
     ADD CONSTRAINT working_calendars_pkey PRIMARY KEY (id);
+
+CREATE INDEX ix_audit_events__organization_id ON public.audit_events USING btree (organization_id);
+
+CREATE INDEX ix_audit_events__organization_id_created ON public.audit_events USING btree (organization_id, created_at);
+
+CREATE INDEX ix_audit_events__organization_id_entity ON public.audit_events USING btree (organization_id, entity_type, entity_id);
 
 CREATE INDEX ix_locations__organization_id ON public.locations USING btree (organization_id);
 
@@ -332,6 +412,14 @@ CREATE INDEX ix_org_units__path_gist ON public.org_units USING gist (path);
 
 CREATE INDEX ix_organization_modules__organization_id ON public.organization_modules USING btree (organization_id);
 
+CREATE INDEX ix_outbox__claimed_by ON public.outbox USING btree (claimed_by);
+
+CREATE INDEX ix_outbox__organization_id ON public.outbox USING btree (organization_id);
+
+CREATE INDEX ix_outbox__organization_id_processed ON public.outbox USING btree (organization_id, processed_at);
+
+CREATE INDEX ix_processed_events__organization_id ON public.processed_events USING btree (organization_id);
+
 CREATE INDEX ix_role_grants__organization_id ON public.role_grants USING btree (organization_id);
 
 CREATE INDEX ix_role_grants__organization_id_member ON public.role_grants USING btree (organization_id, member_id);
@@ -351,6 +439,12 @@ CREATE INDEX ix_teams__organization_id ON public.teams USING btree (organization
 CREATE INDEX ix_teams__organization_id_owning_org_unit ON public.teams USING btree (organization_id, owning_org_unit_id);
 
 CREATE INDEX ix_working_calendars__organization_id ON public.working_calendars USING btree (organization_id);
+
+ALTER TABLE ONLY public.audit_events
+    ADD CONSTRAINT fk_audit_events__actor_member_id__members FOREIGN KEY (organization_id, actor_member_id) REFERENCES public.members(organization_id, id) ON DELETE SET NULL;
+
+ALTER TABLE ONLY public.audit_events
+    ADD CONSTRAINT fk_audit_events__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
 
 ALTER TABLE ONLY public.locations
     ADD CONSTRAINT fk_locations__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
@@ -388,6 +482,12 @@ ALTER TABLE ONLY public.organization_modules
 ALTER TABLE ONLY public.organization_modules
     ADD CONSTRAINT fk_organization_modules__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
 
+ALTER TABLE ONLY public.outbox
+    ADD CONSTRAINT fk_outbox__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
+
+ALTER TABLE ONLY public.processed_events
+    ADD CONSTRAINT fk_processed_events__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
+
 ALTER TABLE ONLY public.role_grants
     ADD CONSTRAINT fk_role_grants__granted_by__members FOREIGN KEY (organization_id, granted_by) REFERENCES public.members(organization_id, id) ON DELETE SET NULL;
 
@@ -420,6 +520,16 @@ ALTER TABLE ONLY public.teams
 
 ALTER TABLE ONLY public.working_calendars
     ADD CONSTRAINT fk_working_calendars__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
+
+ALTER TABLE public.audit_events ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY audit_events_delete ON public.audit_events FOR DELETE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY audit_events_insert ON public.audit_events FOR INSERT WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY audit_events_select ON public.audit_events FOR SELECT USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY audit_events_update ON public.audit_events FOR UPDATE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
 
 ALTER TABLE public.locations ENABLE ROW LEVEL SECURITY;
 
@@ -483,6 +593,30 @@ CREATE POLICY organizations_select ON public.organizations FOR SELECT USING ((id
 
 CREATE POLICY organizations_update ON public.organizations FOR UPDATE USING ((id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid)) WITH CHECK ((id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
 
+ALTER TABLE public.outbox ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY outbox_delete ON public.outbox FOR DELETE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY outbox_insert ON public.outbox FOR INSERT WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY outbox_select ON public.outbox FOR SELECT USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY outbox_update ON public.outbox FOR UPDATE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY outbox_worker_claim_select ON public.outbox FOR SELECT TO assetflow_worker USING (true);
+
+CREATE POLICY outbox_worker_claim_update ON public.outbox FOR UPDATE TO assetflow_worker USING (true) WITH CHECK (true);
+
+ALTER TABLE public.processed_events ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY processed_events_delete ON public.processed_events FOR DELETE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY processed_events_insert ON public.processed_events FOR INSERT WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY processed_events_select ON public.processed_events FOR SELECT USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY processed_events_update ON public.processed_events FOR UPDATE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
 ALTER TABLE public.role_grants ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY role_grants_delete ON public.role_grants FOR DELETE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
@@ -534,6 +668,10 @@ GRANT USAGE ON SCHEMA public TO assetflow_resolver;
 REVOKE ALL ON FUNCTION platform.resolve_organization(p_idp_organization_id text) FROM PUBLIC;
 GRANT ALL ON FUNCTION platform.resolve_organization(p_idp_organization_id text) TO assetflow_api;
 
+GRANT SELECT,INSERT ON TABLE public.audit_events TO assetflow_api;
+GRANT SELECT,INSERT ON TABLE public.audit_events TO assetflow_worker;
+GRANT SELECT ON TABLE public.audit_events TO assetflow_readonly;
+
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.locations TO assetflow_api;
 GRANT SELECT ON TABLE public.locations TO assetflow_worker;
 GRANT SELECT ON TABLE public.locations TO assetflow_readonly;
@@ -561,6 +699,14 @@ GRANT SELECT(id) ON TABLE public.organizations TO assetflow_resolver;
 GRANT SELECT(idp_organization_id) ON TABLE public.organizations TO assetflow_resolver;
 
 GRANT SELECT(status) ON TABLE public.organizations TO assetflow_resolver;
+
+GRANT SELECT,INSERT ON TABLE public.outbox TO assetflow_api;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.outbox TO assetflow_worker;
+GRANT SELECT ON TABLE public.outbox TO assetflow_readonly;
+
+GRANT SELECT ON TABLE public.processed_events TO assetflow_api;
+GRANT SELECT,INSERT,DELETE ON TABLE public.processed_events TO assetflow_worker;
+GRANT SELECT ON TABLE public.processed_events TO assetflow_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.role_grants TO assetflow_api;
 GRANT SELECT ON TABLE public.role_grants TO assetflow_worker;
