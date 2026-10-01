@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: 2026 TinyPhi
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: New Provider Proposal
+description: Propose a new integration provider for authentication, secrets, telemetry, or event broker.
+title: "provider: "
+labels: ["type/provider", "needs-adr"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        AssetFlow abstracts critical infrastructure behind provider interfaces (§B6.1). New providers must implement the standard contract and include contract test suites.
+  - type: input
+    id: provider_name
+    attributes:
+      label: Target Service / Technology
+      description: Name of the upstream service or software.
+      placeholder: e.g., Keycloak, HashiCorp Vault, AWS Secrets Manager, Kafka
+    validations:
+      required: true
+  - type: dropdown
+    id: pillar
+    attributes:
+      label: Architecture Pillar
+      description: Which provider interface does this target?
+      options:
+        - "Authentication (AuthProvider — OIDC / Identity)"
+        - "Secrets (SecretsProvider — Transit encryption / credential retrieval)"
+        - "Telemetry (TelemetryProvider — OTLP metrics & traces)"
+        - "Events (EventProvider — Transactional message broker)"
+    validations:
+      required: true
+  - type: textarea
+    id: justification
+    attributes:
+      label: Technical Justification & Use Case
+      description: Why should this provider be included in the open-source distribution?
+    validations:
+      required: true
+  - type: textarea
+    id: maintainer_commitment
+    attributes:
+      label: Ongoing Maintenance Commitment
+      description: Who will maintain this provider, keep its mock contract tests passing, and test upstream upgrades?
+      placeholder: "I / our organization commits to maintaining this provider and responding to contract test failures..."
+    validations:
+      required: true
+  - type: checkboxes
+    id: compliance
+    attributes:
+      label: Compliance Checklist
+      options:
+        - label: The upstream technology has an OSI-approved permissive or compatible license.
+          required: true
+        - label: I will provide unit tests and contract test recordings (no mandatory live external services for CI).
+          required: true

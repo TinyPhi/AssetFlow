@@ -1,0 +1,25 @@
+{
+  "app": {
+    "shell": {
+      "title": "AssetFlow",
+      "tagline": "Industrial asset and maintenance management system.",
+      "status_ready": "Core platform initialized and ready.",
+      "status_not_ready": "Core platform is not ready yet.",
+      "online": "Connected",
+      "offline": "Offline — Check Network Connection",
+      "health_title": "Platform Health",
+      "health_refresh": "Refresh health status",
+      "health_checking": "Checking platform health...",
+      "health_ok": "Platform operational",
+      "health_unhealthy": "Platform is unhealthy",
+      "health_error": "Health check connection failed",
+      "footer": "AssetFlow © 2026 TinyPhi • AGPL-3.0 License"
+    },
+    "toast": {
+      "region_label": "Notifications",
+      "dismiss": "Dismiss",
+      "network_online": "Network connection restored.",
+      "network_offline": "Network connection lost."
+    }
+  }
+}

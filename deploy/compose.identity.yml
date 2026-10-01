@@ -1,0 +1,150 @@
+# SPDX-FileCopyrightText: 2026 TinyPhi
+# SPDX-License-Identifier: AGPL-3.0-only
+# Local development identity stack: self-hosted Zitadel with its own PostgreSQL (§B5.5,
+# decision 52). LOCAL DEVELOPMENT ONLY; production uses deploy/compose.full.yml (OpenBao).
+#
+# Started by scripts/bootstrap.sh / setup.bat (or make up-identity) with
+#   docker compose -f deploy/compose.identity.yml --env-file .env.local ...
+# .env.local (git-ignored) holds the generated masterkey and passwords. They reach the
+# containers only through ${VAR} interpolation from that file; nothing secret is in this file.
+#
+# References:
+#   https://zitadel.com/docs/self-hosting/deploy/compose
+#   https://zitadel.com/docs/self-hosting/manage/configure
+
+name: assetflow-dev
+
+x-zitadel-public: &zitadel-public
+  # Must match the URL the browser uses, or Zitadel answers "Instance not found". Containers
+  # on the shared network call http://zitadel:8080 with "Host: <domain>:<port>".
+  ZITADEL_DOMAIN: ${ZITADEL_DOMAIN:-localhost}
+  ZITADEL_EXTERNALPORT: ${ZITADEL_EXTERNALPORT:-8081}
+  ZITADEL_EXTERNALSECURE: "false"
+
+services:
+  zitadel-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: zitadel
+      # Generated into .env.local by `bootstrap_zitadel.py init-env`; empty = postgres refuses to start.
+      POSTGRES_PASSWORD: ${ZITADEL_DB_PASSWORD:-}
+    volumes:
+      - zitadel_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d zitadel"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - identity_internal
+
+  # Gives the bootstrap volume to the zitadel user (uid 1000), so Zitadel runs as non-root.
+  zitadel-volume-init:
+    image: postgres:16-alpine
+    restart: "no"
+    user: "0"
+    entrypoint: ["sh", "-c", "chown 1000:1000 /zitadel/bootstrap && chmod 0700 /zitadel/bootstrap"]
+    network_mode: none
+    volumes:
+      - zitadel_bootstrap:/zitadel/bootstrap
+
+  zitadel:
+    image: ghcr.io/zitadel/zitadel:v4.19.3
+    restart: unless-stopped
+    # One service: init + setup (first instance) + start. The masterkey is read from
+    # ZITADEL_MASTERKEY (flag --masterkeyFromEnv); TLS is off on localhost.
+    command: ["start-from-init", "--masterkeyFromEnv", "--tlsMode", "disabled"]
+    environment:
+      ZITADEL_MASTERKEY: ${ZITADEL_MASTERKEY:-}
+      ZITADEL_PORT: "8080"
+      # Also read by the `zitadel ready` health check, which does not see --tlsMode
+      # (default TLS.Enabled=true would make it probe https and report "not ready").
+      ZITADEL_TLS_ENABLED: "false"
+      ZITADEL_EXTERNALDOMAIN: ${ZITADEL_DOMAIN:-localhost}
+      ZITADEL_EXTERNALPORT: ${ZITADEL_EXTERNALPORT:-8081}
+      ZITADEL_EXTERNALSECURE: "false"
+      ZITADEL_DATABASE_POSTGRES_HOST: zitadel-db
+      ZITADEL_DATABASE_POSTGRES_PORT: "5432"
+      ZITADEL_DATABASE_POSTGRES_DATABASE: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_USERNAME: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: ${ZITADEL_DB_USER_PASSWORD:-}
+      ZITADEL_DATABASE_POSTGRES_USER_SSL_MODE: disable
+      ZITADEL_DATABASE_POSTGRES_ADMIN_USERNAME: postgres
+      ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: ${ZITADEL_DB_PASSWORD:-}
+      ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE: disable
+      # First instance: platform organization (owns the AssetFlow project) and its admin.
+      ZITADEL_FIRSTINSTANCE_ORG_NAME: AssetFlow Platform
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME: ${ZITADEL_ADMIN_USERNAME:-admin}
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_FIRSTNAME: Platform
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_LASTNAME: Admin
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_EMAIL_ADDRESS: admin@example.com
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_EMAIL_VERIFIED: "true"
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD: ${ZITADEL_ADMIN_PASSWORD:-}
+      # First-instance machine user (IAM_OWNER): Zitadel writes its JSON key once into the
+      # bootstrap volume; bootstrap_zitadel.py rotates it into .env.local and deletes the file.
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_USERNAME: assetflow-bootstrap
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_NAME: AssetFlow bootstrap
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINEKEY_TYPE: "1"
+      ZITADEL_FIRSTINSTANCE_MACHINEKEYPATH: /zitadel/bootstrap/bootstrap-key.json
+      # Login built into the API container (no separate login container).
+      ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED: "false"
+      # ---- DEV ONLY relaxations (production keeps the strict defaults of compose.full.yml:
+      # ---- MFA forced, password change at first sign-in, no self-registration).
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORDCHANGEREQUIRED: "false"
+      ZITADEL_DEFAULTINSTANCE_LOGINPOLICY_FORCEMFA: "false"
+      ZITADEL_DEFAULTINSTANCE_LOGINPOLICY_ALLOWREGISTER: "false"
+    ports:
+      - "127.0.0.1:${ZITADEL_EXTERNALPORT:-8081}:8080"
+    volumes:
+      - zitadel_bootstrap:/zitadel/bootstrap
+    depends_on:
+      zitadel-db:
+        condition: service_healthy
+      zitadel-volume-init:
+        condition: service_completed_successfully
+    healthcheck:
+      # Distroless image: the built-in readiness command (as upstream).
+      test: ["CMD", "/app/zitadel", "ready"]
+      interval: 10s
+      timeout: 30s
+      retries: 30
+      start_period: 30s
+    networks:
+      - identity_internal
+      - assetflow_dev
+
+  # One-off: docker compose ... --profile bootstrap run --rm zitadel-bootstrap [apply|init-env]
+  zitadel-bootstrap:
+    profiles: [bootstrap]
+    image: assetflow-bootstrap:local
+    build:
+      context: ..
+      dockerfile: deploy/bootstrap/Dockerfile
+    restart: "no"
+    environment:
+      <<: *zitadel-public
+      ASSETFLOW_ENV: development
+      ZITADEL_BOOTSTRAP_URL: http://zitadel:8080
+      ZITADEL_ADMIN_USERNAME: ${ZITADEL_ADMIN_USERNAME:-admin}
+      APP_URL: ${APP_URL:-http://localhost:5173}
+      API_URL: ${API_URL:-http://localhost:8080}
+    volumes:
+      # The checkout: .env.local is written here; config/ is read-only.
+      - ..:/workspace
+      - ../config:/workspace/config:ro
+      - zitadel_bootstrap:/zitadel/bootstrap
+    networks:
+      - assetflow_dev
+
+volumes:
+  zitadel_db_data:
+  zitadel_bootstrap:
+
+networks:
+  identity_internal:
+    internal: true
+  # Shared network for AssetFlow containers that need Zitadel (http://zitadel:8080).
+  assetflow_dev:
+    name: ${ASSETFLOW_DEV_NETWORK:-assetflow-dev}

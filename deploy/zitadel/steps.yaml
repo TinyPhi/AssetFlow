@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 TinyPhi
+# SPDX-License-Identifier: AGPL-3.0-only
+# Zitadel first-instance setup steps (§B5.5, §B11.2).
+# Reference: https://zitadel.com/docs/self-hosting/manage/configure
+# No secrets here. The admin password comes from the OpenBao-rendered file
+# /run/zitadel/zitadel-steps-secrets.yaml (second --steps).
+
+FirstInstance:
+  # Key of the first-instance machine user (IAM_OWNER), written once by start-from-init.
+  # scripts/bootstrap_zitadel.py uses it once, stores a new key in OpenBao
+  # (secret/assetflow/zitadel/bootstrap-key), revokes this one and deletes the file.
+  MachineKeyPath: /zitadel/bootstrap/bootstrap-key.json
+  Org:
+    # Platform organization: owns the AssetFlow project (§B5.5).
+    Name: AssetFlow Platform
+    Human:
+      UserName: admin
+      FirstName: Platform
+      LastName: Admin
+      Email:
+        Address: admin@example.com
+        Verified: true
+      PasswordChangeRequired: true
+    Machine:
+      Machine:
+        Username: assetflow-bootstrap
+        Name: AssetFlow bootstrap
+      MachineKey:
+        # 1 = JSON key file
+        Type: 1

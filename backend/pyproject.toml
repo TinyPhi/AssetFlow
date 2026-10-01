@@ -1,0 +1,118 @@
+# SPDX-FileCopyrightText: 2026 TinyPhi
+# SPDX-License-Identifier: AGPL-3.0-only
+
+[project]
+name = "assetflow"
+version = "0.1.0"
+description = "AssetFlow Backend"
+requires-python = ">=3.12,<3.13"
+license = "AGPL-3.0-only"
+# Runtime dependencies are pinned to a minor range (§C4.11); uv.lock pins exact versions.
+dependencies = [
+    "fastapi~=0.141.1",
+    "uvicorn[standard]~=0.54.0",
+    "asyncpg~=0.31.0",
+    "pydantic~=2.13.5",
+    "pydantic-settings~=2.15.0",
+    "alembic~=1.20.0",
+    "sqlalchemy[asyncio]~=2.1.1",
+    "httpx~=0.28.1",
+    "pyyaml~=6.0.3",
+    "cryptography~=50.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.6.0",
+    "mypy>=1.11.0",
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=5.0.0",
+    "hypothesis>=6.112.0",
+    "import-linter>=2.0",
+    "types-pyyaml>=6.0.12.20260906",
+    "asyncpg-stubs>=0.31.3",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "N",     # pep8-naming
+    "UP",    # pyupgrade
+    "B",     # flake8-bugbear
+    "A",     # flake8-builtins
+    "C4",    # flake8-comprehensions
+    "S",     # flake8-bandit
+    "BLE",   # flake8-blind-except
+    "T20",   # flake8-print
+    "SIM",   # flake8-simplify
+    "RET",   # flake8-return
+    "PTH",   # flake8-use-pathlib
+    "ERA",   # eradicate (commented-out code)
+    "PL",    # pylint
+    "RUF",   # ruff-specific
+    "ASYNC", # flake8-async
+    "DTZ",   # flake8-datetimez
+    "TRY",   # tryceratops (exception handling)
+]
+ignore = [
+    "TRY003", # Avoid specifying long messages outside the exception class
+    "PLR0913", # Too many arguments in function definition
+    "PLR2004", # Magic values in comparisons (status codes, counts)
+    "TRY300", # Consider moving statement to an else block
+    "TRY301", # Abstract raise to an inner function
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+    "S101",    # assert allowed in tests
+    "PLR2004", # magic numbers allowed in tests
+    "S105",    # hardcoded passwords/tokens allowed in tests
+    "S106",
+]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+disallow_untyped_defs = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = [
+    "quarantine: mark test as quarantined (excluded by default)",
+]
+addopts = "-m 'not quarantine'"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["app"]
+omit = [
+    "*/migrations/*",
+    "migrations/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]

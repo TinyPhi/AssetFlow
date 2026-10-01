@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2026 TinyPhi
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# LF everywhere (§C12); Windows checkouts with core.autocrlf otherwise break prettier and shell scripts.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.png binary
+*.ico binary
+*.jpg binary
+*.woff2 binary

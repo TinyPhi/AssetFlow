@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: 2026 TinyPhi
+# SPDX-License-Identifier: AGPL-3.0-only
+
+dist
+coverage
+node_modules
+package-lock.json

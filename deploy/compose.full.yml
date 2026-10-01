@@ -1,0 +1,328 @@
+# SPDX-FileCopyrightText: 2026 TinyPhi
+# SPDX-License-Identifier: AGPL-3.0-only
+# AssetFlow full profile (§B5.5, §B11.2, §B11.4, §B13.1, decisions 51 and 52).
+#
+# Startup order (docs/operations/startup.md):
+#   openbao (healthy only when unsealed) -> OpenBao agents render secret files (healthy) ->
+#   postgres, zitadel-db -> zitadel (start-from-init, healthy) -> zitadel-bootstrap (one-off) -> api
+#
+# Credentials: every container gets only its own AppRole login (role id + secret id) as
+# read-only files under /run/secrets, written by scripts/openbao-apply.py into
+# deploy/.secrets/ (git-ignored). Database passwords and the Zitadel masterkey are rendered
+# by OpenBao Agent into tmpfs volumes. No credential is placed in environment variables,
+# .env files or images. Values interpolated below (${...}) are non-secret settings only.
+#
+# References:
+#   https://openbao.org/docs/configuration/
+#   https://openbao.org/docs/agent-and-proxy/agent/
+#   https://zitadel.com/docs/self-hosting/deploy/compose
+
+name: assetflow
+
+# OpenBao Agent sidecars stay running: a tmpfs volume keeps its files only while a container
+# uses it, and the agent re-renders files when a value is rotated in OpenBao (§B11.4).
+x-openbao-agent: &openbao-agent
+  image: openbao/openbao:2.6.3
+  restart: unless-stopped
+  depends_on:
+    openbao:
+      condition: service_healthy
+  networks:
+    - assetflow_net
+
+x-zitadel-external: &zitadel-external
+  # Must match the public URL exactly (scheme, host, port), or Zitadel returns "Instance not found".
+  ZITADEL_EXTERNALDOMAIN: ${ZITADEL_DOMAIN:-localhost}
+  ZITADEL_EXTERNALPORT: ${ZITADEL_EXTERNALPORT:-8081}
+  ZITADEL_EXTERNALSECURE: ${ZITADEL_EXTERNALSECURE:-false}
+
+services:
+  # ---------------------------------------------------------------- secrets
+  openbao:
+    image: openbao/openbao:2.6.3
+    restart: unless-stopped
+    # Production server mode (no -dev). The entrypoint loads every file in /openbao/config.
+    command: ["server"]
+    cap_add:
+      - IPC_LOCK
+    environment:
+      # Address and CA for the bao CLI inside the container (health check and runbook).
+      BAO_ADDR: https://127.0.0.1:8200
+      BAO_CACERT: /run/secrets/openbao_ca
+    ports:
+      # Operators and scripts on the host only.
+      - "127.0.0.1:${OPENBAO_HOST_PORT:-8200}:8200"
+    secrets:
+      - openbao_tls_cert
+      - openbao_tls_key
+      - openbao_ca
+    volumes:
+      - ./openbao/config/openbao.hcl:/openbao/config/openbao.hcl:ro
+      - openbao_data:/openbao/file
+    healthcheck:
+      # `bao status` exits 0 only when initialized and unsealed (2 when sealed).
+      test: ["CMD", "bao", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    networks:
+      - assetflow_net
+
+  postgres-secrets:
+    <<: *openbao-agent
+    command: ["agent", "-config=/openbao/agent/postgres-secrets.hcl"]
+    secrets:
+      - openbao_ca
+      - postgres_role_id
+      - postgres_secret_id
+    volumes:
+      - ./openbao/agent/postgres-secrets.hcl:/openbao/agent/postgres-secrets.hcl:ro
+      - postgres_secrets:/rendered
+    healthcheck:
+      test: ["CMD", "test", "-s", "/rendered/postgres-superuser-password"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  zitadel-secrets:
+    <<: *openbao-agent
+    command: ["agent", "-config=/openbao/agent/zitadel-secrets.hcl"]
+    secrets:
+      - openbao_ca
+      - zitadel_role_id
+      - zitadel_secret_id
+    volumes:
+      - ./openbao/agent/zitadel-secrets.hcl:/openbao/agent/zitadel-secrets.hcl:ro
+      - zitadel_secrets:/rendered
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /rendered/masterkey && test -s /rendered/zitadel-secrets.yaml && test -s /rendered/zitadel-db-admin-password && test -s /rendered/zitadel-steps-secrets.yaml"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  # ---------------------------------------------------------------- AssetFlow database
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: assetflow
+      POSTGRES_PASSWORD_FILE: /run/assetflow-db/postgres-superuser-password
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - postgres_secrets:/run/assetflow-db:ro
+    depends_on:
+      postgres-secrets:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d assetflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - assetflow_net
+
+  # ---------------------------------------------------------------- identity (Zitadel)
+  # Separate database server and users: never shared with AssetFlow's roles.
+  zitadel-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: zitadel
+      POSTGRES_PASSWORD_FILE: /run/zitadel/zitadel-db-admin-password
+    volumes:
+      - zitadel_db_data:/var/lib/postgresql/data
+      - zitadel_secrets:/run/zitadel:ro
+    depends_on:
+      zitadel-secrets:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d zitadel"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - assetflow_net
+
+  # Gives the bootstrap volume to the zitadel user (uid 1000), so Zitadel runs as non-root.
+  zitadel-volume-init:
+    image: postgres:16-alpine
+    restart: "no"
+    user: "0"
+    entrypoint: ["sh", "-c", "chown 1000:1000 /zitadel/bootstrap && chmod 0700 /zitadel/bootstrap"]
+    network_mode: none
+    volumes:
+      - zitadel_bootstrap:/zitadel/bootstrap
+
+  # One service: init + setup (first instance, steps.yaml) + start. Credentials are files
+  # rendered by the zitadel-secrets agent: --masterkeyFile, a second --config (database
+  # passwords) and a second --steps (first-admin password). On the first start Zitadel writes
+  # the key of the first-instance machine user into zitadel_bootstrap; the bootstrap moves it
+  # into OpenBao, rotates it and deletes the file.
+  zitadel:
+    image: ghcr.io/zitadel/zitadel:v4.19.3
+    restart: unless-stopped
+    command:
+      - start-from-init
+      - --masterkeyFile
+      - /run/zitadel/masterkey
+      # "disabled" on localhost; "external" behind the TLS reverse proxy (with ZITADEL_EXTERNALSECURE=true).
+      - --tlsMode
+      - ${ZITADEL_TLS_MODE:-disabled}
+      - --config
+      - /zitadel/config.yaml
+      - --config
+      - /run/zitadel/zitadel-secrets.yaml
+      - --steps
+      - /zitadel/steps.yaml
+      - --steps
+      - /run/zitadel/zitadel-steps-secrets.yaml
+    environment:
+      <<: *zitadel-external
+    ports:
+      - "${ZITADEL_EXTERNALPORT:-8081}:8080"
+    volumes:
+      - ./zitadel/config.yaml:/zitadel/config.yaml:ro
+      - ./zitadel/steps.yaml:/zitadel/steps.yaml:ro
+      - zitadel_secrets:/run/zitadel:ro
+      - zitadel_bootstrap:/zitadel/bootstrap
+    depends_on:
+      zitadel-secrets:
+        condition: service_healthy
+      zitadel-db:
+        condition: service_healthy
+      zitadel-volume-init:
+        condition: service_completed_successfully
+    healthcheck:
+      # Distroless image: the built-in readiness command (as upstream). It reads the config
+      # files, not --tlsMode, so config.yaml keeps TLS.Enabled false.
+      test: ["CMD", "/app/zitadel", "ready", "--config", "/zitadel/config.yaml"]
+      interval: 10s
+      timeout: 30s
+      retries: 30
+      start_period: 30s
+    networks:
+      - assetflow_net
+
+  # One-off (make zitadel-apply, scripts/bootstrap.sh): ASSETFLOW_ENV=production, results to
+  # OpenBao only. BAO_TOKEN (operator token) is passed through from the operator's shell for
+  # this run; the container is removed afterwards.
+  zitadel-bootstrap:
+    profiles: [bootstrap]
+    image: assetflow-bootstrap:local
+    build:
+      context: ..
+      dockerfile: deploy/bootstrap/Dockerfile
+    restart: "no"
+    environment:
+      <<: *zitadel-external
+      ASSETFLOW_ENV: production
+      ZITADEL_BOOTSTRAP_URL: http://zitadel:8080
+      APP_URL: ${APP_URL:-http://localhost:5173}
+      API_URL: ${API_URL:-http://localhost:8080}
+      BAO_ADDR: https://openbao:8200
+      BAO_CACERT: /run/secrets/openbao_ca
+      BAO_TOKEN:
+    secrets:
+      - openbao_ca
+    volumes:
+      - ../config:/workspace/config:ro
+      - zitadel_bootstrap:/zitadel/bootstrap
+    depends_on:
+      zitadel:
+        condition: service_healthy
+    networks:
+      - assetflow_net
+
+  # ---------------------------------------------------------------- AssetFlow
+  api:
+    image: assetflow-api:latest
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${API_HOST_PORT:-8080}:8080"
+    environment:
+      ASSETFLOW_ENV: ${ASSETFLOW_ENV:-production}
+      ASSETFLOW_SECRETS_PROVIDER: openbao
+      # Locations only; the values are mounted files.
+      BAO_ADDR: https://openbao:8200
+      BAO_CACERT: /run/secrets/openbao_ca
+      BAO_ROLE_ID_FILE: /run/secrets/api_role_id
+      BAO_SECRET_ID_FILE: /run/secrets/api_secret_id
+    secrets:
+      - openbao_ca
+      - api_role_id
+      - api_secret_id
+    volumes:
+      - ../config:/app/config:ro
+    depends_on:
+      openbao:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      zitadel:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=4)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - assetflow_net
+
+# AppRole logins and TLS material, written by scripts/openbao-apply.py and
+# deploy/openbao/gen-dev-tls.sh into deploy/.secrets/ (git-ignored, never committed).
+secrets:
+  openbao_ca:
+    file: ./.secrets/openbao-tls/ca.pem
+  openbao_tls_cert:
+    file: ./.secrets/openbao-tls/server.pem
+  openbao_tls_key:
+    file: ./.secrets/openbao-tls/server-key.pem
+  api_role_id:
+    file: ./.secrets/assetflow-api/role_id
+  api_secret_id:
+    file: ./.secrets/assetflow-api/secret_id
+  postgres_role_id:
+    file: ./.secrets/assetflow-postgres/role_id
+  postgres_secret_id:
+    file: ./.secrets/assetflow-postgres/secret_id
+  zitadel_role_id:
+    file: ./.secrets/zitadel/role_id
+  zitadel_secret_id:
+    file: ./.secrets/zitadel/secret_id
+
+volumes:
+  openbao_data:
+  postgres_data:
+  zitadel_db_data:
+  zitadel_bootstrap:
+  # In-memory volumes for rendered credentials: never written to disk.
+  # uid 100 / gid 1000 is the OpenBao agent user; gid 1000 is also the Zitadel user's group.
+  postgres_secrets:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "size=1m,uid=100,gid=1000,mode=0750"
+  zitadel_secrets:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "size=1m,uid=100,gid=1000,mode=0750"
+
+networks:
+  assetflow_net:
+    driver: bridge
+    ipam:
+      config:
+        # AppRole secret ids and tokens are bound to this range (scripts/openbao-apply.py).
+        - subnet: ${ASSETFLOW_NET_CIDR:-172.28.0.0/24}

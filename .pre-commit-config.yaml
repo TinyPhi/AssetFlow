@@ -1,0 +1,63 @@
+# SPDX-FileCopyrightText: 2026 TinyPhi
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# Local hooks (master plan §C12, M1.2-T9): ruff (fix and format), gitleaks, commitlint (commit message),
+# REUSE, domain-terms check, Prettier for the frontend. Every hook version is pinned; Dependabot and
+# `pre-commit autoupdate` bump them. Keep versions in step with backend/uv.lock, frontend/package-lock.json
+# and the Makefile. Never bypass the hooks with --no-verify.
+#
+# Setup:  uvx pre-commit install        (installs the pre-commit and commit-msg hooks)
+# Run:    uvx pre-commit run --all-files
+
+default_install_hook_types: [pre-commit, commit-msg]
+default_stages: [pre-commit]
+minimum_pre_commit_version: "3.2.0"
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.9 # same as ruff in backend/uv.lock
+    hooks:
+      # backend/ uses backend/pyproject.toml; scripts/ uses ruff defaults with the project line length.
+      - id: ruff-check
+        # EXE001/EXE002 depend on file modes that differ between Windows and Linux checkouts (Makefile).
+        args: [--fix, --line-length=110, --extend-ignore=EXE001,EXE002]
+        files: ^(backend|scripts)/
+      - id: ruff-format
+        args: [--line-length=110]
+        files: ^(backend|scripts)/
+        types_or: [python, pyi]
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/alessandrojcm/commitlint-pre-commit-hook
+    rev: v9.27.0 # bundles @commitlint/cli 21
+    hooks:
+      - id: commitlint
+        stages: [commit-msg]
+        additional_dependencies: ["@commitlint/config-conventional@21.2.3"]
+
+  - repo: https://github.com/fsfe/reuse-tool
+    rev: v6.2.0
+    hooks:
+      - id: reuse
+
+  - repo: local
+    hooks:
+      - id: prettier
+        name: prettier (frontend)
+        language: node
+        entry: prettier --write --ignore-unknown
+        additional_dependencies: ["prettier@3.9.9"] # same as frontend/package-lock.json
+        files: ^frontend/
+        exclude: ^frontend/(dist/|node_modules/|package-lock\.json$)
+        types: [text]
+
+      - id: check-domain-terms
+        name: check forbidden domain terms
+        language: python
+        entry: python scripts/check-domain-terms.py
+        files: ^(backend/app|frontend/src|config)/
+        pass_filenames: false

@@ -1,0 +1,135 @@
+# SPDX-FileCopyrightText: 2026 TinyPhi
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# ==============================================================================
+# GitHub Labels Configuration (§B12.7)
+# Applied via GitHub action or CLI when remote is synchronized.
+# ==============================================================================
+
+# Issue & PR Types
+- name: "type/bug"
+  color: "d73a4a"
+  description: "Something is not working as expected"
+
+- name: "type/feature"
+  color: "a2eeef"
+  description: "New feature or capability request"
+
+- name: "type/provider"
+  color: "1d76db"
+  description: "Provider integration (auth, secrets, telemetry, events)"
+
+- name: "type/channel"
+  color: "0052cc"
+  description: "Outbound notification channel plugin"
+
+- name: "type/domain-config"
+  color: "bfdadc"
+  description: "Industry domain template configuration"
+
+- name: "type/docs"
+  color: "0075ca"
+  description: "Improvements or additions to documentation"
+
+- name: "type/refactor"
+  color: "cfd3d7"
+  description: "Code change that neither fixes a bug nor adds a feature"
+
+- name: "type/security"
+  color: "b60205"
+  description: "Security fix or enhancement"
+
+# Architectural Areas
+- name: "area/backend"
+  color: "fbca04"
+  description: "FastAPI, core engine, service, or repository code"
+
+- name: "area/frontend"
+  color: "61dafb"
+  description: "React 19 SPA, UI components, or design tokens"
+
+- name: "area/database"
+  color: "336791"
+  description: "PostgreSQL schema, RLS policies, or migrations"
+
+- name: "area/auth"
+  color: "ff69b4"
+  description: "Identity, Zitadel OIDC, sessions, or role grants"
+
+- name: "area/secrets"
+  color: "4b0082"
+  description: "OpenBao integration, transit encryption, or credentials"
+
+- name: "area/notifications"
+  color: "f9d0c4"
+  description: "Notification worker, channels, or delivery logs"
+
+- name: "area/assets"
+  color: "0e8a16"
+  description: "Asset management module, QR, custody, or categories"
+
+- name: "area/maintenance"
+  color: "d93f0b"
+  description: "Work orders, schedules, SLA tracking, or inspections"
+
+- name: "area/devops"
+  color: "5319e7"
+  description: "Docker Compose profiles, CI/CD, or deployment tooling"
+
+- name: "area/docs"
+  color: "0e8a16"
+  description: "Architecture decisions, user guides, or operations runbooks"
+
+# Triage & Priority
+- name: "priority/critical"
+  color: "b60205"
+  description: "Data loss, security compromise, or major outage"
+
+- name: "priority/high"
+  color: "d93f0b"
+  description: "Severe disruption to primary functionality"
+
+- name: "priority/medium"
+  color: "fbca04"
+  description: "Standard defect or feature priority"
+
+- name: "priority/low"
+  color: "0e8a16"
+  description: "Minor annoyance or cosmetic polish"
+
+# Community & Workflow
+- name: "accepted"
+  color: "0e8a16"
+  description: "Proposed work approved by maintainers for implementation"
+
+- name: "good first issue"
+  color: "7057ff"
+  description: "Good for newcomers; isolated scope and well-defined"
+
+- name: "help wanted"
+  color: "008672"
+  description: "Extra attention or community contribution needed"
+
+- name: "needs-spec"
+  color: "e99695"
+  description: "Requires a technical specification before implementation"
+
+- name: "needs-adr"
+  color: "e99695"
+  description: "Requires an Architecture Decision Record (ADR)"
+
+- name: "security"
+  color: "b60205"
+  description: "Security-sensitive review required"
+
+- name: "breaking-change"
+  color: "d93f0b"
+  description: "Changes API, schema, or configuration backward compatibility"
+
+- name: "release-blocker"
+  color: "b60205"
+  description: "Must be resolved before the current milestone release"
+
+- name: "1.x-backlog"
+  color: "cccccc"
+  description: "Deferred to post-1.0 milestone releases"

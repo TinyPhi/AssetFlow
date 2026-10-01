@@ -1,0 +1,54 @@
+# Claude Code loop state (gate artifacts, bypass log)
+.claude/state/
+.claude/settings.local.json
+
+# Secrets and environment (never committed; production secrets live in OpenBao)
+.env
+.env.*
+!.env.example
+# Local development secrets and Zitadel bootstrap results (scripts/bootstrap.sh, setup.bat)
+.env.local
+.env.local.tmp
+# First-instance credentials if a Zitadel bootstrap key or PAT is ever copied out of its volume
+bootstrap-key.json
+*.pat
+.secrets/
+*.pem
+*.key
+*.p12
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.hypothesis/
+build/
+dist/
+
+# Node / frontend
+node_modules/
+frontend/dist/
+frontend/coverage/
+*.tsbuildinfo
+npm-debug.log*
+.vite/
+
+# Database dumps
+*.dump
+*.sql.gz
+
+# OS and editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

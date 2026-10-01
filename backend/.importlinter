@@ -1,0 +1,114 @@
+# SPDX-FileCopyrightText: 2026 TinyPhi
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# Architecture boundary contracts (master plan §B4.2, layout §B4.3).
+# Docs: https://import-linter.readthedocs.io/en/stable/contract_types.html
+
+[importlinter]
+root_packages =
+    app
+# Needed so the vendor-SDK contract can name external packages.
+include_external_packages = True
+
+# Higher layers may import lower layers, never the reverse.
+# Engines sit below modules: they know nothing about specific modules (§B4.2 rule 5).
+[importlinter:contract:layering]
+name = Layering (api > modules > engines > channels > providers > core)
+type = layers
+layers =
+    app.api
+    app.modules
+    app.engines
+    app.channels
+    app.providers
+    app.core
+
+# A module never imports another module's repository; it goes through that
+# module's service or events (§B4.2 rule 2). The api layer (routers, HTTP only)
+# never imports a repository either. Missing modules are allowed while the
+# skeleton has no repository.py yet.
+
+[importlinter:contract:repo-organization]
+name = organization.repository is private to the organization module
+type = forbidden
+source_modules =
+    app.api
+    app.modules.assets
+    app.modules.maintenance
+    app.modules.notifications
+    app.modules.audit
+forbidden_modules =
+    app.modules.organization.repository
+# Calls through the owning module's service are allowed (§B4.2 rule 2).
+allow_indirect_imports = True
+
+[importlinter:contract:repo-assets]
+name = assets.repository is private to the assets module
+type = forbidden
+source_modules =
+    app.api
+    app.modules.organization
+    app.modules.maintenance
+    app.modules.notifications
+    app.modules.audit
+forbidden_modules =
+    app.modules.assets.repository
+# Calls through the owning module's service are allowed (§B4.2 rule 2).
+allow_indirect_imports = True
+
+[importlinter:contract:repo-maintenance]
+name = maintenance.repository is private to the maintenance module
+type = forbidden
+source_modules =
+    app.api
+    app.modules.organization
+    app.modules.assets
+    app.modules.notifications
+    app.modules.audit
+forbidden_modules =
+    app.modules.maintenance.repository
+# Calls through the owning module's service are allowed (§B4.2 rule 2).
+allow_indirect_imports = True
+
+[importlinter:contract:repo-notifications]
+name = notifications.repository is private to the notifications module
+type = forbidden
+source_modules =
+    app.api
+    app.modules.organization
+    app.modules.assets
+    app.modules.maintenance
+    app.modules.audit
+forbidden_modules =
+    app.modules.notifications.repository
+# Calls through the owning module's service are allowed (§B4.2 rule 2).
+allow_indirect_imports = True
+
+[importlinter:contract:repo-audit]
+name = audit.repository is private to the audit module
+type = forbidden
+source_modules =
+    app.api
+    app.modules.organization
+    app.modules.assets
+    app.modules.maintenance
+    app.modules.notifications
+forbidden_modules =
+    app.modules.audit.repository
+# Calls through the owning module's service are allowed (§B4.2 rule 2).
+allow_indirect_imports = True
+
+# Modules, engines and core never import vendor SDKs; only providers (and
+# channel connectors) wrap them behind interfaces (§B4.2 rule 3).
+[importlinter:contract:vendor-sdks]
+name = No vendor SDKs outside providers and channels
+type = forbidden
+source_modules =
+    app.modules
+    app.engines
+    app.core
+forbidden_modules =
+    jwt
+    hvac
+    openbao
+    opentelemetry
