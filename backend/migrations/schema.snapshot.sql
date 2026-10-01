@@ -6,6 +6,10 @@ CREATE SCHEMA platform;
 
 ALTER SCHEMA platform OWNER TO assetflow_migrator;
 
+CREATE EXTENSION IF NOT EXISTS ltree WITH SCHEMA public;
+
+COMMENT ON EXTENSION ltree IS 'data type for hierarchical tree-like structures';
+
 CREATE FUNCTION platform.resolve_organization(p_idp_organization_id text) RETURNS TABLE(id uuid, status text)
     LANGUAGE sql STABLE SECURITY DEFINER
     SET search_path TO 'pg_catalog', 'pg_temp'
@@ -16,6 +20,47 @@ CREATE FUNCTION platform.resolve_organization(p_idp_organization_id text) RETURN
 $$;
 
 ALTER FUNCTION platform.resolve_organization(p_idp_organization_id text) OWNER TO assetflow_resolver;
+
+CREATE TABLE public.locations (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    parent_id uuid,
+    path public.ltree NOT NULL,
+    type text NOT NULL,
+    code text NOT NULL,
+    name text NOT NULL,
+    address jsonb DEFAULT '{}'::jsonb NOT NULL,
+    version integer DEFAULT 1 NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_locations__address_object CHECK ((jsonb_typeof(address) = 'object'::text)),
+    CONSTRAINT ck_locations__version CHECK ((version >= 1))
+);
+
+ALTER TABLE ONLY public.locations FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.locations OWNER TO assetflow_migrator;
+
+CREATE TABLE public.org_units (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    parent_id uuid,
+    path public.ltree NOT NULL,
+    type text NOT NULL,
+    code text NOT NULL,
+    name text NOT NULL,
+    manager_member_id uuid,
+    status text DEFAULT 'active'::text NOT NULL,
+    version integer DEFAULT 1 NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_org_units__status CHECK ((status = ANY (ARRAY['active'::text, 'archived'::text]))),
+    CONSTRAINT ck_org_units__version CHECK ((version >= 1))
+);
+
+ALTER TABLE ONLY public.org_units FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.org_units OWNER TO assetflow_migrator;
 
 CREATE TABLE public.organizations (
     id uuid NOT NULL,
@@ -37,6 +82,51 @@ ALTER TABLE ONLY public.organizations FORCE ROW LEVEL SECURITY;
 
 ALTER TABLE public.organizations OWNER TO assetflow_migrator;
 
+CREATE TABLE public.teams (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    code text NOT NULL,
+    name text NOT NULL,
+    owning_org_unit_id uuid,
+    type text NOT NULL,
+    skills text[] DEFAULT '{}'::text[] NOT NULL,
+    working_calendar_id uuid,
+    status text DEFAULT 'active'::text NOT NULL,
+    version integer DEFAULT 1 NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_teams__status CHECK ((status = ANY (ARRAY['active'::text, 'archived'::text]))),
+    CONSTRAINT ck_teams__version CHECK ((version >= 1))
+);
+
+ALTER TABLE ONLY public.teams FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.teams OWNER TO assetflow_migrator;
+
+CREATE TABLE public.working_calendars (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    name text NOT NULL,
+    timezone text DEFAULT 'UTC'::text NOT NULL,
+    weekly_hours jsonb DEFAULT '{}'::jsonb NOT NULL,
+    holidays date[] DEFAULT '{}'::date[] NOT NULL,
+    version integer DEFAULT 1 NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_working_calendars__version CHECK ((version >= 1)),
+    CONSTRAINT ck_working_calendars__weekly_hours_object CHECK ((jsonb_typeof(weekly_hours) = 'object'::text))
+);
+
+ALTER TABLE ONLY public.working_calendars FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.working_calendars OWNER TO assetflow_migrator;
+
+ALTER TABLE ONLY public.locations
+    ADD CONSTRAINT locations_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.org_units
+    ADD CONSTRAINT org_units_pkey PRIMARY KEY (id);
+
 ALTER TABLE ONLY public.organizations
     ADD CONSTRAINT organizations_idp_organization_id_key UNIQUE (idp_organization_id);
 
@@ -45,6 +135,98 @@ ALTER TABLE ONLY public.organizations
 
 ALTER TABLE ONLY public.organizations
     ADD CONSTRAINT organizations_slug_key UNIQUE (slug);
+
+ALTER TABLE ONLY public.teams
+    ADD CONSTRAINT teams_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.locations
+    ADD CONSTRAINT uq_locations__org_id_code UNIQUE (organization_id, code);
+
+ALTER TABLE ONLY public.locations
+    ADD CONSTRAINT uq_locations__org_id_id UNIQUE (organization_id, id);
+
+ALTER TABLE ONLY public.org_units
+    ADD CONSTRAINT uq_org_units__org_id_code UNIQUE (organization_id, code);
+
+ALTER TABLE ONLY public.org_units
+    ADD CONSTRAINT uq_org_units__org_id_id UNIQUE (organization_id, id);
+
+ALTER TABLE ONLY public.teams
+    ADD CONSTRAINT uq_teams__org_id_code UNIQUE (organization_id, code);
+
+ALTER TABLE ONLY public.teams
+    ADD CONSTRAINT uq_teams__org_id_id UNIQUE (organization_id, id);
+
+ALTER TABLE ONLY public.working_calendars
+    ADD CONSTRAINT uq_working_calendars__org_id_id UNIQUE (organization_id, id);
+
+ALTER TABLE ONLY public.working_calendars
+    ADD CONSTRAINT uq_working_calendars__org_id_name UNIQUE (organization_id, name);
+
+ALTER TABLE ONLY public.working_calendars
+    ADD CONSTRAINT working_calendars_pkey PRIMARY KEY (id);
+
+CREATE INDEX ix_locations__organization_id ON public.locations USING btree (organization_id);
+
+CREATE INDEX ix_locations__organization_id_parent ON public.locations USING btree (organization_id, parent_id);
+
+CREATE INDEX ix_locations__path_gist ON public.locations USING gist (path);
+
+CREATE INDEX ix_org_units__organization_id ON public.org_units USING btree (organization_id);
+
+CREATE INDEX ix_org_units__organization_id_parent ON public.org_units USING btree (organization_id, parent_id);
+
+CREATE INDEX ix_org_units__path_gist ON public.org_units USING gist (path);
+
+CREATE INDEX ix_teams__organization_id ON public.teams USING btree (organization_id);
+
+CREATE INDEX ix_teams__organization_id_owning_org_unit ON public.teams USING btree (organization_id, owning_org_unit_id);
+
+CREATE INDEX ix_working_calendars__organization_id ON public.working_calendars USING btree (organization_id);
+
+ALTER TABLE ONLY public.locations
+    ADD CONSTRAINT fk_locations__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
+
+ALTER TABLE ONLY public.locations
+    ADD CONSTRAINT fk_locations__parent_id__locations FOREIGN KEY (organization_id, parent_id) REFERENCES public.locations(organization_id, id) ON DELETE RESTRICT;
+
+ALTER TABLE ONLY public.org_units
+    ADD CONSTRAINT fk_org_units__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
+
+ALTER TABLE ONLY public.org_units
+    ADD CONSTRAINT fk_org_units__parent_id__org_units FOREIGN KEY (organization_id, parent_id) REFERENCES public.org_units(organization_id, id) ON DELETE RESTRICT;
+
+ALTER TABLE ONLY public.teams
+    ADD CONSTRAINT fk_teams__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
+
+ALTER TABLE ONLY public.teams
+    ADD CONSTRAINT fk_teams__owning_org_unit_id__org_units FOREIGN KEY (organization_id, owning_org_unit_id) REFERENCES public.org_units(organization_id, id) ON DELETE SET NULL;
+
+ALTER TABLE ONLY public.teams
+    ADD CONSTRAINT fk_teams__working_calendar_id__working_calendars FOREIGN KEY (organization_id, working_calendar_id) REFERENCES public.working_calendars(organization_id, id) ON DELETE SET NULL;
+
+ALTER TABLE ONLY public.working_calendars
+    ADD CONSTRAINT fk_working_calendars__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
+
+ALTER TABLE public.locations ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY locations_delete ON public.locations FOR DELETE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY locations_insert ON public.locations FOR INSERT WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY locations_select ON public.locations FOR SELECT USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY locations_update ON public.locations FOR UPDATE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+ALTER TABLE public.org_units ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY org_units_delete ON public.org_units FOR DELETE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY org_units_insert ON public.org_units FOR INSERT WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY org_units_select ON public.org_units FOR SELECT USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY org_units_update ON public.org_units FOR UPDATE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
 
 ALTER TABLE public.organizations ENABLE ROW LEVEL SECURITY;
 
@@ -58,6 +240,26 @@ CREATE POLICY organizations_select ON public.organizations FOR SELECT USING ((id
 
 CREATE POLICY organizations_update ON public.organizations FOR UPDATE USING ((id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid)) WITH CHECK ((id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
 
+ALTER TABLE public.teams ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY teams_delete ON public.teams FOR DELETE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY teams_insert ON public.teams FOR INSERT WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY teams_select ON public.teams FOR SELECT USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY teams_update ON public.teams FOR UPDATE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+ALTER TABLE public.working_calendars ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY working_calendars_delete ON public.working_calendars FOR DELETE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY working_calendars_insert ON public.working_calendars FOR INSERT WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY working_calendars_select ON public.working_calendars FOR SELECT USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY working_calendars_update ON public.working_calendars FOR UPDATE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
 GRANT USAGE ON SCHEMA platform TO assetflow_api;
 
 GRANT ALL ON SCHEMA public TO assetflow_migrator;
@@ -69,6 +271,14 @@ GRANT USAGE ON SCHEMA public TO assetflow_resolver;
 REVOKE ALL ON FUNCTION platform.resolve_organization(p_idp_organization_id text) FROM PUBLIC;
 GRANT ALL ON FUNCTION platform.resolve_organization(p_idp_organization_id text) TO assetflow_api;
 
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.locations TO assetflow_api;
+GRANT SELECT ON TABLE public.locations TO assetflow_worker;
+GRANT SELECT ON TABLE public.locations TO assetflow_readonly;
+
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.org_units TO assetflow_api;
+GRANT SELECT ON TABLE public.org_units TO assetflow_worker;
+GRANT SELECT ON TABLE public.org_units TO assetflow_readonly;
+
 GRANT SELECT ON TABLE public.organizations TO assetflow_api;
 
 GRANT SELECT(id) ON TABLE public.organizations TO assetflow_resolver;
@@ -76,4 +286,12 @@ GRANT SELECT(id) ON TABLE public.organizations TO assetflow_resolver;
 GRANT SELECT(idp_organization_id) ON TABLE public.organizations TO assetflow_resolver;
 
 GRANT SELECT(status) ON TABLE public.organizations TO assetflow_resolver;
+
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.teams TO assetflow_api;
+GRANT SELECT ON TABLE public.teams TO assetflow_worker;
+GRANT SELECT ON TABLE public.teams TO assetflow_readonly;
+
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.working_calendars TO assetflow_api;
+GRANT SELECT ON TABLE public.working_calendars TO assetflow_worker;
+GRANT SELECT ON TABLE public.working_calendars TO assetflow_readonly;
 
