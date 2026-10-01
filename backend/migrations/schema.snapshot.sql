@@ -31,14 +31,38 @@ CREATE TABLE public.audit_events (
     role_used text,
     scope_type text,
     scope_id uuid,
+    request_id text,
+    client_id text,
+    before_state jsonb,
+    after_state jsonb,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+)
+PARTITION BY RANGE (created_at);
+
+ALTER TABLE ONLY public.audit_events FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.audit_events OWNER TO assetflow_migrator;
+
+CREATE TABLE public.audit_events_default (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    actor_member_id uuid,
+    action text NOT NULL,
+    entity_type text NOT NULL,
+    entity_id uuid NOT NULL,
+    role_used text,
+    scope_type text,
+    scope_id uuid,
+    request_id text,
+    client_id text,
     before_state jsonb,
     after_state jsonb,
     created_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
-ALTER TABLE ONLY public.audit_events FORCE ROW LEVEL SECURITY;
+ALTER TABLE ONLY public.audit_events_default FORCE ROW LEVEL SECURITY;
 
-ALTER TABLE public.audit_events OWNER TO assetflow_migrator;
+ALTER TABLE public.audit_events_default OWNER TO assetflow_migrator;
 
 CREATE TABLE public.locations (
     id uuid NOT NULL,
@@ -269,8 +293,19 @@ ALTER TABLE ONLY public.working_calendars FORCE ROW LEVEL SECURITY;
 
 ALTER TABLE public.working_calendars OWNER TO assetflow_migrator;
 
+ALTER TABLE ONLY public.audit_events ATTACH PARTITION public.audit_events_default DEFAULT;
+
 ALTER TABLE ONLY public.audit_events
-    ADD CONSTRAINT audit_events_pkey PRIMARY KEY (id);
+    ADD CONSTRAINT uq_audit_events__org_id_id UNIQUE (organization_id, id, created_at);
+
+ALTER TABLE ONLY public.audit_events_default
+    ADD CONSTRAINT audit_events_default_organization_id_id_created_at_key UNIQUE (organization_id, id, created_at);
+
+ALTER TABLE ONLY public.audit_events
+    ADD CONSTRAINT audit_events_pkey PRIMARY KEY (id, created_at);
+
+ALTER TABLE ONLY public.audit_events_default
+    ADD CONSTRAINT audit_events_default_pkey PRIMARY KEY (id, created_at);
 
 ALTER TABLE ONLY public.locations
     ADD CONSTRAINT locations_pkey PRIMARY KEY (id);
@@ -310,9 +345,6 @@ ALTER TABLE ONLY public.team_members
 
 ALTER TABLE ONLY public.teams
     ADD CONSTRAINT teams_pkey PRIMARY KEY (id);
-
-ALTER TABLE ONLY public.audit_events
-    ADD CONSTRAINT uq_audit_events__org_id_id UNIQUE (organization_id, id);
 
 ALTER TABLE ONLY public.locations
     ADD CONSTRAINT uq_locations__org_id_code UNIQUE (organization_id, code);
@@ -380,11 +412,17 @@ ALTER TABLE ONLY public.working_calendars
 ALTER TABLE ONLY public.working_calendars
     ADD CONSTRAINT working_calendars_pkey PRIMARY KEY (id);
 
-CREATE INDEX ix_audit_events__organization_id ON public.audit_events USING btree (organization_id);
+CREATE INDEX ix_audit_events__organization_id_created ON ONLY public.audit_events USING btree (organization_id, created_at);
 
-CREATE INDEX ix_audit_events__organization_id_created ON public.audit_events USING btree (organization_id, created_at);
+CREATE INDEX audit_events_default_organization_id_created_at_idx ON public.audit_events_default USING btree (organization_id, created_at);
 
-CREATE INDEX ix_audit_events__organization_id_entity ON public.audit_events USING btree (organization_id, entity_type, entity_id);
+CREATE INDEX ix_audit_events__organization_id_entity ON ONLY public.audit_events USING btree (organization_id, entity_type, entity_id);
+
+CREATE INDEX audit_events_default_organization_id_entity_type_entity_id_idx ON public.audit_events_default USING btree (organization_id, entity_type, entity_id);
+
+CREATE INDEX ix_audit_events__organization_id ON ONLY public.audit_events USING btree (organization_id);
+
+CREATE INDEX audit_events_default_organization_id_idx ON public.audit_events_default USING btree (organization_id);
 
 CREATE INDEX ix_locations__organization_id ON public.locations USING btree (organization_id);
 
@@ -440,10 +478,17 @@ CREATE INDEX ix_teams__organization_id_owning_org_unit ON public.teams USING btr
 
 CREATE INDEX ix_working_calendars__organization_id ON public.working_calendars USING btree (organization_id);
 
-ALTER TABLE ONLY public.audit_events
-    ADD CONSTRAINT fk_audit_events__actor_member_id__members FOREIGN KEY (organization_id, actor_member_id) REFERENCES public.members(organization_id, id) ON DELETE SET NULL;
+ALTER INDEX public.ix_audit_events__organization_id_created ATTACH PARTITION public.audit_events_default_organization_id_created_at_idx;
 
-ALTER TABLE ONLY public.audit_events
+ALTER INDEX public.ix_audit_events__organization_id_entity ATTACH PARTITION public.audit_events_default_organization_id_entity_type_entity_id_idx;
+
+ALTER INDEX public.uq_audit_events__org_id_id ATTACH PARTITION public.audit_events_default_organization_id_id_created_at_key;
+
+ALTER INDEX public.ix_audit_events__organization_id ATTACH PARTITION public.audit_events_default_organization_id_idx;
+
+ALTER INDEX public.audit_events_pkey ATTACH PARTITION public.audit_events_default_pkey;
+
+ALTER TABLE public.audit_events
     ADD CONSTRAINT fk_audit_events__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
 
 ALTER TABLE ONLY public.locations
@@ -522,6 +567,8 @@ ALTER TABLE ONLY public.working_calendars
     ADD CONSTRAINT fk_working_calendars__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
 
 ALTER TABLE public.audit_events ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE public.audit_events_default ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY audit_events_delete ON public.audit_events FOR DELETE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
 

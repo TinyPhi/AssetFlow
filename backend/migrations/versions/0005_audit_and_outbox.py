@@ -42,18 +42,27 @@ CREATE TABLE public.audit_events (
     role_used text NULL,
     scope_type text NULL,
     scope_id uuid NULL,
+    request_id text NULL,
+    client_id text NULL,
     before_state jsonb NULL,
     after_state jsonb NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT audit_events_pkey PRIMARY KEY (id),
-    CONSTRAINT uq_audit_events__org_id_id UNIQUE (organization_id, id),
+    CONSTRAINT audit_events_pkey PRIMARY KEY (id, created_at),
+    CONSTRAINT uq_audit_events__org_id_id UNIQUE (organization_id, id, created_at),
     CONSTRAINT fk_audit_events__organization_id__organizations
-        FOREIGN KEY (organization_id) REFERENCES public.organizations (id) ON DELETE RESTRICT,
-    CONSTRAINT fk_audit_events__actor_member_id__members
-        FOREIGN KEY (organization_id, actor_member_id)
-            REFERENCES public.members (organization_id, id) ON DELETE SET NULL
-)
+        FOREIGN KEY (organization_id) REFERENCES public.organizations (id) ON DELETE RESTRICT
+) PARTITION BY RANGE (created_at)
 """)
+    # No foreign key to members: actor_member_id is a pseudonymous id that must survive the member,
+    # and an ON DELETE action would rewrite insert-only rows (§B10, §1590).
+    # Monthly partitions are created ahead by the audit housekeeping (P5-08); rows without a
+    # monthly partition land in DEFAULT, which the housekeeping keeps empty and alerts on.
+    op.execute("CREATE TABLE public.audit_events_default PARTITION OF public.audit_events DEFAULT")
+    op.execute("ALTER TABLE public.audit_events_default OWNER TO assetflow_migrator")
+    # Reads and writes go through audit_events and its policies; direct access to a partition has
+    # no policy and no grant, so it is denied (fail-closed).
+    op.execute("ALTER TABLE public.audit_events_default ENABLE ROW LEVEL SECURITY")
+    op.execute("ALTER TABLE public.audit_events_default FORCE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE public.audit_events OWNER TO assetflow_migrator")
     op.execute("ALTER TABLE public.audit_events ENABLE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE public.audit_events FORCE ROW LEVEL SECURITY")
