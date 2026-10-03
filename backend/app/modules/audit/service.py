@@ -67,7 +67,8 @@ async def record_audit_event(
     ev_id, ts = event_id or uuid7(), created_at or datetime.now(UTC)
     coll = dict(personal_values or {})
     cb, ca = redact_personal_fields(before_state, coll), redact_personal_fields(after_state, coll)
-    jb, ja = (json.dumps(cb) if cb is not None else None), (json.dumps(ca) if ca is not None else None)
+    jb = json.dumps(cb, default=str) if cb is not None else None
+    ja = json.dumps(ca, default=str) if ca is not None else None
     await conn.execute(
         "INSERT INTO public.audit_events (id, organization_id, actor_member_id, action, entity_type, "
         "entity_id, role_used, scope_type, scope_id, request_id, client_id, before_state, after_state, "
