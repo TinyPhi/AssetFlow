@@ -14,6 +14,7 @@ from app.core.db import Connection, platform_transaction, worker_context
 from app.core.ids import uuid7
 from workers.outbox_dispatcher import DispatcherOptions, run_once
 from workers.subscribers import OutboxEvent, SubscriberRegistry
+from workers.sweep import for_each_active_organization
 
 OPTIONS = DispatcherOptions(batch_size=10, reclaim_after_seconds=300, max_attempts=2)
 
@@ -161,4 +162,42 @@ async def test_subscriber_for_org_a_cannot_touch_org_b(
         await admin.execute(
             "DELETE FROM public.processed_events WHERE consumer_name IN ('b-only', 'cross-reader')"
         )
+        await admin.close()
+
+
+async def test_sweep_sets_the_context_and_without_it_reads_zero_rows(
+    make_pool: PoolFactory, isolation_db: IsolationDb
+) -> None:
+    admin = await asyncpg.connect(isolation_db.admin_dsn)
+    marker = uuid7()
+    try:
+        await admin.execute(
+            "INSERT INTO public.processed_events (id, organization_id, consumer_name, event_id) "
+            "VALUES ($1, $2, 'sweep-probe', $3)",
+            uuid7(),
+            isolation_db.org_a,
+            marker,
+        )
+        worker = await make_pool("worker")
+        seen: dict[uuid.UUID, int] = {}
+
+        async def count_marker(conn: Connection, organization_id: uuid.UUID) -> None:
+            seen[organization_id] = await conn.fetchval(
+                "SELECT count(*) FROM public.processed_events WHERE event_id = $1", marker
+            )
+
+        await for_each_active_organization(worker, count_marker)
+        assert seen[isolation_db.org_a] == 1
+        assert seen[isolation_db.org_b] == 0  # the context was org_b's own, not org_a's row leaking
+
+        # Without the sweep's per-organization context, the same query under no context sees nothing.
+        async with platform_transaction(worker) as conn:
+            assert (
+                await conn.fetchval(
+                    "SELECT count(*) FROM public.processed_events WHERE event_id = $1", marker
+                )
+                == 0
+            )
+    finally:
+        await admin.execute("DELETE FROM public.processed_events WHERE consumer_name = 'sweep-probe'")
         await admin.close()
