@@ -28,6 +28,7 @@ SecretResolver = Callable[[str], Awaitable[str]]
 # Lazily evaluated aliases: asyncpg's classes are generic only in asyncpg-stubs, not at runtime.
 type Pool = asyncpg.Pool[asyncpg.Record]
 type Connection = PoolConnectionProxy[asyncpg.Record]
+type DirectConnection = asyncpg.Connection[asyncpg.Record]
 
 SECRET_REF_PREFIX = "secret://"  # noqa: S105 - a URI scheme, not a password
 
@@ -179,6 +180,27 @@ async def _apply_transaction_settings(pool: Pool, conn: Connection, organization
         await conn.execute("SELECT set_config('app.organization_id', $1, true)", organization_id)
 
 
+async def connect_direct(
+    cfg: DatabaseSettings,
+    role: DbRole,
+    resolve_secret: SecretResolver,
+    *,
+    host: str | None = None,
+    port: int | None = None,
+) -> DirectConnection:
+    """Open one dedicated connection (for LISTEN), bypassing PgBouncer when `host`/`port` are given."""
+    role_cfg = _role_settings(cfg, role)
+    password = await _resolve_password(role_cfg.password, role, resolve_secret)
+    return await asyncpg.connect(
+        host=host or cfg.host,
+        port=port or cfg.port,
+        database=cfg.name,
+        user=role_cfg.user,
+        password=password,
+        server_settings={"application_name": f"assetflow-{role}-listen"},
+    )
+
+
 @asynccontextmanager
 async def tenant_transaction(pool: Pool, organization_id: UUID) -> AsyncGenerator[Connection]:
     """Run a block in one transaction stamped with the organization context.
@@ -190,6 +212,28 @@ async def tenant_transaction(pool: Pool, organization_id: UUID) -> AsyncGenerato
         raise TypeError(f"organization_id must be a UUID, not {type(organization_id).__name__}")
     async with pool.acquire() as conn, conn.transaction():
         await _apply_transaction_settings(pool, conn, str(organization_id))
+        yield conn
+
+
+@asynccontextmanager
+async def worker_context(pool: Pool, organization_id: UUID) -> AsyncGenerator[Connection]:
+    """Run worker code for one organization in one transaction (§B9.3, §C5.4 rule 3).
+
+    Same stamp as `tenant_transaction`; the name marks the call site as a worker job. Every item a
+    worker handles runs under the organization that owns it, so RLS applies exactly as for the API.
+    """
+    async with tenant_transaction(pool, organization_id) as conn:
+        yield conn
+
+
+@asynccontextmanager
+async def worker_claim_transaction(pool: Pool) -> AsyncGenerator[Connection]:
+    """Run the worker's cross-organization queue claim in one short transaction (§B9.3).
+
+    No organization is set. Only `outbox` has worker claim policies, so every other tenant table
+    reads as empty here; use it for claiming and recording results on `outbox` and nothing else.
+    """
+    async with platform_transaction(pool) as conn:
         yield conn
 
 
