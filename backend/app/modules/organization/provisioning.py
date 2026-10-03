@@ -74,11 +74,15 @@ async def resolve_member_context(
         raise ProvisioningDeniedError("no existing member found while the organization is suspended")
 
     grants = await _load_grants(conn, organization_id, member["id"])
+    team_ids = await _load_team_ids(conn, organization_id, member["id"])
+    primary_org_unit_path = await _load_primary_org_unit_path(conn, organization_id, member["id"])
     return MemberContext(
         member_id=str(member["id"]),
         organization_id=str(organization_id),
         is_suspended=member["status"] == "suspended",
         grants=grants,
+        team_ids=team_ids,
+        primary_org_unit_path=primary_org_unit_path,
     )
 
 
@@ -176,9 +180,16 @@ async def _provision_new_member(
 
 
 async def _load_grants(conn: DbConn, organization_id: UUID, member_id: UUID) -> tuple[RoleGrant, ...]:
+    """A `scope_type = 'org_unit'` grant's `scope_id` is the org unit's id; resolve its current
+    path here (not stored on the grant row) so `ScopeResolver` can match it against a resource's
+    `owner_org_unit_path`, including for a descendant after the unit has moved (P5-04)."""
     rows = await conn.fetch(
-        "SELECT id, role_key, scope_type, scope_id, source, expires_at FROM public.role_grants "
-        "WHERE organization_id = $1 AND member_id = $2",
+        "SELECT rg.id, rg.role_key, rg.scope_type, rg.scope_id, rg.source, rg.expires_at,"
+        " ou.path AS org_unit_path"
+        " FROM public.role_grants AS rg"
+        " LEFT JOIN public.org_units AS ou"
+        "   ON ou.organization_id = rg.organization_id AND ou.id = rg.scope_id AND rg.scope_type = 'org_unit'"
+        " WHERE rg.organization_id = $1 AND rg.member_id = $2",
         organization_id,
         member_id,
     )
@@ -189,8 +200,31 @@ async def _load_grants(conn: DbConn, organization_id: UUID, member_id: UUID) -> 
             role_key=r["role_key"],
             scope_type=ScopeType(r["scope_type"]),
             scope_id=str(r["scope_id"]) if r["scope_id"] is not None else None,
+            org_unit_path=str(r["org_unit_path"]) if r["org_unit_path"] is not None else None,
             source=r["source"],
             expires_at=r["expires_at"],
         )
         for r in rows
     )
+
+
+async def _load_team_ids(conn: DbConn, organization_id: UUID, member_id: UUID) -> tuple[str, ...]:
+    rows = await conn.fetch(
+        "SELECT team_id FROM public.team_members WHERE organization_id = $1 AND member_id = $2"
+        " AND (valid_to IS NULL OR valid_to > now())",
+        organization_id,
+        member_id,
+    )
+    return tuple(str(r["team_id"]) for r in rows)
+
+
+async def _load_primary_org_unit_path(conn: DbConn, organization_id: UUID, member_id: UUID) -> str | None:
+    path = await conn.fetchval(
+        "SELECT ou.path FROM public.members AS m"
+        " JOIN public.org_units AS ou"
+        "   ON ou.organization_id = m.organization_id AND ou.id = m.primary_org_unit_id"
+        " WHERE m.organization_id = $1 AND m.id = $2",
+        organization_id,
+        member_id,
+    )
+    return str(path) if path is not None else None
