@@ -73,6 +73,46 @@ services:
     networks:
       - assetflow_minimal_net
 
+  worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: af-worker
+    labels:
+      com.tinyphi.project: assetflow
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["/app/.venv/bin/python", "-m", "workers.main"]
+    environment:
+      ASSETFLOW_ENV: development
+      ASSETFLOW_CONFIG: /config/assetflow.yaml
+      ASSETFLOW_SECRETS_DIR: /run/secrets
+      ASSETFLOW_DB_HOST: postgres
+      ASSETFLOW_DB_PORT: 5432
+      ASSETFLOW_DB_NAME: ${DATABASE_NAME:-assetflow}
+    # Only the worker's own database password is mounted; no other secret reaches this container.
+    volumes:
+      - ../config:/config:ro
+      - ../.secrets/database/worker/password:/run/secrets/database/worker/password:ro
+    read_only: true
+    user: "10001:10001"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "/app/.venv/bin/python", "-m", "workers.main", "--healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - assetflow_minimal_net
+
   web:
     build:
       context: ../frontend
