@@ -28,6 +28,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.api.health import router as health_router
 from app.api.v1.router import router as v1_router
+from app.core.auth_middleware import AuthMiddleware
 from app.core.ids import uuid7_str
 from app.core.problems import (
     ProblemError,
@@ -159,6 +160,7 @@ def create_app(*, bootstrap: Bootstrap | None = None) -> FastAPI:
         lifespan=_make_lifespan(bootstrap or Bootstrap()),
     )
     app.add_middleware(RequestIdMiddleware)
+    app.add_middleware(AuthMiddleware)
 
     app.add_exception_handler(ProblemError, problem_error_handler)
     app.add_exception_handler(RequestValidationError, request_validation_handler)

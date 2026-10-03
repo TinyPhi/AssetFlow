@@ -114,6 +114,11 @@ DEFAULT_PERMISSIONS: frozenset[str] = frozenset(
         "org_unit.update",
         "org_unit.archive",
         "org_unit.read",
+        "location.create",
+        "location.update",
+        "location.archive",
+        "location.delete",
+        "location.read",
         "team.create",
         "team.update",
         "team.archive",
@@ -158,9 +163,11 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
         {
             "asset.*",
             "qr.*",
+            "location.*",
             "audit.read",
             "report.export",
             "org_unit.read",
+            "location.read",
             "team.read",
             "member.read",
         }
@@ -175,6 +182,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "work_request.read",
             "work_order.read",
             "asset.read",
+            "location.read",
             "team.read",
             "member.read",
         }
@@ -184,6 +192,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "work_order.*",
             "work_request.triage",
             "work_request.read",
+            "location.read",
             "team.read",
             "member.read",
             "asset.read",
@@ -194,6 +203,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "work_order.execute",
             "work_order.read",
             "work_request.read",
+            "location.read",
             "asset.read",
             "team.read",
         }
@@ -202,6 +212,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
         {
             "asset.read",
             "asset.acknowledge",
+            "location.read",
             "work_request.create",
             "work_request.read",
             "notification.read",
