@@ -15,9 +15,12 @@ Runs before route handlers. With no ``Authorization`` header the request stays a
    (`app.modules.organization.provisioning`).
 
 The result (`MemberContext`, fail-closed on suspension) is rebuilt from the database on every
-request; nothing about it is cached. A suspended organization is *not* treated as unknown: the
-request proceeds with `MemberContext.is_suspended = True`, so every downstream permission check
-(`ScopeResolver`, already fail-closed on suspension) denies it uniformly.
+request; nothing about it is cached. A suspended organization is *not* treated as unknown for an
+*existing* member: the request proceeds with `MemberContext.is_suspended = True`, so every
+downstream permission check (`ScopeResolver`, already fail-closed on suspension) denies it
+uniformly. A principal with no existing member is refused outright while the organization is
+suspended (no invite is linked, no member is created): provisioning must never grant new standing
+access that would resume, unreviewed, the moment the organization is reactivated.
 """
 
 from __future__ import annotations
@@ -64,7 +67,9 @@ async def _authenticate(scope: Scope, token: str) -> MemberContext:
 
     try:
         async with tenant_transaction(pool, organization_id) as conn:
-            member = await resolve_member_context(conn, organization_id, principal)
+            member = await resolve_member_context(
+                conn, organization_id, principal, allow_provisioning=not is_org_suspended
+            )
     except ProvisioningDeniedError as exc:
         raise UnauthorizedError() from exc
 

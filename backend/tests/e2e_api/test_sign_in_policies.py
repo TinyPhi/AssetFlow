@@ -222,6 +222,30 @@ async def test_suspended_organization_denies_without_looking_unknown(
     assert denied.status_code == 404  # distinct from the 401 an unknown organization gets
 
 
+async def test_suspended_organization_provisions_no_new_member(
+    client: httpx.AsyncClient, make_pool: PoolFactory
+) -> None:
+    """A principal with no existing member must not gain standing access while suspended: it
+    would resume, unreviewed, the moment the organization is reactivated."""
+    pool, migrator_pool = await make_pool("api"), await make_pool("migrator")
+    org_id, idp_org = await _create_org(pool, provisioning="open")
+    async with tenant_transaction(migrator_pool, org_id) as conn:
+        await conn.execute("UPDATE public.organizations SET status = 'suspended' WHERE id = $1", org_id)
+
+    subject = f"sub-{uuid4().hex}"
+    claims = {"sub": subject, "organization_id": idp_org, "roles": ["admin"], "email": "new@e2e.test"}
+    res = await _get_events(client, _token(**claims))
+    assert res.status_code == 401
+
+    async with tenant_transaction(pool, org_id) as conn:
+        count = await conn.fetchval(
+            "SELECT count(*) FROM public.members WHERE organization_id = $1 AND idp_subject = $2",
+            org_id,
+            subject,
+        )
+    assert count == 0
+
+
 async def test_archived_organization_is_rejected_like_an_unknown_token(
     client: httpx.AsyncClient, make_pool: PoolFactory
 ) -> None:

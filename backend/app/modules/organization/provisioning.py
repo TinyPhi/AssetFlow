@@ -47,10 +47,15 @@ async def get_provisioning_policy(conn: DbConn, organization_id: UUID) -> Provis
     return raw if raw in PROVISIONING_POLICIES else DEFAULT_POLICY
 
 
-async def resolve_member_context(conn: DbConn, organization_id: UUID, principal: Principal) -> MemberContext:
+async def resolve_member_context(
+    conn: DbConn, organization_id: UUID, principal: Principal, *, allow_provisioning: bool = True
+) -> MemberContext:
     """Find, link or create the member for `principal` and load its current role grants.
 
-    Raises `ProvisioningDeniedError` when sign-in must be refused.
+    `allow_provisioning=False` (a suspended organization) only looks an existing member up by
+    `idp_subject`: it never links a pending invite or creates a member, so no new standing access
+    is written while the organization is suspended, ready to resume unreviewed the moment it is
+    reactivated. Raises `ProvisioningDeniedError` when sign-in must be refused.
     """
     if principal.is_machine:
         raise ProvisioningDeniedError("machine principals are not organization members")
@@ -60,11 +65,13 @@ async def resolve_member_context(conn: DbConn, organization_id: UUID, principal:
         organization_id,
         principal.subject,
     )
-    if member is None:
+    if member is None and allow_provisioning:
         member = await _link_pending_invite(conn, organization_id, principal)
-    if member is None:
+    if member is None and allow_provisioning:
         policy = await get_provisioning_policy(conn, organization_id)
         member = await _provision_new_member(conn, organization_id, principal, policy)
+    if member is None:
+        raise ProvisioningDeniedError("no existing member found while the organization is suspended")
 
     grants = await _load_grants(conn, organization_id, member["id"])
     return MemberContext(

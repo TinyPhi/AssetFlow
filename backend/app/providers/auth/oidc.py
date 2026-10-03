@@ -189,21 +189,24 @@ class OidcAuthProvider(AuthProvider):
         if not isinstance(claims, dict):
             raise UnauthorizedError("The access token is not valid.")
 
-        # Check expiration
+        # Check expiration; a token with no exp claim at all is rejected, not treated as eternal.
         now = datetime.now(UTC).timestamp()
         exp = claims.get("exp")
-        if exp is not None and isinstance(exp, (int, float)) and exp < now:
+        if not isinstance(exp, (int, float)):
+            raise UnauthorizedError("The access token is not valid.")
+        if exp < now:
             raise UnauthorizedError("The access token has expired.")
 
-        # Verify signature if JWKS keys are configured / available
+        # Verify signature. An empty JWKS (fetch failure, outage) fails closed: verification is
+        # never silently skipped, or any unsigned claim set would be accepted as authentic.
         jwks = await self._get_jwks()
         kid = header.get("kid")
-        if jwks.get("keys"):
-            if kid and not any(k.get("kid") == kid for k in jwks.get("keys", [])):
-                # Unknown kid -> try refresh JWKS once
-                jwks = await self._get_jwks(force_refresh=True)
-            if jwks.get("keys"):
-                self._verify_signature(token, header, jwks)
+        if kid and not any(k.get("kid") == kid for k in jwks.get("keys", [])):
+            # Unknown kid -> try refresh JWKS once
+            jwks = await self._get_jwks(force_refresh=True)
+        if not jwks.get("keys"):
+            raise UnauthorizedError("Unable to verify the access token signature.")
+        self._verify_signature(token, header, jwks)
 
         # Extract subject
         subject = claims.get("sub")
