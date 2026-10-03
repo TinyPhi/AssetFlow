@@ -19,18 +19,23 @@ import signal
 import socket
 import sys
 import time
+from datetime import timedelta
 from pathlib import Path
 
 from app.core.config import AppConfig, ConfigError, load_config
 from app.core.db import DirectConnection, close_pool, connect_direct, init_pool
 from app.providers.registry import ProviderRegistry
+from workers.housekeeping import default_registry as default_housekeeping_registry
+from workers.housekeeping import run_once as run_housekeeping
 from workers.outbox_dispatcher import DispatcherOptions, run_once
+from workers.scheduler import Scheduler
 from workers.subscribers import SubscriberRegistry, default_registry
 
 logger = logging.getLogger(__name__)
 
 HEARTBEAT_MAX_AGE_SECONDS = 30.0
 DEFAULT_NOTIFY_CHANNEL = "outbox_events"
+HOUSEKEEPING_INTERVAL = timedelta(days=1)
 
 
 def worker_id() -> str:
@@ -77,6 +82,23 @@ async def _listen(cfg: AppConfig, registry: ProviderRegistry, wake: asyncio.Even
     return conn
 
 
+async def _open_scheduler(cfg: AppConfig, providers: ProviderRegistry) -> Scheduler | None:
+    """Open the scheduler's own direct connection; None (periodic jobs skipped) when it fails.
+
+    A separate connection from `_listen`'s: periodic jobs (housekeeping) must still run even when
+    the LISTEN connection could not be opened, and vice versa.
+    """
+    outbox = cfg.workers.outbox
+    try:
+        conn = await connect_direct(
+            cfg.database, "worker", providers.resolve_secret, host=outbox.listen_host, port=outbox.listen_port
+        )
+    except (OSError, ValueError) as exc:
+        logger.warning("worker.scheduler_unavailable", extra={"error_code": type(exc).__name__})
+        return None
+    return Scheduler(conn)
+
+
 async def serve(
     cfg: AppConfig, providers: ProviderRegistry, subscribers: SubscriberRegistry, stop: asyncio.Event
 ) -> None:
@@ -88,9 +110,19 @@ async def serve(
     pool = await init_pool(cfg.database, "worker", providers.resolve_secret)
     wake = asyncio.Event()
     listener = await _listen(cfg, providers, wake)
+    scheduler = await _open_scheduler(cfg, providers)
+    if scheduler is not None:
+        housekeeping_registry = default_housekeeping_registry()
+        scheduler.register_periodic(
+            "housekeeping",
+            HOUSEKEEPING_INTERVAL,
+            lambda: run_housekeeping(pool, housekeeping_registry, telemetry=providers.telemetry),
+        )
     try:
         while not stop.is_set():
             _touch(heartbeat)
+            if scheduler is not None:
+                await scheduler.tick()
             handled = await run_once(
                 pool, subscribers, me, options, telemetry=providers.telemetry, should_stop=stop.is_set
             )
@@ -104,6 +136,8 @@ async def serve(
     finally:
         if listener is not None:
             await listener.close()
+        if scheduler is not None:
+            await scheduler.conn.close()
         await close_pool(pool)
 
 

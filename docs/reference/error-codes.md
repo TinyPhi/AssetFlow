@@ -30,6 +30,8 @@ Every error response is RFC 9457 Problem Details (`application/problem+json`, §
 | [`http.method_not_allowed`](#http.method_not_allowed) | 405 | Method not allowed |
 | [`http.not_found`](#http.not_found) | 404 | Route not found |
 | [`internal.error`](#internal.error) | 500 | Internal server error |
+| [`job.memory_limit`](#job.memory_limit) | 500 | Job memory limit exceeded |
+| [`job.time_limit`](#job.time_limit) | 504 | Job time limit exceeded |
 | [`module.dependency_not_met`](#module.dependency_not_met) | 409 | Module dependency not met |
 | [`module.not_installed`](#module.not_installed) | 404 | Module not installed |
 | [`platform.secrets_unavailable`](#platform.secrets_unavailable) | 503 | Secrets provider unavailable |
@@ -112,6 +114,30 @@ The request path does not match any API endpoint.
 - **Type URI:** `https://github.com/tinyphi/assetflow/blob/main/docs/reference/error-codes.md#internal.error`
 
 An unexpected server-side failure. Details are only in the server logs, by request id.
+
+<a id="job.memory_limit"></a>
+
+### `job.memory_limit`
+
+- **Status:** 500
+- **Title:** Job memory limit exceeded
+- **Default detail:** The job exceeded its configured memory limit.
+- **Error class:** `JobMemoryLimitError`
+- **Type URI:** `https://github.com/tinyphi/assetflow/blob/main/docs/reference/error-codes.md#job.memory_limit`
+
+A worker job (§B9.3) whose handler process exceeds its registered `memory_limit_mb` (enforced by `RLIMIT_AS`, Linux only) is recorded as failed; on a platform without the memory limit, only the time limit applies.
+
+<a id="job.time_limit"></a>
+
+### `job.time_limit`
+
+- **Status:** 504
+- **Title:** Job time limit exceeded
+- **Default detail:** The job did not finish within its configured time limit.
+- **Error class:** `JobTimeLimitError`
+- **Type URI:** `https://github.com/tinyphi/assetflow/blob/main/docs/reference/error-codes.md#job.time_limit`
+
+A worker job (§B9.3) is stopped and recorded as failed once it runs longer than its registered `time_limit_seconds`; the outbox retry and dead-letter rules apply as for any other failure.
 
 <a id="module.dependency_not_met"></a>
 

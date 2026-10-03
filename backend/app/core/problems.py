@@ -230,6 +230,30 @@ class ModuleDependencyError(ProblemError):
     )
 
 
+class JobTimeLimitError(ProblemError):
+    status_code = 504
+    code = "job.time_limit"
+    title = "Job time limit exceeded"
+    default_detail = "The job did not finish within its configured time limit."
+    description = (
+        "A worker job (§B9.3) is stopped and recorded as failed once it runs longer than its "
+        "registered `time_limit_seconds`; the outbox retry and dead-letter rules apply as for any "
+        "other failure."
+    )
+
+
+class JobMemoryLimitError(ProblemError):
+    status_code = 500
+    code = "job.memory_limit"
+    title = "Job memory limit exceeded"
+    default_detail = "The job exceeded its configured memory limit."
+    description = (
+        "A worker job (§B9.3) whose handler process exceeds its registered `memory_limit_mb` "
+        "(enforced by `RLIMIT_AS`, Linux only) is recorded as failed; on a platform without the "
+        "memory limit, only the time limit applies."
+    )
+
+
 ERROR_REGISTRY: tuple[type[ProblemError], ...] = (
     InternalError,
     ValidationFailedError,
@@ -245,6 +269,8 @@ ERROR_REGISTRY: tuple[type[ProblemError], ...] = (
     SecretsUnavailableError,
     ModuleNotInstalledError,
     ModuleDependencyError,
+    JobTimeLimitError,
+    JobMemoryLimitError,
 )
 
 _BY_STATUS: dict[int, type[ProblemError]] = {

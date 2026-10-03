@@ -201,6 +201,16 @@ async def connect_direct(
     )
 
 
+async def resolve_role_password(cfg: DatabaseSettings, role: DbRole, resolve_secret: SecretResolver) -> str:
+    """Resolve one role's password without opening a connection.
+
+    For a child process that must open its own connection (the job runner's memory-limited jobs,
+    §B9.3): the parent resolves the password once and passes the plain value to the child, since an
+    async secret resolver callable cannot be sent across a process boundary.
+    """
+    return await _resolve_password(_role_settings(cfg, role).password, role, resolve_secret)
+
+
 @asynccontextmanager
 async def tenant_transaction(pool: Pool, organization_id: UUID) -> AsyncGenerator[Connection]:
     """Run a block in one transaction stamped with the organization context.

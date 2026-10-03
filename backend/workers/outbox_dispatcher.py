@@ -176,7 +176,9 @@ async def process_event(
     try:
         await run_subscribers(pool, registry, event)
     except Exception as exc:  # noqa: BLE001 - any subscriber failure is recorded by class and retried
-        error_code = type(exc).__name__
+        # A ProblemError (e.g. a job's time or memory limit) reports its formal code; anything
+        # else reports its exception class name, as before.
+        error_code = getattr(exc, "code", None) or type(exc).__name__
         _log("outbox.event_failed", event.organization_id, event.event_type, error_code, error=False)
         return await record_failure(pool, worker_id, event, error_code, options.max_attempts)
     await record_success(pool, worker_id, event)
