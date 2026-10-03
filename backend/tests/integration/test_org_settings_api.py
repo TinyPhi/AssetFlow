@@ -66,7 +66,7 @@ async def test_patch_requires_permission(client: httpx.AsyncClient, make_pool: P
     res = await client.patch(
         "/api/v1/organizations/settings", json={"locale": "fr-FR"}, headers=_headers(org_id, role="member")
     )
-    assert res.status_code == 404
+    assert res.status_code == 403  # a write, not a read: master plan §C4.5
 
 
 async def test_patch_updates_and_is_audited(client: httpx.AsyncClient, make_pool: PoolFactory) -> None:

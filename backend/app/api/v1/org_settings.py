@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.core.db import tenant_transaction
 from app.core.envelope import success_response
 from app.core.permissions import ScopeType
-from app.core.problems import NotFoundError, UnauthorizedError
+from app.core.problems import NotFoundError, PermissionDeniedError, UnauthorizedError
 from app.core.scope import MemberContext, RoleGrant, default_scope_resolver
 from app.modules.organization.settings import get_settings, update_settings
 
@@ -74,7 +74,7 @@ async def patch_organization_settings(
 ) -> dict[str, Any]:
     member = _resolve_member(request)
     if not default_scope_resolver.has_permission(member, MANAGE_PERMISSION):
-        raise NotFoundError()
+        raise PermissionDeniedError()
     changes = body.model_dump(exclude_unset=True)
     pool = request.app.state.pool
     async with tenant_transaction(pool, UUID(member.organization_id)) as conn:
