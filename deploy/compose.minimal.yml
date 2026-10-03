@@ -25,7 +25,7 @@ x-assetflow-labels: &assetflow-labels
 services:
   postgres:
     labels: *assetflow-labels
-    container_name: assetflow-postgres
+    container_name: af-postgres
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
@@ -48,7 +48,7 @@ services:
 
   mailpit:
     labels: *assetflow-labels
-    container_name: assetflow-mailpit
+    container_name: af-mailpit
     image: axllent/mailpit:v1.21.8
     restart: unless-stopped
     ports:
@@ -61,7 +61,7 @@ services:
   # so existing databases follow ADR-0019 too. Idempotent.
   db-roles:
     labels: *assetflow-labels
-    container_name: assetflow-db-roles
+    container_name: af-db-roles
     image: postgres:16-alpine
     restart: "no"
     depends_on:
@@ -84,7 +84,7 @@ services:
 
   migrate:
     labels: *assetflow-labels
-    container_name: assetflow-migrate
+    container_name: af-migrate
     build:
       context: ../backend
       dockerfile: Dockerfile
@@ -113,7 +113,7 @@ services:
 
   api:
     labels: *assetflow-labels
-    container_name: assetflow-api
+    container_name: af-api
     build:
       context: ../backend
       dockerfile: Dockerfile
@@ -157,7 +157,7 @@ services:
 
   web:
     labels: *assetflow-labels
-    container_name: assetflow-web
+    container_name: af-web
     build:
       context: ../frontend
       dockerfile: Dockerfile
