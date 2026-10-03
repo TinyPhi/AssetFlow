@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict
 from app.core.db import tenant_transaction
 from app.core.envelope import success_response
 from app.core.permissions import ScopeType
-from app.core.problems import NotFoundError, UnauthorizedError
+from app.core.problems import NotFoundError, PermissionDeniedError, UnauthorizedError
 from app.core.scope import MemberContext, RoleGrant, default_scope_resolver
 from app.modules.organization.grants import grant_role, list_grants, revoke_role
 
@@ -57,7 +57,7 @@ def _request_id(request: Request) -> str:
 async def create_role_grant(request: Request, body: RoleGrantCreate) -> dict[str, Any]:
     member = _resolve_member(request)
     if not default_scope_resolver.has_permission(member, MANAGE_PERMISSION):
-        raise NotFoundError()
+        raise PermissionDeniedError()
     pool = request.app.state.pool
     org_id = UUID(member.organization_id)
     async with tenant_transaction(pool, org_id) as conn:
@@ -80,7 +80,7 @@ async def create_role_grant(request: Request, body: RoleGrantCreate) -> dict[str
 async def delete_role_grant(request: Request, grant_id: UUID) -> dict[str, Any]:
     member = _resolve_member(request)
     if not default_scope_resolver.has_permission(member, MANAGE_PERMISSION):
-        raise NotFoundError()
+        raise PermissionDeniedError()
     pool = request.app.state.pool
     org_id = UUID(member.organization_id)
     async with tenant_transaction(pool, org_id) as conn:

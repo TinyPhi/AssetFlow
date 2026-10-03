@@ -17,7 +17,7 @@ import asyncpg
 
 from app.core.ids import uuid7
 from app.core.permissions import ROLE_PERMISSIONS, ScopeType
-from app.core.problems import NotFoundError, ValidationFailedError
+from app.core.problems import NotFoundError, PermissionDeniedError, ValidationFailedError
 from app.core.scope import MemberContext, RoleGrant
 from app.modules.audit.service import record_audit_event
 
@@ -115,8 +115,10 @@ async def grant_role(
     scope_id: UUID | None = None,
     request_id: str | None = None,
 ) -> UUID:
-    """Grant `role_key` to `target_member_id` at the given scope; raises `NotFoundError` both for
-    an unknown target/scope and for a granter who cannot grant it (never 403: §B5.3)."""
+    """Grant `role_key` to `target_member_id` at the given scope. Raises `NotFoundError` for an
+    unknown target or scope (the target does not exist); `PermissionDeniedError` for a granter who
+    cannot grant it: a write, not a read, so ScopeDenied is 403 here, not 404 (master plan §C4.5,
+    §C5.4 rule 5 reserves 404 for reads)."""
     target = await conn.fetchval(
         "SELECT 1 FROM public.members WHERE organization_id = $1 AND id = $2",
         organization_id,
@@ -133,7 +135,7 @@ async def grant_role(
         scope_id=str(scope_id) if scope_id is not None else None,
         org_unit_path=org_unit_path,
     ):
-        raise NotFoundError()
+        raise PermissionDeniedError(f"cannot grant {role_key!r} at this scope: you do not hold it yourself")
 
     grant_id = uuid7()
     granted_by = UUID(granter.member_id) if _is_uuid(granter.member_id) else None
@@ -184,7 +186,8 @@ async def revoke_role(
     request_id: str | None = None,
 ) -> bool:
     """Revoke a grant; `False` when it did not exist (idempotent). Only a granter who could grant
-    the same role at the same scope may revoke it (never 403 on refusal: raises `NotFoundError`)."""
+    the same role at the same scope may revoke it; refusal is `PermissionDeniedError` (403), same
+    as granting (§C4.5, §C5.4 rule 5: 404 is reserved for reads)."""
     row = await conn.fetchrow(
         "SELECT member_id, role_key, scope_type, scope_id FROM public.role_grants"
         " WHERE organization_id = $1 AND id = $2",
@@ -211,7 +214,9 @@ async def revoke_role(
         scope_id=str(row["scope_id"]) if row["scope_id"] is not None else None,
         org_unit_path=org_unit_path,
     ):
-        raise NotFoundError()
+        raise PermissionDeniedError(
+            f"cannot revoke {row['role_key']!r} at this scope: you do not hold it yourself"
+        )
 
     await conn.execute(
         "DELETE FROM public.role_grants WHERE organization_id = $1 AND id = $2", organization_id, grant_id

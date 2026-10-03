@@ -18,7 +18,7 @@ from pg_harness import PoolFactory
 
 from app.core.db import Pool, tenant_transaction
 from app.core.permissions import ScopeType
-from app.core.problems import NotFoundError, ValidationFailedError
+from app.core.problems import NotFoundError, PermissionDeniedError, ValidationFailedError
 from app.core.scope import MemberContext, RoleGrant
 from app.modules.organization.grants import grant_role, list_grants, revoke_role
 from app.modules.organization.provisioning import resolve_member_context
@@ -223,8 +223,8 @@ async def test_a_narrower_granter_cannot_grant_outside_its_own_subtree(make_pool
         )
         assert grant_id is not None
 
-        # a sibling subtree: refused, 404 not 403
-        with pytest.raises(NotFoundError):
+        # a sibling subtree: refused with 403, not 404 (a write, not a read: master plan §C4.5)
+        with pytest.raises(PermissionDeniedError):
             await grant_role(
                 conn,
                 organization_id=org_id,
@@ -236,7 +236,7 @@ async def test_a_narrower_granter_cannot_grant_outside_its_own_subtree(make_pool
             )
 
         # cannot grant itself a wider (organization) scope either
-        with pytest.raises(NotFoundError):
+        with pytest.raises(PermissionDeniedError):
             await grant_role(
                 conn,
                 organization_id=org_id,
@@ -268,7 +268,7 @@ async def test_revoke_requires_the_same_privilege_as_granting(make_pool: PoolFac
             scope_id=ops_id,
         )
         # hq_admin cannot revoke a grant scoped to a sibling subtree
-        with pytest.raises(NotFoundError):
+        with pytest.raises(PermissionDeniedError):
             await revoke_role(conn, organization_id=org_id, granter=hq_admin, grant_id=ops_grant_id)
 
         # the org-wide admin can
