@@ -30,6 +30,8 @@ Every error response is RFC 9457 Problem Details (`application/problem+json`, §
 | [`http.method_not_allowed`](#http.method_not_allowed) | 405 | Method not allowed |
 | [`http.not_found`](#http.not_found) | 404 | Route not found |
 | [`internal.error`](#internal.error) | 500 | Internal server error |
+| [`module.dependency_not_met`](#module.dependency_not_met) | 409 | Module dependency not met |
+| [`module.not_installed`](#module.not_installed) | 404 | Module not installed |
 | [`platform.secrets_unavailable`](#platform.secrets_unavailable) | 503 | Secrets provider unavailable |
 | [`platform.unavailable`](#platform.unavailable) | 503 | Service unavailable |
 | [`rate_limit.exceeded`](#rate_limit.exceeded) | 429 | Too many requests |
@@ -110,6 +112,30 @@ The request path does not match any API endpoint.
 - **Type URI:** `https://github.com/tinyphi/assetflow/blob/main/docs/reference/error-codes.md#internal.error`
 
 An unexpected server-side failure. Details are only in the server logs, by request id.
+
+<a id="module.dependency_not_met"></a>
+
+### `module.dependency_not_met`
+
+- **Status:** 409
+- **Title:** Module dependency not met
+- **Default detail:** This module cannot be installed or uninstalled yet.
+- **Error class:** `ModuleDependencyError`
+- **Type URI:** `https://github.com/tinyphi/assetflow/blob/main/docs/reference/error-codes.md#module.dependency_not_met`
+
+Installing a module needs its dependency installed first; uninstalling one needs its dependents uninstalled first (§B5.9, M1.4-T6).
+
+<a id="module.not_installed"></a>
+
+### `module.not_installed`
+
+- **Status:** 404
+- **Title:** Module not installed
+- **Default detail:** This feature requires a module your organization has not installed.
+- **Error class:** `ModuleNotInstalledError`
+- **Type URI:** `https://github.com/tinyphi/assetflow/blob/main/docs/reference/error-codes.md#module.not_installed`
+
+The route guard refuses before any handler runs, so an uninstalled module's routes behave as if they do not exist (§B5.9, M1.4-T6).
 
 <a id="platform.secrets_unavailable"></a>
 
