@@ -54,7 +54,7 @@ class OrgUnitCreate(BaseModel):
 
     code: str = Field(description="Unique business code for the organizational unit")
     name: str = Field(min_length=1, max_length=255, description="Display name of the organizational unit")
-    type: str = Field(min_length=1, max_length=64, description="Unit type, e.g. division, department, branch")
+    type: str = Field(min_length=1, max_length=64, description="Unit type, e.g. division, unit, branch")
     parent_id: UUID | None = Field(default=None, description="Parent unit ID (None if root)")
     manager_member_id: UUID | None = Field(default=None, description="Appointed manager member ID")
 
