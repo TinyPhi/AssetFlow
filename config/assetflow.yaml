@@ -15,6 +15,7 @@ platform:
   allowed_origins:
     - "http://localhost:5173"
     - "http://localhost:8080"
+    - "http://localhost:18080"
 
 providers:
   auth:
@@ -42,13 +43,13 @@ database:
   port: "${ASSETFLOW_DB_PORT:-5432}"
   name: "${ASSETFLOW_DB_NAME:-assetflow}"
   api:
-    user: "assetflow_api"
+    user: "${ASSETFLOW_DB_API_USER:-assetflow_api_login}"
     password: "secret://database/api#password"
   worker:
-    user: "assetflow_worker"
+    user: "${ASSETFLOW_DB_WORKER_USER:-assetflow_worker_login}"
     password: "secret://database/worker#password"
   migrator:
-    user: "assetflow_migrator"
+    user: "${ASSETFLOW_DB_MIGRATOR_USER:-assetflow_migrator_login}"
     password: "secret://database/migrator#password"
   behind_pgbouncer: false
   statement_timeout_ms: 15000

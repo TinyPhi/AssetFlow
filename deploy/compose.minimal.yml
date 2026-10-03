@@ -3,45 +3,117 @@
 # AssetFlow minimal profile (§B13.1, M1.6-T7).
 #
 # Minimal development & demo stack:
-#   - postgres: database with RLS and schema
+#   - postgres: database with RLS and roles
+#   - migrate: one-shot Alembic migration as the migrator role
 #   - mailpit: local email testing & inbox
 #   - api: FastAPI backend (mock auth, file secrets, inmemory events)
 #   - web: Nginx web shell & reverse proxy to API
 #
 # Non-root, read-only containers with tmpfs and strict resource bounds.
+#
+# Isolation from other projects on the same machine: containers, the network and the volume are
+# namespaced by the compose project (the Makefile passes `-p assetflow`), and the host ports below
+# are AssetFlow-specific (web 18080, database 15432, Mailpit 11025 and 18025), not the common
+# 8080 / 5432 / 1025 / 8025. Override with WEB_PORT, DATABASE_PORT, MAILPIT_SMTP_PORT, MAILPIT_UI_PORT.
 
-name: assetflow-minimal
+name: assetflow
+
+x-assetflow-labels: &assetflow-labels
+  com.tinyphi.project: assetflow
+  com.tinyphi.profile: minimal
 
 services:
   postgres:
+    labels: *assetflow-labels
+    container_name: af-postgres
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${DATABASE_NAME:-assetflow}
-      POSTGRES_USER: ${DATABASE_USER:-assetflow_app}
-      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-assetflow_dev_password}
+      POSTGRES_DB: ${ASSETFLOW_DB_NAME:-assetflow}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD_FILE: /run/secrets/database/postgres/password
     ports:
-      - "127.0.0.1:${DATABASE_PORT:-5432}:5432"
+      - "127.0.0.1:${DATABASE_PORT:-15432}:5432"
     volumes:
       - postgres_minimal_data:/var/lib/postgresql/data
+      # The bootstrap user's password only; roles and logins are applied by the db-roles service.
+      - ../.secrets/database/postgres:/run/secrets/database/postgres:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER:-assetflow_app} -d ${DATABASE_NAME:-assetflow}"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ${ASSETFLOW_DB_NAME:-assetflow}"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
     networks:
       - assetflow_minimal_net
 
   mailpit:
+    labels: *assetflow-labels
+    container_name: af-mailpit
     image: axllent/mailpit:v1.21.8
     restart: unless-stopped
     ports:
-      - "127.0.0.1:1025:1025"
-      - "127.0.0.1:8025:8025"
+      - "127.0.0.1:${MAILPIT_SMTP_PORT:-11025}:1025"
+      - "127.0.0.1:${MAILPIT_UI_PORT:-18025}:8025"
+    networks:
+      - assetflow_minimal_net
+
+  # One-shot: applies roles, logins and passwords (deploy/postgres/init-minimal.sh) on every start,
+  # so existing databases follow ADR-0019 too. Idempotent.
+  db-roles:
+    labels: *assetflow-labels
+    container_name: af-db-roles
+    image: postgres:16-alpine
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_DB: ${ASSETFLOW_DB_NAME:-assetflow}
+      PGPASSWORD_FILE: /run/secrets/database/postgres/password
+    volumes:
+      # The database credentials the script applies, not the whole secrets directory.
+      - ../.secrets/database:/run/secrets/database:ro
+      - ./postgres/init-minimal.sh:/opt/assetflow/init-minimal.sh:ro
+    entrypoint: ["/bin/sh", "/opt/assetflow/init-minimal.sh"]
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - assetflow_minimal_net
+
+  migrate:
+    labels: *assetflow-labels
+    container_name: af-migrate
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: "no"
+    depends_on:
+      db-roles:
+        condition: service_completed_successfully
+    environment:
+      ASSETFLOW_DB_NAME: ${ASSETFLOW_DB_NAME:-assetflow}
+    volumes:
+      # The migrator password only.
+      - ../.secrets/database/migrator:/run/secrets/database/migrator:ro
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        MIGRATOR_PW=$$(cat /run/secrets/database/migrator/password)
+        export ASSETFLOW_MIGRATION_DATABASE_URL="postgresql://assetflow_migrator_login:$${MIGRATOR_PW}@postgres:5432/$${ASSETFLOW_DB_NAME:-assetflow}"
+        exec uv run --no-sync alembic upgrade head
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
     networks:
       - assetflow_minimal_net
 
   api:
+    labels: *assetflow-labels
+    container_name: af-api
     build:
       context: ../backend
       dockerfile: Dockerfile
@@ -49,17 +121,27 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
+      ASSETFLOW_CONFIG: /app/config/assetflow.yaml
       ASSETFLOW_ENV: development
       ASSETFLOW_AUTH_PROVIDER: mock
       ASSETFLOW_SECRETS_PROVIDER: file
       ASSETFLOW_TELEMETRY_PROVIDER: noop
       ASSETFLOW_EVENTS_PROVIDER: inmemory
-      DATABASE_HOST: postgres
-      DATABASE_PORT: 5432
-      DATABASE_NAME: ${DATABASE_NAME:-assetflow}
-      DATABASE_USER: ${DATABASE_USER:-assetflow_app}
-      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-assetflow_dev_password}
+      ASSETFLOW_DB_HOST: postgres
+      ASSETFLOW_DB_PORT: "5432"
+      ASSETFLOW_DB_NAME: ${ASSETFLOW_DB_NAME:-assetflow}
+      ASSETFLOW_DB_API_USER: assetflow_api_login
+      ASSETFLOW_DB_WORKER_USER: assetflow_worker_login
+      ASSETFLOW_DB_MIGRATOR_USER: assetflow_migrator_login
+      ASSETFLOW_SECRETS_DIR: /run/secrets
+    volumes:
+      - ../config:/app/config:ro
+      # The api password and the field-encryption key only (not the superuser or migrator passwords).
+      - ../.secrets/database/api:/run/secrets/database/api:ro
+      - ../.secrets/transit:/run/secrets/transit:ro
     security_opt:
       - no-new-privileges:true
     tmpfs:
@@ -74,6 +156,8 @@ services:
       - assetflow_minimal_net
 
   web:
+    labels: *assetflow-labels
+    container_name: af-web
     build:
       context: ../frontend
       dockerfile: Dockerfile
@@ -82,7 +166,7 @@ services:
       api:
         condition: service_healthy
     ports:
-      - "127.0.0.1:${WEB_PORT:-8080}:8080"
+      - "127.0.0.1:${WEB_PORT:-18080}:8080"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
@@ -90,7 +174,6 @@ services:
       - no-new-privileges:true
     tmpfs:
       - /tmp
-      - /var/cache/nginx
       - /var/run
     networks:
       - assetflow_minimal_net
