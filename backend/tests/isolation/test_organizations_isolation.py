@@ -34,17 +34,25 @@ async def test_unstamped_api_connection_sees_no_organizations(make_pool: PoolFac
 @pytest.mark.parametrize(
     "sql",
     [
-        "UPDATE public.organizations SET name = 'x'",
         "DELETE FROM public.organizations",
         "INSERT INTO public.organizations (id, slug, name, idp_organization_id, domain_key)"
         " VALUES (gen_random_uuid(), 'x', 'x', 'x', 'it')",
     ],
 )
-async def test_api_role_cannot_write_organizations(make_pool: PoolFactory, sql: str) -> None:
+async def test_api_role_cannot_delete_or_insert_without_matching_id(make_pool: PoolFactory, sql: str) -> None:
     pool = await make_pool("api")
     async with platform_transaction(pool) as conn:
         with pytest.raises(asyncpg.InsufficientPrivilegeError):
             await conn.execute(sql)
+
+
+async def test_api_role_has_update_but_rls_still_filters_to_zero_rows(make_pool: PoolFactory) -> None:
+    """0008 grants UPDATE to assetflow_api (needed by the settings API); the privilege check now
+    passes, but the fail-closed `organizations_update` policy still matches no row without a
+    stamped organization context, so the statement succeeds with zero rows changed."""
+    pool = await make_pool("api")
+    async with platform_transaction(pool) as conn:
+        assert await conn.execute("UPDATE public.organizations SET name = 'x'") == "UPDATE 0"
 
 
 async def test_unstamped_writes_affect_no_rows_even_for_the_table_owner(

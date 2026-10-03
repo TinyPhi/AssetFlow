@@ -892,7 +892,7 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.organization_modules TO assetf
 GRANT SELECT ON TABLE public.organization_modules TO assetflow_worker;
 GRANT SELECT ON TABLE public.organization_modules TO assetflow_readonly;
 
-GRANT SELECT,INSERT ON TABLE public.organizations TO assetflow_api;
+GRANT SELECT,INSERT,UPDATE ON TABLE public.organizations TO assetflow_api;
 
 GRANT SELECT(id) ON TABLE public.organizations TO assetflow_resolver;
 
