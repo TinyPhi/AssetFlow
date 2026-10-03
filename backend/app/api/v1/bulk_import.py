@@ -15,7 +15,7 @@ from fastapi import APIRouter, Request
 from app.core.db import tenant_transaction
 from app.core.envelope import success_response
 from app.core.permissions import ScopeType
-from app.core.problems import NotFoundError, UnauthorizedError
+from app.core.problems import PermissionDeniedError, UnauthorizedError
 from app.core.scope import MemberContext, RoleGrant, default_scope_resolver
 from app.modules.organization.bulk_import import ImportRequest, run_import
 
@@ -50,7 +50,7 @@ def _request_id(request: Request) -> str:
 async def preview_import(request: Request, body: ImportRequest) -> dict[str, Any]:
     member = _resolve_member(request)
     if not default_scope_resolver.has_permission(member, MANAGE_PERMISSION):
-        raise NotFoundError()
+        raise PermissionDeniedError()
     pool = request.app.state.pool
     org_id = UUID(member.organization_id)
     async with tenant_transaction(pool, org_id) as conn:
@@ -62,7 +62,7 @@ async def preview_import(request: Request, body: ImportRequest) -> dict[str, Any
 async def commit_import(request: Request, body: ImportRequest) -> dict[str, Any]:
     member = _resolve_member(request)
     if not default_scope_resolver.has_permission(member, MANAGE_PERMISSION):
-        raise NotFoundError()
+        raise PermissionDeniedError()
     pool = request.app.state.pool
     org_id = UUID(member.organization_id)
     actor_id = UUID(member.member_id) if _is_uuid(member.member_id) else None
