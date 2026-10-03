@@ -246,6 +246,87 @@ ALTER TABLE ONLY public.members FORCE ROW LEVEL SECURITY;
 
 ALTER TABLE public.members OWNER TO assetflow_migrator;
 
+CREATE TABLE public.notification_channels (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    channel_key text NOT NULL,
+    display_name text NOT NULL,
+    settings jsonb DEFAULT '{}'::jsonb NOT NULL,
+    secret_ref text,
+    enabled boolean DEFAULT true NOT NULL,
+    allowed_hosts text[] DEFAULT '{}'::text[] NOT NULL,
+    allow_personal_data boolean DEFAULT false NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_notification_channels__settings_object CHECK ((jsonb_typeof(settings) = 'object'::text))
+);
+
+ALTER TABLE ONLY public.notification_channels FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.notification_channels OWNER TO assetflow_migrator;
+
+CREATE TABLE public.notification_deliveries (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    channel_id uuid NOT NULL,
+    channel_key text NOT NULL,
+    event_id uuid NOT NULL,
+    recipient_member_id uuid,
+    target text NOT NULL,
+    idempotency_key text NOT NULL,
+    status text DEFAULT 'pending'::text NOT NULL,
+    attempts integer DEFAULT 0 NOT NULL,
+    latency_ms integer,
+    error_code text,
+    next_retry_at timestamp with time zone,
+    claimed_by text,
+    claimed_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_notification_deliveries__attempts CHECK ((attempts >= 0)),
+    CONSTRAINT ck_notification_deliveries__status CHECK ((status = ANY (ARRAY['pending'::text, 'sending'::text, 'sent'::text, 'failed'::text, 'dead_lettered'::text, 'skipped'::text])))
+);
+
+ALTER TABLE ONLY public.notification_deliveries FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.notification_deliveries OWNER TO assetflow_migrator;
+
+CREATE TABLE public.notification_preferences (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    member_id uuid NOT NULL,
+    event_type text NOT NULL,
+    channel_key text NOT NULL,
+    enabled boolean DEFAULT true NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+ALTER TABLE ONLY public.notification_preferences FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.notification_preferences OWNER TO assetflow_migrator;
+
+CREATE TABLE public.notifications (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    member_id uuid NOT NULL,
+    event_type text NOT NULL,
+    event_id uuid NOT NULL,
+    template_key text NOT NULL,
+    title_key text NOT NULL,
+    body text NOT NULL,
+    link_entity_type text,
+    link_entity_id uuid,
+    read_at timestamp with time zone,
+    idempotency_key text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+ALTER TABLE ONLY public.notifications FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.notifications OWNER TO assetflow_migrator;
+
 CREATE TABLE public.org_units (
     id uuid NOT NULL,
     organization_id uuid NOT NULL,
@@ -446,6 +527,18 @@ ALTER TABLE ONLY public.member_org_units
 ALTER TABLE ONLY public.members
     ADD CONSTRAINT members_pkey PRIMARY KEY (id);
 
+ALTER TABLE ONLY public.notification_channels
+    ADD CONSTRAINT notification_channels_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.notification_deliveries
+    ADD CONSTRAINT notification_deliveries_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.notification_preferences
+    ADD CONSTRAINT notification_preferences_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.notifications
+    ADD CONSTRAINT notifications_pkey PRIMARY KEY (id);
+
 ALTER TABLE ONLY public.org_units
     ADD CONSTRAINT org_units_pkey PRIMARY KEY (id);
 
@@ -499,6 +592,30 @@ ALTER TABLE ONLY public.members
 
 ALTER TABLE ONLY public.members
     ADD CONSTRAINT uq_members__organization_id_idp_subject UNIQUE (organization_id, idp_subject);
+
+ALTER TABLE ONLY public.notification_channels
+    ADD CONSTRAINT uq_notification_channels__org_id_id UNIQUE (organization_id, id);
+
+ALTER TABLE ONLY public.notification_channels
+    ADD CONSTRAINT uq_notification_channels__organization_id_channel_key UNIQUE (organization_id, channel_key);
+
+ALTER TABLE ONLY public.notification_deliveries
+    ADD CONSTRAINT uq_notification_deliveries__org_id_id UNIQUE (organization_id, id);
+
+ALTER TABLE ONLY public.notification_deliveries
+    ADD CONSTRAINT uq_notification_deliveries__organization_id_idempotency_key UNIQUE (organization_id, idempotency_key);
+
+ALTER TABLE ONLY public.notification_preferences
+    ADD CONSTRAINT uq_notification_preferences__org_id_id UNIQUE (organization_id, id);
+
+ALTER TABLE ONLY public.notification_preferences
+    ADD CONSTRAINT uq_notification_preferences__org_id_member_event_channel UNIQUE (organization_id, member_id, event_type, channel_key);
+
+ALTER TABLE ONLY public.notifications
+    ADD CONSTRAINT uq_notifications__org_id_id UNIQUE (organization_id, id);
+
+ALTER TABLE ONLY public.notifications
+    ADD CONSTRAINT uq_notifications__organization_id_idempotency_key UNIQUE (organization_id, idempotency_key);
 
 ALTER TABLE ONLY public.org_units
     ADD CONSTRAINT uq_org_units__org_id_code UNIQUE (organization_id, code);
@@ -579,6 +696,18 @@ CREATE INDEX ix_members__organization_id_email ON public.members USING btree (or
 
 CREATE INDEX ix_members__organization_id_primary_org_unit ON public.members USING btree (organization_id, primary_org_unit_id);
 
+CREATE INDEX ix_notification_channels__organization_id ON public.notification_channels USING btree (organization_id);
+
+CREATE INDEX ix_notification_deliveries__organization_id ON public.notification_deliveries USING btree (organization_id);
+
+CREATE INDEX ix_notification_deliveries__organization_id_status_next_retry ON public.notification_deliveries USING btree (organization_id, status, next_retry_at);
+
+CREATE INDEX ix_notification_preferences__organization_id_member_id ON public.notification_preferences USING btree (organization_id, member_id);
+
+CREATE INDEX ix_notifications__organization_id_member_id_unread ON public.notifications USING btree (organization_id, member_id) WHERE (read_at IS NULL);
+
+CREATE INDEX ix_notifications__organization_id_member_id_updated_at ON public.notifications USING btree (organization_id, member_id, updated_at DESC);
+
 CREATE INDEX ix_org_units__organization_id ON public.org_units USING btree (organization_id);
 
 CREATE INDEX ix_org_units__organization_id_parent ON public.org_units USING btree (organization_id, parent_id);
@@ -653,6 +782,30 @@ ALTER TABLE ONLY public.members
 
 ALTER TABLE ONLY public.members
     ADD CONSTRAINT fk_members__primary_org_unit_id__org_units FOREIGN KEY (organization_id, primary_org_unit_id) REFERENCES public.org_units(organization_id, id) ON DELETE SET NULL;
+
+ALTER TABLE ONLY public.notification_channels
+    ADD CONSTRAINT fk_notification_channels__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
+
+ALTER TABLE ONLY public.notification_deliveries
+    ADD CONSTRAINT fk_notification_deliveries__channel_id__notification_channels FOREIGN KEY (organization_id, channel_id) REFERENCES public.notification_channels(organization_id, id) ON DELETE RESTRICT;
+
+ALTER TABLE ONLY public.notification_deliveries
+    ADD CONSTRAINT fk_notification_deliveries__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
+
+ALTER TABLE ONLY public.notification_deliveries
+    ADD CONSTRAINT fk_notification_deliveries__recipient_member_id__members FOREIGN KEY (organization_id, recipient_member_id) REFERENCES public.members(organization_id, id) ON DELETE SET NULL;
+
+ALTER TABLE ONLY public.notification_preferences
+    ADD CONSTRAINT fk_notification_preferences__member_id__members FOREIGN KEY (organization_id, member_id) REFERENCES public.members(organization_id, id) ON DELETE CASCADE;
+
+ALTER TABLE ONLY public.notification_preferences
+    ADD CONSTRAINT fk_notification_preferences__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
+
+ALTER TABLE ONLY public.notifications
+    ADD CONSTRAINT fk_notifications__member_id__members FOREIGN KEY (organization_id, member_id) REFERENCES public.members(organization_id, id) ON DELETE CASCADE;
+
+ALTER TABLE ONLY public.notifications
+    ADD CONSTRAINT fk_notifications__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
 
 ALTER TABLE ONLY public.org_units
     ADD CONSTRAINT fk_org_units__manager_member_id__members FOREIGN KEY (organization_id, manager_member_id) REFERENCES public.members(organization_id, id) ON DELETE SET NULL;
@@ -759,6 +912,46 @@ CREATE POLICY members_insert ON public.members FOR INSERT WITH CHECK ((organizat
 CREATE POLICY members_select ON public.members FOR SELECT USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
 
 CREATE POLICY members_update ON public.members FOR UPDATE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+ALTER TABLE public.notification_channels ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY notification_channels_delete ON public.notification_channels FOR DELETE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY notification_channels_insert ON public.notification_channels FOR INSERT WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY notification_channels_select ON public.notification_channels FOR SELECT USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY notification_channels_update ON public.notification_channels FOR UPDATE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+ALTER TABLE public.notification_deliveries ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY notification_deliveries_delete ON public.notification_deliveries FOR DELETE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY notification_deliveries_insert ON public.notification_deliveries FOR INSERT WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY notification_deliveries_select ON public.notification_deliveries FOR SELECT USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY notification_deliveries_update ON public.notification_deliveries FOR UPDATE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+ALTER TABLE public.notification_preferences ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY notification_preferences_delete ON public.notification_preferences FOR DELETE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY notification_preferences_insert ON public.notification_preferences FOR INSERT WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY notification_preferences_select ON public.notification_preferences FOR SELECT USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY notification_preferences_update ON public.notification_preferences FOR UPDATE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY notifications_delete ON public.notifications FOR DELETE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY notifications_insert ON public.notifications FOR INSERT WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY notifications_select ON public.notifications FOR SELECT USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY notifications_update ON public.notifications FOR UPDATE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
 
 ALTER TABLE public.org_units ENABLE ROW LEVEL SECURITY;
 
@@ -901,6 +1094,22 @@ GRANT SELECT ON TABLE public.member_org_units TO assetflow_readonly;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.members TO assetflow_api;
 GRANT SELECT,UPDATE ON TABLE public.members TO assetflow_worker;
 GRANT SELECT ON TABLE public.members TO assetflow_readonly;
+
+GRANT SELECT,INSERT,UPDATE ON TABLE public.notification_channels TO assetflow_api;
+GRANT SELECT ON TABLE public.notification_channels TO assetflow_worker;
+GRANT SELECT ON TABLE public.notification_channels TO assetflow_readonly;
+
+GRANT SELECT ON TABLE public.notification_deliveries TO assetflow_api;
+GRANT SELECT,INSERT,UPDATE ON TABLE public.notification_deliveries TO assetflow_worker;
+GRANT SELECT ON TABLE public.notification_deliveries TO assetflow_readonly;
+
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.notification_preferences TO assetflow_api;
+GRANT SELECT ON TABLE public.notification_preferences TO assetflow_worker;
+GRANT SELECT ON TABLE public.notification_preferences TO assetflow_readonly;
+
+GRANT SELECT,INSERT,UPDATE ON TABLE public.notifications TO assetflow_api;
+GRANT SELECT,INSERT,DELETE ON TABLE public.notifications TO assetflow_worker;
+GRANT SELECT ON TABLE public.notifications TO assetflow_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.org_units TO assetflow_api;
 GRANT SELECT ON TABLE public.org_units TO assetflow_worker;
