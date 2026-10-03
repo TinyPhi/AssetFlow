@@ -10,6 +10,96 @@ CREATE EXTENSION IF NOT EXISTS ltree WITH SCHEMA public;
 
 COMMENT ON EXTENSION ltree IS 'data type for hierarchical tree-like structures';
 
+CREATE FUNCTION platform.audit_partition_health(base_date timestamp with time zone DEFAULT clock_timestamp()) RETURNS TABLE(healthy boolean, default_rows bigint, next_partition_exists boolean, next_partition_name text, alert boolean)
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'pg_temp'
+    AS $$
+DECLARE
+    v_next_month timestamptz;
+    v_next_name text;
+    v_def_rows bigint;
+    v_exists boolean;
+    v_healthy boolean;
+BEGIN
+    v_next_month := date_trunc('month', base_date) + '1 month'::interval;
+    v_next_name := 'audit_events_' || to_char(v_next_month, 'YYYY_MM');
+
+    EXECUTE 'ALTER TABLE public.audit_events_default NO FORCE ROW LEVEL SECURITY';
+    SELECT count(*) INTO v_def_rows FROM public.audit_events_default;
+    EXECUTE 'ALTER TABLE public.audit_events_default FORCE ROW LEVEL SECURITY';
+
+    SELECT EXISTS (
+        SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' AND c.relname = v_next_name
+    ) INTO v_exists;
+
+    v_healthy := (v_def_rows = 0) AND v_exists;
+    RETURN QUERY SELECT v_healthy, v_def_rows, v_exists, v_next_name, NOT v_healthy;
+END;
+$$;
+
+ALTER FUNCTION platform.audit_partition_health(base_date timestamp with time zone) OWNER TO assetflow_migrator;
+
+CREATE FUNCTION platform.maintain_audit_partitions(base_date timestamp with time zone DEFAULT clock_timestamp(), months_ahead integer DEFAULT 3) RETURNS text[]
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'pg_temp'
+    AS $$
+DECLARE
+    created text[] := '{}';
+    m_start timestamptz;
+    m_end timestamptz;
+    m_name text;
+    i integer;
+    org record;
+BEGIN
+    FOR i IN 0 .. (months_ahead - 1) LOOP
+        m_start := date_trunc('month', base_date) + (i || ' month')::interval;
+        m_end := m_start + '1 month'::interval;
+        m_name := 'audit_events_' || to_char(m_start, 'YYYY_MM');
+
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'public' AND c.relname = m_name
+        ) THEN
+            EXECUTE 'ALTER TABLE public.audit_events_default NO FORCE ROW LEVEL SECURITY';
+            EXECUTE format(
+                'CREATE TEMP TABLE _moved_audit ON COMMIT DROP AS '
+                'WITH moved AS ('
+                'DELETE FROM public.audit_events_default '
+                'WHERE created_at >= %L AND created_at < %L RETURNING *'
+                ') SELECT * FROM moved',
+                m_start, m_end
+            );
+            EXECUTE 'ALTER TABLE public.audit_events_default FORCE ROW LEVEL SECURITY';
+
+            EXECUTE format(
+                'CREATE TABLE public.%I PARTITION OF public.audit_events FOR VALUES FROM (%L) TO (%L)',
+                m_name, m_start, m_end
+            );
+            EXECUTE format('ALTER TABLE public.%I OWNER TO assetflow_migrator', m_name);
+
+            FOR org IN EXECUTE 'SELECT DISTINCT organization_id FROM _moved_audit' LOOP
+                PERFORM set_config('app.organization_id', org.organization_id::text, true);
+                EXECUTE format(
+                    'INSERT INTO public.%I SELECT * FROM _moved_audit WHERE organization_id = %L',
+                    m_name, org.organization_id
+                );
+            END LOOP;
+            PERFORM set_config('app.organization_id', '', true);
+            EXECUTE 'DROP TABLE IF EXISTS _moved_audit';
+
+            EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', m_name);
+            EXECUTE format('ALTER TABLE public.%I FORCE ROW LEVEL SECURITY', m_name);
+
+            created := array_append(created, m_name);
+        END IF;
+    END LOOP;
+    RETURN created;
+END;
+$$;
+
+ALTER FUNCTION platform.maintain_audit_partitions(base_date timestamp with time zone, months_ahead integer) OWNER TO assetflow_migrator;
+
 CREATE FUNCTION platform.resolve_organization(p_idp_organization_id text) RETURNS TABLE(id uuid, status text)
     LANGUAGE sql STABLE SECURITY DEFINER
     SET search_path TO 'pg_catalog', 'pg_temp'
@@ -63,6 +153,19 @@ CREATE TABLE public.audit_events_default (
 ALTER TABLE ONLY public.audit_events_default FORCE ROW LEVEL SECURITY;
 
 ALTER TABLE public.audit_events_default OWNER TO assetflow_migrator;
+
+CREATE TABLE public.audit_personal_values (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    audit_event_id uuid NOT NULL,
+    field_name text NOT NULL,
+    field_value text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+ALTER TABLE ONLY public.audit_personal_values FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.audit_personal_values OWNER TO assetflow_migrator;
 
 CREATE TABLE public.locations (
     id uuid NOT NULL,
@@ -307,6 +410,9 @@ ALTER TABLE ONLY public.audit_events
 ALTER TABLE ONLY public.audit_events_default
     ADD CONSTRAINT audit_events_default_pkey PRIMARY KEY (id, created_at);
 
+ALTER TABLE ONLY public.audit_personal_values
+    ADD CONSTRAINT audit_personal_values_pkey PRIMARY KEY (id);
+
 ALTER TABLE ONLY public.locations
     ADD CONSTRAINT locations_pkey PRIMARY KEY (id);
 
@@ -345,6 +451,9 @@ ALTER TABLE ONLY public.team_members
 
 ALTER TABLE ONLY public.teams
     ADD CONSTRAINT teams_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.audit_personal_values
+    ADD CONSTRAINT uq_audit_personal_values__org_id UNIQUE (organization_id, id);
 
 ALTER TABLE ONLY public.locations
     ADD CONSTRAINT uq_locations__org_id_code UNIQUE (organization_id, code);
@@ -424,6 +533,10 @@ CREATE INDEX ix_audit_events__organization_id ON ONLY public.audit_events USING 
 
 CREATE INDEX audit_events_default_organization_id_idx ON public.audit_events_default USING btree (organization_id);
 
+CREATE INDEX ix_audit_personal_values__org_event ON public.audit_personal_values USING btree (organization_id, audit_event_id);
+
+CREATE INDEX ix_audit_personal_values__organization_id ON public.audit_personal_values USING btree (organization_id);
+
 CREATE INDEX ix_locations__organization_id ON public.locations USING btree (organization_id);
 
 CREATE INDEX ix_locations__organization_id_parent ON public.locations USING btree (organization_id, parent_id);
@@ -490,6 +603,9 @@ ALTER INDEX public.audit_events_pkey ATTACH PARTITION public.audit_events_defaul
 
 ALTER TABLE public.audit_events
     ADD CONSTRAINT fk_audit_events__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
+
+ALTER TABLE ONLY public.audit_personal_values
+    ADD CONSTRAINT fk_audit_personal_values__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
 
 ALTER TABLE ONLY public.locations
     ADD CONSTRAINT fk_locations__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
@@ -577,6 +693,16 @@ CREATE POLICY audit_events_insert ON public.audit_events FOR INSERT WITH CHECK (
 CREATE POLICY audit_events_select ON public.audit_events FOR SELECT USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
 
 CREATE POLICY audit_events_update ON public.audit_events FOR UPDATE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+ALTER TABLE public.audit_personal_values ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY audit_personal_values_delete ON public.audit_personal_values FOR DELETE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY audit_personal_values_insert ON public.audit_personal_values FOR INSERT WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY audit_personal_values_select ON public.audit_personal_values FOR SELECT USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY audit_personal_values_update ON public.audit_personal_values FOR UPDATE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
 
 ALTER TABLE public.locations ENABLE ROW LEVEL SECURITY;
 
@@ -705,6 +831,7 @@ CREATE POLICY working_calendars_select ON public.working_calendars FOR SELECT US
 CREATE POLICY working_calendars_update ON public.working_calendars FOR UPDATE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
 
 GRANT USAGE ON SCHEMA platform TO assetflow_api;
+GRANT USAGE ON SCHEMA platform TO assetflow_worker;
 
 GRANT ALL ON SCHEMA public TO assetflow_migrator;
 GRANT USAGE ON SCHEMA public TO assetflow_api;
@@ -712,12 +839,24 @@ GRANT USAGE ON SCHEMA public TO assetflow_worker;
 GRANT USAGE ON SCHEMA public TO assetflow_readonly;
 GRANT USAGE ON SCHEMA public TO assetflow_resolver;
 
+REVOKE ALL ON FUNCTION platform.audit_partition_health(base_date timestamp with time zone) FROM PUBLIC;
+GRANT ALL ON FUNCTION platform.audit_partition_health(base_date timestamp with time zone) TO assetflow_worker;
+GRANT ALL ON FUNCTION platform.audit_partition_health(base_date timestamp with time zone) TO assetflow_api;
+
+REVOKE ALL ON FUNCTION platform.maintain_audit_partitions(base_date timestamp with time zone, months_ahead integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION platform.maintain_audit_partitions(base_date timestamp with time zone, months_ahead integer) TO assetflow_worker;
+GRANT ALL ON FUNCTION platform.maintain_audit_partitions(base_date timestamp with time zone, months_ahead integer) TO assetflow_api;
+
 REVOKE ALL ON FUNCTION platform.resolve_organization(p_idp_organization_id text) FROM PUBLIC;
 GRANT ALL ON FUNCTION platform.resolve_organization(p_idp_organization_id text) TO assetflow_api;
 
 GRANT SELECT,INSERT ON TABLE public.audit_events TO assetflow_api;
 GRANT SELECT,INSERT ON TABLE public.audit_events TO assetflow_worker;
 GRANT SELECT ON TABLE public.audit_events TO assetflow_readonly;
+
+GRANT SELECT,INSERT,DELETE ON TABLE public.audit_personal_values TO assetflow_api;
+GRANT SELECT,DELETE ON TABLE public.audit_personal_values TO assetflow_worker;
+GRANT SELECT ON TABLE public.audit_personal_values TO assetflow_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.locations TO assetflow_api;
 GRANT SELECT ON TABLE public.locations TO assetflow_worker;

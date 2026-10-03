@@ -8,9 +8,11 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 
+from app.api.v1.audit import router as audit_router
 from app.core.envelope import success_response
 
 router = APIRouter()
+router.include_router(audit_router)
 
 
 def _request_id(request: Request) -> str:
