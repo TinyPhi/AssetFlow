@@ -198,7 +198,7 @@ lint-frontend: frontend-deps
 	cd $(FRONTEND) && $(NPX) prettier --check .
 
 typecheck: frontend-deps ## mypy and tsc -b
-	cd $(BACKEND) && $(UV) run mypy app
+	cd $(BACKEND) && $(UV) run mypy app workers
 	cd $(FRONTEND) && $(NPX) tsc -b
 
 config-validate: check-python ## Validate config/assetflow.yaml (schema, production guards) and parse config/**/*.yaml
