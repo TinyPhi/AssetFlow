@@ -4,8 +4,10 @@
 
 A mock token is a JSON object of claims, for example
 ``{"sub": "dev-user", "organization_id": "<uuid>", "roles": ["viewer"]}``. ``sub`` and
-``organization_id`` are required; ``roles`` defaults to none. Anything else (empty, not JSON,
-missing or mistyped claims, revoked) raises ``UnauthorizedError``: there is no default principal.
+``organization_id`` are required; ``roles`` defaults to none; ``email_verified`` defaults to
+``true`` (set it to ``false`` explicitly to test the unverified-email path). Anything else (empty,
+not JSON, missing or mistyped claims, revoked) raises ``UnauthorizedError``: there is no default
+principal.
 """
 
 from __future__ import annotations
@@ -121,6 +123,7 @@ def _principal(claims: dict[str, Any]) -> Principal:
         organization_id=organization_id,
         roles=list(roles),
         email=email if isinstance(email, str) else None,
+        email_verified=claims.get("email_verified", True) is True,
         name=name if isinstance(name, str) else None,
         is_machine=claims.get("is_machine") is True,
         client_id=client_id if isinstance(client_id, str) else None,
