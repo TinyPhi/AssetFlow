@@ -40,6 +40,17 @@ $$;
 
 ALTER FUNCTION platform.audit_partition_health(base_date timestamp with time zone) OWNER TO assetflow_migrator;
 
+CREATE FUNCTION platform.find_organization_id(p_slug text) RETURNS uuid
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'pg_temp'
+    AS $$
+    SELECT o.id
+    FROM public.organizations AS o
+    WHERE o.slug = p_slug
+$$;
+
+ALTER FUNCTION platform.find_organization_id(p_slug text) OWNER TO assetflow_resolver;
+
 CREATE FUNCTION platform.maintain_audit_partitions(base_date timestamp with time zone DEFAULT clock_timestamp(), months_ahead integer DEFAULT 3) RETURNS text[]
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'pg_catalog', 'pg_temp'
@@ -843,6 +854,9 @@ REVOKE ALL ON FUNCTION platform.audit_partition_health(base_date timestamp with 
 GRANT ALL ON FUNCTION platform.audit_partition_health(base_date timestamp with time zone) TO assetflow_worker;
 GRANT ALL ON FUNCTION platform.audit_partition_health(base_date timestamp with time zone) TO assetflow_api;
 
+REVOKE ALL ON FUNCTION platform.find_organization_id(p_slug text) FROM PUBLIC;
+GRANT ALL ON FUNCTION platform.find_organization_id(p_slug text) TO assetflow_api;
+
 REVOKE ALL ON FUNCTION platform.maintain_audit_partitions(base_date timestamp with time zone, months_ahead integer) FROM PUBLIC;
 GRANT ALL ON FUNCTION platform.maintain_audit_partitions(base_date timestamp with time zone, months_ahead integer) TO assetflow_worker;
 GRANT ALL ON FUNCTION platform.maintain_audit_partitions(base_date timestamp with time zone, months_ahead integer) TO assetflow_api;
@@ -878,9 +892,11 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.organization_modules TO assetf
 GRANT SELECT ON TABLE public.organization_modules TO assetflow_worker;
 GRANT SELECT ON TABLE public.organization_modules TO assetflow_readonly;
 
-GRANT SELECT ON TABLE public.organizations TO assetflow_api;
+GRANT SELECT,INSERT ON TABLE public.organizations TO assetflow_api;
 
 GRANT SELECT(id) ON TABLE public.organizations TO assetflow_resolver;
+
+GRANT SELECT(slug) ON TABLE public.organizations TO assetflow_resolver;
 
 GRANT SELECT(idp_organization_id) ON TABLE public.organizations TO assetflow_resolver;
 
