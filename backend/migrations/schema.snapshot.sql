@@ -51,6 +51,18 @@ $$;
 
 ALTER FUNCTION platform.find_organization_id(p_slug text) OWNER TO assetflow_resolver;
 
+CREATE FUNCTION platform.list_active_organizations() RETURNS SETOF uuid
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'pg_temp'
+    AS $$
+    SELECT o.id
+    FROM public.organizations AS o
+    WHERE o.status = 'active'
+    ORDER BY o.id
+$$;
+
+ALTER FUNCTION platform.list_active_organizations() OWNER TO assetflow_resolver;
+
 CREATE FUNCTION platform.maintain_audit_partitions(base_date timestamp with time zone DEFAULT clock_timestamp(), months_ahead integer DEFAULT 3) RETURNS text[]
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO 'pg_catalog', 'pg_temp'
@@ -307,6 +319,7 @@ CREATE TABLE public.outbox (
     last_error text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    dead_lettered_at timestamp with time zone,
     CONSTRAINT ck_outbox__attempts CHECK ((attempts >= 0)),
     CONSTRAINT ck_outbox__payload_object CHECK ((jsonb_typeof(payload) = 'object'::text))
 );
@@ -577,6 +590,8 @@ CREATE INDEX ix_organization_modules__organization_id ON public.organization_mod
 CREATE INDEX ix_outbox__claimed_by ON public.outbox USING btree (claimed_by);
 
 CREATE INDEX ix_outbox__organization_id ON public.outbox USING btree (organization_id);
+
+CREATE INDEX ix_outbox__organization_id_pending ON public.outbox USING btree (organization_id, created_at) WHERE ((processed_at IS NULL) AND (dead_lettered_at IS NULL));
 
 CREATE INDEX ix_outbox__organization_id_processed ON public.outbox USING btree (organization_id, processed_at);
 
@@ -856,6 +871,9 @@ GRANT ALL ON FUNCTION platform.audit_partition_health(base_date timestamp with t
 
 REVOKE ALL ON FUNCTION platform.find_organization_id(p_slug text) FROM PUBLIC;
 GRANT ALL ON FUNCTION platform.find_organization_id(p_slug text) TO assetflow_api;
+
+REVOKE ALL ON FUNCTION platform.list_active_organizations() FROM PUBLIC;
+GRANT ALL ON FUNCTION platform.list_active_organizations() TO assetflow_worker;
 
 REVOKE ALL ON FUNCTION platform.maintain_audit_partitions(base_date timestamp with time zone, months_ahead integer) FROM PUBLIC;
 GRANT ALL ON FUNCTION platform.maintain_audit_partitions(base_date timestamp with time zone, months_ahead integer) TO assetflow_worker;
