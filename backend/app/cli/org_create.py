@@ -28,6 +28,7 @@ import yaml
 
 from app.core.config import ConfigError, load_config
 from app.core.db import close_pool, init_pool
+from app.modules.organization.provisioning import DEFAULT_POLICY, PROVISIONING_POLICIES
 from app.modules.organization.service import create_organization
 from app.providers.registry import ProviderRegistry
 
@@ -52,8 +53,11 @@ def _load_organization_file(organizations_dir: Path, slug: str) -> dict[str, Any
     return data
 
 
-def _resolve_args(args: argparse.Namespace) -> tuple[str, str, str]:
-    """Validate and merge CLI args with the optional organization file. Returns (name, email, idp_org)."""
+def _resolve_args(args: argparse.Namespace) -> tuple[str, str, str, str]:
+    """Validate and merge CLI args with the optional organization file.
+
+    Returns (name, email, idp_org, provisioning_policy).
+    """
     if not _SLUG_RE.match(args.slug):
         raise OrgCreateError(
             f"invalid --slug {args.slug!r}: must be lowercase letters, digits and single hyphens"
@@ -68,12 +72,17 @@ def _resolve_args(args: argparse.Namespace) -> tuple[str, str, str]:
         raise OrgCreateError(
             "--idp-org is required: run `make zitadel-apply` first and pass the organization id it prints"
         )
-    return str(name), args.admin_email, args.idp_org
+    policy = args.provisioning or org_file.get("provisioning") or DEFAULT_POLICY
+    if policy not in PROVISIONING_POLICIES:
+        raise OrgCreateError(
+            f"invalid provisioning policy {policy!r}: must be one of {', '.join(PROVISIONING_POLICIES)}"
+        )
+    return str(name), args.admin_email, args.idp_org, policy
 
 
 async def run(args: argparse.Namespace, *, out: Any = sys.stdout) -> int:
     try:
-        name, admin_email, idp_org = _resolve_args(args)
+        name, admin_email, idp_org, policy = _resolve_args(args)
     except OrgCreateError as exc:
         sys.stderr.write(f"error: {exc}\n")
         return 1
@@ -94,6 +103,7 @@ async def run(args: argparse.Namespace, *, out: Any = sys.stdout) -> int:
             admin_email=admin_email,
             idp_organization_id=idp_org,
             domain_key=args.domain_key,
+            settings={"provisioning": policy},
         )
     finally:
         await close_pool(pool)
@@ -116,6 +126,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--admin-email", required=True, help="first admin's email (invite only)")
     parser.add_argument("--idp-org", required=True, help="Zitadel org id (from `make zitadel-apply`)")
     parser.add_argument("--name", help="organization display name (else read from the organization file)")
+    parser.add_argument(
+        "--provisioning",
+        choices=PROVISIONING_POLICIES,
+        help="sign-in policy (else the organization file's `provisioning`, else invite_only)",
+    )
     parser.add_argument("--domain-key", default="generic", help="config/domains key (default: generic)")
     parser.add_argument("--config", help="path to assetflow.yaml (else ASSETFLOW_CONFIG or the default)")
     parser.add_argument(

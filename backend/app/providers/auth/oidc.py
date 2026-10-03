@@ -238,6 +238,7 @@ class OidcAuthProvider(AuthProvider):
             organization_id=org_id,
             roles=roles,
             email=email if isinstance(email, str) else None,
+            email_verified=claims.get("email_verified") is True,
             name=name if isinstance(name, str) else None,
             is_machine=is_machine,
             client_id=client_id if isinstance(client_id, str) else None,

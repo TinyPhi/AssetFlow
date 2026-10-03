@@ -26,8 +26,11 @@ uv run python -m app.cli.org_create \
   --idp-org <the Zitadel organization id from step 1>
 ```
 
-`--name` and `--domain-key` are optional: `--name` falls back to the organization file's `name`,
-`--domain-key` defaults to `generic` (see `config/domains/`).
+`--name`, `--provisioning` and `--domain-key` are optional: `--name` falls back to the
+organization file's `name`, `--provisioning` falls back to the file's `provisioning` and then to
+`invite_only` (the other choices are `require_role` and `open`; see
+[member provisioning](member-provisioning.md)), `--domain-key` defaults to `generic` (see
+`config/domains/`).
 
 The command is idempotent on `--slug`: running it again for an organization that already exists
 prints "no changes" and does nothing further, even with different arguments.
