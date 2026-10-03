@@ -55,3 +55,11 @@ database:
   idle_in_transaction_timeout_ms: 30000
   pool_min: 1
   pool_max: 10
+
+workers:
+  outbox:
+    batch_size: 50
+    poll_interval_seconds: 2
+    reclaim_after_seconds: 300
+    max_attempts: 5
+  heartbeat_file: "/tmp/af-worker-heartbeat"

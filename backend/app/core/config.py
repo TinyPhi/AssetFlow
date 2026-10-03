@@ -178,6 +178,42 @@ class DatabaseConfig(_Strict):
         return self
 
 
+class OutboxWorkerConfig(_Strict):
+    """``workers.outbox``: the outbox dispatcher (§B9.3, M1.5-T1)."""
+
+    batch_size: int = Field(default=50, ge=1, le=1000, description="Outbox rows claimed per batch")
+    poll_interval_seconds: float = Field(
+        default=2.0, gt=0, description="Seconds between polls when no NOTIFY wakes the dispatcher"
+    )
+    reclaim_after_seconds: int = Field(
+        default=300, ge=1, description="A claim older than this many seconds is returned to the queue"
+    )
+    max_attempts: int = Field(
+        default=5, ge=1, description="Claims after which a failing event is dead-lettered"
+    )
+    listen_host: str | None = Field(
+        default=None,
+        description="Direct PostgreSQL host for LISTEN (not PgBouncer); defaults to database.host",
+    )
+    listen_port: int | None = Field(
+        default=None,
+        ge=1,
+        le=65535,
+        description="Direct PostgreSQL port for LISTEN; defaults to database.port",
+    )
+
+
+class WorkersConfig(_Strict):
+    """``workers.*``: settings of the separate worker process (§B9.3)."""
+
+    outbox: OutboxWorkerConfig = Field(default_factory=OutboxWorkerConfig)
+    heartbeat_file: str = Field(
+        default="/tmp/af-worker-heartbeat",  # noqa: S108 - a tmpfs path inside the container
+        min_length=1,
+        description="File the worker touches every loop; the container healthcheck reads its age",
+    )
+
+
 class AppConfig(_Strict):
     """Root of ``config/assetflow.yaml``."""
 
@@ -185,6 +221,7 @@ class AppConfig(_Strict):
     platform: PlatformConfig = Field(default_factory=PlatformConfig)
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
     database: DatabaseConfig
+    workers: WorkersConfig = Field(default_factory=WorkersConfig)
     _source: Path | None = PrivateAttr(default=None)
 
     @property

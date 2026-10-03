@@ -208,6 +208,28 @@ class SecretsUnavailableError(ProblemError):
     )
 
 
+class ModuleNotInstalledError(ProblemError):
+    status_code = 404
+    code = "module.not_installed"
+    title = "Module not installed"
+    default_detail = "This feature requires a module your organization has not installed."
+    description = (
+        "The route guard refuses before any handler runs, so an uninstalled module's routes "
+        "behave as if they do not exist (§B5.9, M1.4-T6)."
+    )
+
+
+class ModuleDependencyError(ProblemError):
+    status_code = 409
+    code = "module.dependency_not_met"
+    title = "Module dependency not met"
+    default_detail = "This module cannot be installed or uninstalled yet."
+    description = (
+        "Installing a module needs its dependency installed first; uninstalling one needs its "
+        "dependents uninstalled first (§B5.9, M1.4-T6)."
+    )
+
+
 ERROR_REGISTRY: tuple[type[ProblemError], ...] = (
     InternalError,
     ValidationFailedError,
@@ -221,6 +243,8 @@ ERROR_REGISTRY: tuple[type[ProblemError], ...] = (
     HttpError,
     ServiceUnavailableError,
     SecretsUnavailableError,
+    ModuleNotInstalledError,
+    ModuleDependencyError,
 )
 
 _BY_STATUS: dict[int, type[ProblemError]] = {
