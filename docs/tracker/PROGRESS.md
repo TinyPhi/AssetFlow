@@ -99,3 +99,9 @@ Record of completed tasks, tools, and milestone verifications.
 - **Evidence:** `tests/isolation tests/scope` 83/83, `tests/integration -k "outbox or worker"` 11/11, unit/contract/e2e_api 251/251, ruff, mypy (`app workers`), check-migrations, check-domain-terms, schema-snapshot upgrade/downgrade/upgrade; the worker image ran as non-root with a read-only root against a migrated database: processed a seeded row, healthcheck 0, SIGTERM exit 0 in 2 s, no published port.
 - **Next step:** P6-01b (job runner and housekeeping).
 
+### 2026-10-04 — P6-06a to P6-09 Notifications: channel runtime, channels, preferences, acceptance (M1.5 complete, local)
+- **Task:** P6-06a, P6-06b, P6-06c, P6-04, P6-05, P6-07, P6-08, P6-09 (issues #64-#71, M1.5-T4 to T8 and acceptance)
+- **What changed:** channel runtime (credentials only in OpenBao, write-only for the API; egress client: HTTPS, allowlist, public addresses, checked-address connect, no redirects); notification sender (3 attempts, circuit breaker, dead letter with admin alert and audit note, kill switch); channel installations, delivery log and re-queue API; `email` (SMTP, STARTTLS/TLS) and signed `webhook` channels; member preferences with mandatory in-app; channel settings as JSON Schema; `make new-channel`; generated events reference; docs. Migrations 0013-0015.
+- **Evidence:** full backend suite 789 passed, 2 skipped; acceptance e2e `reports/p6-acceptance.xml` (2 passed, real Mailpit); `scripts/tests` 42; migration roundtrip and snapshot; gitleaks over 15 commits clean. Details in each plan's Record.
+- **Status:** ☑ (local, not pushed; PRs only when the owner says).
+- **Next step:** Phase 7 (M1.6).
