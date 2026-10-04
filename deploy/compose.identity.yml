@@ -18,11 +18,13 @@ x-zitadel-public: &zitadel-public
   # Must match the URL the browser uses, or Zitadel answers "Instance not found". Containers
   # on the shared network call http://zitadel:8080 with "Host: <domain>:<port>".
   ZITADEL_DOMAIN: ${ZITADEL_DOMAIN:-localhost}
-  ZITADEL_EXTERNALPORT: ${ZITADEL_EXTERNALPORT:-8081}
+  ZITADEL_EXTERNALPORT: ${ZITADEL_EXTERNALPORT:-19081}
   ZITADEL_EXTERNALSECURE: "false"
 
 services:
   zitadel-db:
+    labels:
+      com.tinyphi.project: assetflow
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
@@ -42,6 +44,8 @@ services:
 
   # Gives the bootstrap volume to the zitadel user (uid 1000), so Zitadel runs as non-root.
   zitadel-volume-init:
+    labels:
+      com.tinyphi.project: assetflow
     image: postgres:16-alpine
     restart: "no"
     user: "0"
@@ -51,6 +55,8 @@ services:
       - zitadel_bootstrap:/zitadel/bootstrap
 
   zitadel:
+    labels:
+      com.tinyphi.project: assetflow
     image: ghcr.io/zitadel/zitadel:v4.19.3
     restart: unless-stopped
     # One service: init + setup (first instance) + start. The masterkey is read from
@@ -63,7 +69,7 @@ services:
       # (default TLS.Enabled=true would make it probe https and report "not ready").
       ZITADEL_TLS_ENABLED: "false"
       ZITADEL_EXTERNALDOMAIN: ${ZITADEL_DOMAIN:-localhost}
-      ZITADEL_EXTERNALPORT: ${ZITADEL_EXTERNALPORT:-8081}
+      ZITADEL_EXTERNALPORT: ${ZITADEL_EXTERNALPORT:-19081}
       ZITADEL_EXTERNALSECURE: "false"
       ZITADEL_DATABASE_POSTGRES_HOST: zitadel-db
       ZITADEL_DATABASE_POSTGRES_PORT: "5432"
@@ -96,7 +102,7 @@ services:
       ZITADEL_DEFAULTINSTANCE_LOGINPOLICY_FORCEMFA: "false"
       ZITADEL_DEFAULTINSTANCE_LOGINPOLICY_ALLOWREGISTER: "false"
     ports:
-      - "127.0.0.1:${ZITADEL_EXTERNALPORT:-8081}:8080"
+      - "127.0.0.1:${ZITADEL_EXTERNALPORT:-19081}:8080"
     volumes:
       - zitadel_bootstrap:/zitadel/bootstrap
     depends_on:
@@ -117,6 +123,8 @@ services:
 
   # One-off: docker compose ... --profile bootstrap run --rm zitadel-bootstrap [apply|init-env]
   zitadel-bootstrap:
+    labels:
+      com.tinyphi.project: assetflow
     profiles: [bootstrap]
     image: assetflow-bootstrap:local
     build:
@@ -129,7 +137,7 @@ services:
       ZITADEL_BOOTSTRAP_URL: http://zitadel:8080
       ZITADEL_ADMIN_USERNAME: ${ZITADEL_ADMIN_USERNAME:-admin}
       APP_URL: ${APP_URL:-http://localhost:5173}
-      API_URL: ${API_URL:-http://localhost:8080}
+      API_URL: ${API_URL:-http://localhost:18080}
     volumes:
       # The checkout: .env.local is written here; config/ is read-only.
       - ..:/workspace

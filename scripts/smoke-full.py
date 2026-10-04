@@ -17,9 +17,9 @@ Options:
                       reports sealed and the api container stopped with
                       platform.secrets_unavailable in its log
 
-Environment: OPENBAO_HOST_PORT (8200), BAO_CACERT (deploy/.secrets/openbao-tls/ca.pem),
-ZITADEL_DOMAIN (localhost), ZITADEL_EXTERNALPORT (8081), ZITADEL_EXTERNALSECURE (false),
-API_HOST_PORT (8080).
+Environment: OPENBAO_HOST_PORT (19200), BAO_CACERT (deploy/.secrets/openbao-tls/ca.pem),
+ZITADEL_DOMAIN (localhost), ZITADEL_EXTERNALPORT (19081), ZITADEL_EXTERNALSECURE (false),
+API_HOST_PORT (18080).
 """
 
 from __future__ import annotations
@@ -62,7 +62,7 @@ def report(ok: bool, message: str) -> bool:
 
 
 def openbao_health() -> dict | None:
-    port = os.environ.get("OPENBAO_HOST_PORT", "8200")
+    port = os.environ.get("OPENBAO_HOST_PORT", "19200")
     cacert = os.environ.get("BAO_CACERT") or str(DEFAULT_CACERT)
     ctx = ssl.create_default_context(cafile=cacert) if Path(cacert).exists() else ssl.create_default_context()
     try:
@@ -91,7 +91,7 @@ def check_openbao() -> bool:
 
 def check_zitadel() -> bool:
     domain = os.environ.get("ZITADEL_DOMAIN", "localhost")
-    port = os.environ.get("ZITADEL_EXTERNALPORT", "8081")
+    port = os.environ.get("ZITADEL_EXTERNALPORT", "19081")
     secure = os.environ.get("ZITADEL_EXTERNALSECURE", "false").lower() == "true"
     base = f"{'https' if secure else 'http'}://{domain}" + ("" if port in ("80", "443") else f":{port}")
     try:
@@ -105,7 +105,7 @@ def check_zitadel() -> bool:
 
 
 def check_api() -> bool:
-    port = os.environ.get("API_HOST_PORT", "8080")
+    port = os.environ.get("API_HOST_PORT", "18080")
     url = f"http://127.0.0.1:{port}/healthz"
     try:
         status, body = fetch(url)

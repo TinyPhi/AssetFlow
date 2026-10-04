@@ -95,7 +95,7 @@ Say "4/4 Zitadel bootstrap"
 Invoke-Docker ($DC + @("--profile", "bootstrap", "run", "--rm", "zitadel-bootstrap") + $ApplyArgs) "Zitadel bootstrap failed; see the output above."
 
 $Domain = if ($env:ZITADEL_DOMAIN) { $env:ZITADEL_DOMAIN } else { "localhost" }
-$Port = if ($env:ZITADEL_EXTERNALPORT) { $env:ZITADEL_EXTERNALPORT } else { "8081" }
+$Port = if ($env:ZITADEL_EXTERNALPORT) { $env:ZITADEL_EXTERNALPORT } else { "19081" }
 Write-Host ""
 Write-Host "  ============================================================="
 Write-Host "   Identity is ready (local development)."

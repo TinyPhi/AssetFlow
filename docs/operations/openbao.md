@@ -80,7 +80,7 @@ seal type, never written into `openbao.hcl` or the repository.
 From the repository root, in the operator's shell:
 
 ```bash
-export BAO_ADDR=https://127.0.0.1:8200
+export BAO_ADDR=https://127.0.0.1:19200
 export BAO_CACERT=deploy/.secrets/openbao-tls/ca.pem
 read -rs BAO_TOKEN && export BAO_TOKEN          # root token on the first run only
 python scripts/openbao-apply.py --generate-missing

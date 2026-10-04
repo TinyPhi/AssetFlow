@@ -33,12 +33,14 @@ x-openbao-agent: &openbao-agent
 x-zitadel-external: &zitadel-external
   # Must match the public URL exactly (scheme, host, port), or Zitadel returns "Instance not found".
   ZITADEL_EXTERNALDOMAIN: ${ZITADEL_DOMAIN:-localhost}
-  ZITADEL_EXTERNALPORT: ${ZITADEL_EXTERNALPORT:-8081}
+  ZITADEL_EXTERNALPORT: ${ZITADEL_EXTERNALPORT:-19081}
   ZITADEL_EXTERNALSECURE: ${ZITADEL_EXTERNALSECURE:-false}
 
 services:
   # ---------------------------------------------------------------- secrets
   openbao:
+    labels:
+      com.tinyphi.project: assetflow
     image: openbao/openbao:2.6.3
     restart: unless-stopped
     # Production server mode (no -dev). The entrypoint loads every file in /openbao/config.
@@ -51,7 +53,7 @@ services:
       BAO_CACERT: /run/secrets/openbao_ca
     ports:
       # Operators and scripts on the host only.
-      - "127.0.0.1:${OPENBAO_HOST_PORT:-8200}:8200"
+      - "127.0.0.1:${OPENBAO_HOST_PORT:-19200}:8200"
     secrets:
       - openbao_tls_cert
       - openbao_tls_key
@@ -70,6 +72,8 @@ services:
       - assetflow_net
 
   postgres-secrets:
+    labels:
+      com.tinyphi.project: assetflow
     <<: *openbao-agent
     command: ["agent", "-config=/openbao/agent/postgres-secrets.hcl"]
     secrets:
@@ -86,6 +90,8 @@ services:
       retries: 30
 
   zitadel-secrets:
+    labels:
+      com.tinyphi.project: assetflow
     <<: *openbao-agent
     command: ["agent", "-config=/openbao/agent/zitadel-secrets.hcl"]
     secrets:
@@ -103,6 +109,8 @@ services:
 
   # ---------------------------------------------------------------- AssetFlow database
   postgres:
+    labels:
+      com.tinyphi.project: assetflow
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
@@ -110,7 +118,7 @@ services:
       POSTGRES_DB: assetflow
       POSTGRES_PASSWORD_FILE: /run/assetflow-db/postgres-superuser-password
     ports:
-      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-15432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - postgres_secrets:/run/assetflow-db:ro
@@ -128,6 +136,8 @@ services:
   # ---------------------------------------------------------------- identity (Zitadel)
   # Separate database server and users: never shared with AssetFlow's roles.
   zitadel-db:
+    labels:
+      com.tinyphi.project: assetflow
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
@@ -150,6 +160,8 @@ services:
 
   # Gives the bootstrap volume to the zitadel user (uid 1000), so Zitadel runs as non-root.
   zitadel-volume-init:
+    labels:
+      com.tinyphi.project: assetflow
     image: postgres:16-alpine
     restart: "no"
     user: "0"
@@ -164,6 +176,8 @@ services:
   # the key of the first-instance machine user into zitadel_bootstrap; the bootstrap moves it
   # into OpenBao, rotates it and deletes the file.
   zitadel:
+    labels:
+      com.tinyphi.project: assetflow
     image: ghcr.io/zitadel/zitadel:v4.19.3
     restart: unless-stopped
     command:
@@ -184,7 +198,7 @@ services:
     environment:
       <<: *zitadel-external
     ports:
-      - "${ZITADEL_EXTERNALPORT:-8081}:8080"
+      - "${ZITADEL_EXTERNALPORT:-19081}:8080"
     volumes:
       - ./zitadel/config.yaml:/zitadel/config.yaml:ro
       - ./zitadel/steps.yaml:/zitadel/steps.yaml:ro
@@ -212,6 +226,8 @@ services:
   # OpenBao only. BAO_TOKEN (operator token) is passed through from the operator's shell for
   # this run; the container is removed afterwards.
   zitadel-bootstrap:
+    labels:
+      com.tinyphi.project: assetflow
     profiles: [bootstrap]
     image: assetflow-bootstrap:local
     build:
@@ -223,7 +239,7 @@ services:
       ASSETFLOW_ENV: production
       ZITADEL_BOOTSTRAP_URL: http://zitadel:8080
       APP_URL: ${APP_URL:-http://localhost:5173}
-      API_URL: ${API_URL:-http://localhost:8080}
+      API_URL: ${API_URL:-http://localhost:18080}
       BAO_ADDR: https://openbao:8200
       BAO_CACERT: /run/secrets/openbao_ca
       BAO_TOKEN:
@@ -240,13 +256,15 @@ services:
 
   # ---------------------------------------------------------------- AssetFlow
   api:
+    labels:
+      com.tinyphi.project: assetflow
     image: assetflow-api:latest
     build:
       context: ../backend
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "${API_HOST_PORT:-8080}:8080"
+      - "${API_HOST_PORT:-18080}:8080"
     environment:
       ASSETFLOW_ENV: ${ASSETFLOW_ENV:-production}
       ASSETFLOW_SECRETS_PROVIDER: openbao

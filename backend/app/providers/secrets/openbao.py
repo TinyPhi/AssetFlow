@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 class OpenBaoSettings(ProviderSettings):
     """``providers.secrets.settings`` for ``type: openbao``."""
 
-    address: str = "http://localhost:8200"
+    address: str = "http://localhost:19200"
     role_id: str | None = None
     secret_id_file: str | None = None
     token: str | None = None

@@ -33,7 +33,7 @@ _DEFAULT_ZITADEL_ROLES_CLAIM = "urn:zitadel:iam:org:project:roles"
 class OidcAuthSettings(ProviderSettings):
     """``providers.auth.settings`` for ``type: oidc``."""
 
-    issuer: str = "http://localhost:8080"
+    issuer: str = "http://localhost:19081"
     client_id: str = "assetflow"
     client_secret: str | None = None
     audience: str | None = None

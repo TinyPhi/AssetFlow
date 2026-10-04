@@ -67,8 +67,8 @@ scripts/bootstrap.sh --reset    # delete the local Zitadel volumes and start ove
 ```
 
 Containers of AssetFlow that need Zitadel join the Docker network `assetflow-dev` and call
-`http://zitadel:8080` with the header `Host: localhost:8081` (the external domain and port), so
-Zitadel finds its instance; the browser uses `http://localhost:8081`.
+`http://zitadel:8080` with the header `Host: localhost:19081` (the external domain and port), so
+Zitadel finds its instance; the browser uses `http://localhost:19081`.
 
 ## 3. Runtime layout
 
@@ -96,7 +96,7 @@ public URL exactly, or Zitadel answers `Instance not found`:
 
 | TLS mode | Public URL | Settings |
 | --- | --- | --- |
-| Local (no TLS) | `http://localhost:8081` | `localhost`, `8081`, `false` (defaults) |
+| Local (no TLS) | `http://localhost:19081` | `localhost`, `19081`, `false` (defaults) |
 | External TLS (nginx in front) | `https://id.example.com` | `id.example.com`, `443`, `true`, and `ZITADEL_TLS_MODE=external` |
 
 `ExternalDomain` is fixed when the instance is created; changing it later needs the instance
@@ -107,7 +107,7 @@ domain to be added in Zitadel first.
 Runs in the bootstrap container (`make zitadel-apply`) against `http://zitadel:8080`, sending the
 public `Host` header (and `X-Forwarded-Proto: https` when the public URL is https). It can also
 run on a host with uv: `uv run scripts/bootstrap_zitadel.py [--dry-run]` with
-`ZITADEL_BOOTSTRAP_URL=http://localhost:8081` (once the bootstrap key is stored). Each step
+`ZITADEL_BOOTSTRAP_URL=http://localhost:19081` (once the bootstrap key is stored). Each step
 searches first, creates only what is missing, treats HTTP 409 as success and re-applies
 settings with PUT only when they differ (Zitadel's `No changes` also counts as success):
 

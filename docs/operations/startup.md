@@ -11,6 +11,34 @@ SPDX-License-Identifier: AGPL-3.0-only
 Local development without OpenBao uses only the identity stack: `scripts/bootstrap.sh` (Windows:
 `setup.bat`) or `make bootstrap`, see `docs/operations/zitadel.md` section 2.
 
+## 0. Ports and names (running next to other projects)
+
+AssetFlow publishes its host ports **above 9000** so it never collides with, or silently reuses,
+another project's PostgreSQL (5432), Zitadel (8080), OpenBao (8200) and the like on the same machine.
+Container-internal ports are unchanged. Every host port can be moved with the variable in the table
+(in the shell or in `.env.local`).
+
+| Service | Host address | Variable | Profile |
+| --- | --- | --- | --- |
+| OpenBao | `https://127.0.0.1:19200` | `OPENBAO_HOST_PORT` | full |
+| PostgreSQL | `127.0.0.1:15432` | `POSTGRES_HOST_PORT` | full |
+| Zitadel (browser URL and API) | `http://localhost:19081` | `ZITADEL_EXTERNALPORT` | full, identity |
+| AssetFlow API | `http://localhost:18080` | `API_HOST_PORT` | full |
+
+`ZITADEL_EXTERNALPORT` is also the port in Zitadel's own external URL, so the issuer, the browser and
+the bootstrap script all follow the one variable.
+
+Before starting, `make up-full` and `make up-identity` run `scripts/check-ports.py`. It stops, with the
+port and the variable that moves it, when a chosen port is at or below 9000, chosen twice, or already
+in use by something that is not part of this project. A port held by a running container of this
+project is fine (you are starting the stack again). Nothing is started and no container is touched
+when it fails.
+
+Every service of both stacks carries the label `com.tinyphi.project=assetflow`. The full stack is the
+compose project `assetflow`; the identity stack keeps its own project name `assetflow-dev` so that
+`make down-identity` can stop the development Zitadel without stopping the full stack, and the other
+way round. `make down` and `make down-identity` act only on these two projects.
+
 ## 1. Order
 
 Compose enforces the order with `depends_on` and health conditions:
@@ -44,7 +72,7 @@ From the repository root (first time: see `docs/operations/openbao.md` sections 
 sh deploy/openbao/gen-dev-tls.sh                          # once; production: your CA's files
 docker compose -f deploy/compose.full.yml up -d openbao
 # unseal (docs/operations/openbao.md section 3)
-export BAO_ADDR=https://127.0.0.1:8200 BAO_CACERT=deploy/.secrets/openbao-tls/ca.pem
+export BAO_ADDR=https://127.0.0.1:19200 BAO_CACERT=deploy/.secrets/openbao-tls/ca.pem
 read -rs BAO_TOKEN && export BAO_TOKEN                    # operator token
 python scripts/openbao-apply.py --issue-secret-ids        # fresh, short-lived secret ids
 docker compose -f deploy/compose.full.yml up -d --wait zitadel

@@ -22,7 +22,7 @@ Options:
                          exist yet (check-and-set, so existing values are never overwritten)
 
 Environment (operator shell, never a container):
-    BAO_ADDR     default https://127.0.0.1:8200
+    BAO_ADDR     default https://127.0.0.1:19200
     BAO_CACERT   default deploy/.secrets/openbao-tls/ca.pem
     BAO_TOKEN    operator token (or ~/.bao-token); the root token only for the first bootstrap
     ASSETFLOW_NET_CIDR   network range for bound CIDRs (default 172.28.0.0/24, "" disables)
@@ -325,7 +325,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: no policy files in {POLICY_DIR}", file=sys.stderr)
         return 1
 
-    addr = os.environ.get("BAO_ADDR", "https://127.0.0.1:8200")
+    addr = os.environ.get("BAO_ADDR", "https://127.0.0.1:19200")
     cacert = os.environ.get("BAO_CACERT") or (str(DEFAULT_CACERT) if DEFAULT_CACERT.exists() else None)
     token = _token()
     if not token:

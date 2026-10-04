@@ -103,7 +103,7 @@ cat <<EOF
 
   =============================================================
    Identity is ready (local development).
-   Console:   http://${ZITADEL_DOMAIN:-localhost}:${ZITADEL_EXTERNALPORT:-8081}/ui/console
+   Console:   http://${ZITADEL_DOMAIN:-localhost}:${ZITADEL_EXTERNALPORT:-19081}/ui/console
    Admin:     login name printed above; password = ZITADEL_ADMIN_PASSWORD in ${ENV_FILE}
    Results:   ZITADEL_* in ${ENV_FILE} (project id, client ids and secrets, organization ids)
    Stop:      make down-identity        Start again: make up-identity

@@ -165,7 +165,7 @@ If you prefer not to unseal by hand, configure auto-unseal with a `seal` stanza
 In my own shell on the host (never inside a container):
 
 ```bash
-export BAO_ADDR=https://127.0.0.1:8200
+export BAO_ADDR=https://127.0.0.1:19200
 export BAO_CACERT=deploy/.secrets/openbao-tls/ca.pem
 read -rs BAO_TOKEN && export BAO_TOKEN     # paste your-secret-6 (root token), first run only
 python scripts/openbao-apply.py --generate-missing
@@ -286,7 +286,7 @@ How containers get their values:
 | Check | Command | Expected |
 | --- | --- | --- |
 | Unsealed | `docker compose -f deploy/compose.full.yml exec openbao bao status` | `Sealed false`, exit code 0 |
-| Health endpoint | `curl --cacert deploy/.secrets/openbao-tls/ca.pem https://127.0.0.1:8200/v1/sys/health` | HTTP 200 |
+| Health endpoint | `curl --cacert deploy/.secrets/openbao-tls/ca.pem https://127.0.0.1:19200/v1/sys/health` | HTTP 200 |
 | Configuration applied | `python scripts/openbao-apply.py` | `No changes.` |
 | Least privilege | Step 7 capability checks | `deny` / `read` as shown |
 | Root token revoked | `BAO_TOKEN=your-secret-6 bao token lookup` | HTTP 403 |

@@ -149,10 +149,10 @@ class Settings:
     env_file: Path | None = None
     bootstrap_url: str = ""
     domain: str = "localhost"
-    port: str = "8081"
+    port: str = "19081"
     secure: bool = False
     app_url: str = "http://localhost:5173"
-    api_url: str = "http://localhost:8080"
+    api_url: str = "http://localhost:18080"
     key_file: Path = Path("/zitadel/bootstrap/bootstrap-key.json")
     pat_file: Path = Path("/zitadel/bootstrap/bootstrap.pat")
     admin_username: str = "admin"
@@ -168,7 +168,7 @@ class Settings:
             s.root = Path(e["ASSETFLOW_ROOT"])
         s.env_file = Path(e["ASSETFLOW_ENV_FILE"]) if e.get("ASSETFLOW_ENV_FILE") else s.root / ".env.local"
         s.domain = e.get("ZITADEL_DOMAIN") or e.get("ZITADEL_EXTERNALDOMAIN") or "localhost"
-        s.port = e.get("ZITADEL_EXTERNALPORT") or "8081"
+        s.port = e.get("ZITADEL_EXTERNALPORT") or "19081"
         s.secure = _bool(e.get("ZITADEL_EXTERNALSECURE"))
         s.bootstrap_url = (e.get("ZITADEL_BOOTSTRAP_URL") or f"http://localhost:{s.port}").rstrip("/")
         s.app_url = (e.get("APP_URL") or s.app_url).rstrip("/")
@@ -371,7 +371,7 @@ def make_store(settings: Settings, environ: dict[str, str] | None = None) -> Sec
     e = dict(os.environ if environ is None else environ)
     if settings.production:
         return OpenBaoStore(
-            e.get("BAO_ADDR", "https://127.0.0.1:8200"),
+            e.get("BAO_ADDR", "https://127.0.0.1:19200"),
             e.get("BAO_TOKEN", "").strip(),
             e.get("BAO_CACERT") or None,
         )

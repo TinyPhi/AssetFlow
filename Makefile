@@ -129,6 +129,7 @@ up-minimal: ## Start the minimal profile
 # First run: `make up-full GENERATE_MISSING=1` with the root token (docs/operations/openbao.md section 4).
 up-full: check-python ## Start the full profile: OpenBao, unseal (manual), openbao-apply, Zitadel, AssetFlow
 	@test -f $(COMPOSE_FULL) || $(call not_implemented,P2-12,the full profile ($(COMPOSE_FULL)))
+	@$(PYTHON) scripts/check-ports.py full
 	@test -f $(OPENBAO_CA) || { echo "make up-full: no OpenBao TLS files in deploy/.secrets/openbao-tls/. Run: sh deploy/openbao/gen-dev-tls.sh (docs/operations/openbao.md section 2)." >&2; exit 1; }
 	@echo "==> 1/5 OpenBao"
 	$(COMPOSE) $(COMPOSE_FILES_FULL) up -d openbao
@@ -151,6 +152,7 @@ up-full: check-python ## Start the full profile: OpenBao, unseal (manual), openb
 
 up-identity: ## Start the local development Zitadel (after make bootstrap)
 	@test -s .env.local || { echo "make up-identity: no .env.local yet; run make bootstrap (or setup.bat) first." >&2; exit 1; }
+	@$(PYTHON) scripts/check-ports.py identity
 	$(COMPOSE_IDENTITY) up -d --wait zitadel
 
 down-identity: ## Stop the local development Zitadel (data kept; make bootstrap ARGS=--reset deletes it)

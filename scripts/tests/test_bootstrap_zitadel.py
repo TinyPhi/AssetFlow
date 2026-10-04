@@ -28,7 +28,7 @@ sys.path.insert(0, str(SCRIPTS))
 
 import bootstrap_zitadel as bz
 
-ISSUER = "http://localhost:8081"
+ISSUER = "http://localhost:19081"
 PEM = (
     rsa.generate_private_key(public_exponent=65537, key_size=2048)
     .private_bytes(
@@ -396,7 +396,7 @@ def test_first_run_creates_everything_and_writes_env_local(root: Path) -> None:
         next(u for u, v in fake.users.items() if v["userName"] == "assetflow-automation")
     ] == ["IAM_ORG_MANAGER"]
     # The public Host header is sent although the URL is the internal one.
-    assert fake.hosts == {"localhost:8081"}
+    assert fake.hosts == {"localhost:19081"}
 
     env = bz.EnvFile(root / ".env.local").read()
     assert env["ZITADEL_PROJECT_ID"] == project["id"]

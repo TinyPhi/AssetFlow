@@ -14,7 +14,7 @@ platform:
   public_url: "${ASSETFLOW_PUBLIC_URL:-http://localhost:5173}"
   allowed_origins:
     - "http://localhost:5173"
-    - "http://localhost:8080"
+    - "http://localhost:18080"
 
 providers:
   auth:
