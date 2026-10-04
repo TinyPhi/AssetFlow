@@ -269,6 +269,8 @@ CREATE TABLE public.notification_channels (
     allow_personal_data boolean DEFAULT false NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    version integer DEFAULT 1 NOT NULL,
+    secret_fields_set text[] DEFAULT '{}'::text[] NOT NULL,
     CONSTRAINT ck_notification_channels__settings_object CHECK ((jsonb_typeof(settings) = 'object'::text))
 );
 
@@ -1122,6 +1124,20 @@ GRANT SELECT ON TABLE public.notification_channels TO assetflow_readonly;
 GRANT SELECT ON TABLE public.notification_deliveries TO assetflow_api;
 GRANT SELECT,INSERT,UPDATE ON TABLE public.notification_deliveries TO assetflow_worker;
 GRANT SELECT ON TABLE public.notification_deliveries TO assetflow_readonly;
+
+GRANT UPDATE(status) ON TABLE public.notification_deliveries TO assetflow_api;
+
+GRANT UPDATE(attempts) ON TABLE public.notification_deliveries TO assetflow_api;
+
+GRANT UPDATE(error_code) ON TABLE public.notification_deliveries TO assetflow_api;
+
+GRANT UPDATE(next_retry_at) ON TABLE public.notification_deliveries TO assetflow_api;
+
+GRANT UPDATE(claimed_by) ON TABLE public.notification_deliveries TO assetflow_api;
+
+GRANT UPDATE(claimed_at) ON TABLE public.notification_deliveries TO assetflow_api;
+
+GRANT UPDATE(updated_at) ON TABLE public.notification_deliveries TO assetflow_api;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.notification_preferences TO assetflow_api;
 GRANT SELECT ON TABLE public.notification_preferences TO assetflow_worker;

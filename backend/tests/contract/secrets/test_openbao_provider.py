@@ -88,6 +88,24 @@ async def test_openbao_get_map_reads_a_nested_name(monkeypatch: pytest.MonkeyPat
     assert bao.requests[0].url.path == "/v1/secret/data/assetflow/orgs/org-a/channels/chan-1"
 
 
+async def test_openbao_patch_sends_a_kv_v2_merge_patch(monkeypatch: pytest.MonkeyPatch) -> None:
+    bao = _Bao(monkeypatch, lambda r: httpx.Response(200, json={"data": {"version": 2}}))
+    await _provider().patch(CHANNEL, {"token": "abc", "signing_key": None})
+    request = bao.requests[0]
+    assert request.method == "PATCH"
+    assert request.headers["content-type"] == "application/merge-patch+json"
+    assert request.url.path == "/v1/secret/data/assetflow/orgs/org-a/channels/chan-1"
+    assert json.loads(request.content) == {"data": {"token": "abc", "signing_key": None}}
+
+
+@pytest.mark.parametrize("status", [403, 404, 500])
+async def test_openbao_patch_refused_is_a_generic_error(monkeypatch: pytest.MonkeyPatch, status: int) -> None:
+    _Bao(monkeypatch, lambda r: httpx.Response(status, json={"errors": ["token abc denied"]}))
+    with pytest.raises(SecretsUnavailableError) as exc:
+        await _provider().patch(CHANNEL, {"token": "abc"})
+    assert "abc" not in str(exc.value)
+
+
 @pytest.mark.parametrize("status", [403, 404, 500])
 async def test_openbao_put_refused_is_a_generic_error(monkeypatch: pytest.MonkeyPatch, status: int) -> None:
     _Bao(monkeypatch, lambda r: httpx.Response(status, json={"errors": ["token abc denied"]}))

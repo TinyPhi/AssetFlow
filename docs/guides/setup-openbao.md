@@ -221,7 +221,7 @@ revoke it.
 | `assetflow-postgres` | `secret/assetflow/postgres` | none |
 | `zitadel` | `secret/assetflow/zitadel/{masterkey,database,admin}` | none |
 
-All application policies are read-only except one path: the api may write, but never read or list,
+All application policies are read-only except one path: the api may write (create, update, patch, delete), but never read or list,
 `secret/assetflow/orgs/+/channels/*` (channel credentials are write-only from the admin form; only the
 worker's channel runtime reads them). `secret/assetflow/migrator` is explicitly denied to the api
 and the worker. I checked this with a short-lived token:

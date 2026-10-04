@@ -39,6 +39,14 @@ class SecretsProvider(ABC):
         """
         raise NotImplementedError(f"{self.name} does not support writing secrets.")
 
+    async def patch(self, path: str, values: Mapping[str, str | None]) -> None:
+        """Change only the given keys of ``secret://<area>/<name>``; a ``None`` value removes its key.
+
+        Added in 1.1 beside :meth:`put`, for a writer that may not read the secret back (it cannot
+        read-modify-write). The secret must already exist.
+        """
+        raise NotImplementedError(f"{self.name} does not support patching secrets.")
+
     @abstractmethod
     async def encrypt(self, context: str, plaintext: str) -> str:
         """Encrypt ``plaintext`` bound to ``context`` (for example the organization id)."""

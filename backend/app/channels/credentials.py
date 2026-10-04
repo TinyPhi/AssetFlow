@@ -38,6 +38,10 @@ class ChannelCredentialStore:
         await self._provider.put(ref, values)
         return ref
 
+    async def change(self, secret_ref: str, changes: Mapping[str, str | None]) -> None:
+        """Change only some keys of what `write` stored; a `None` removes its key (no read needed)."""
+        await self._provider.patch(secret_ref, changes)
+
     async def read(self, secret_ref: str) -> Mapping[str, str]:
         """Runtime only: the stored values as a read-only mapping."""
         return MappingProxyType(await self._provider.get_map(secret_ref))

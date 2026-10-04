@@ -20,7 +20,7 @@ path "secret/data/assetflow/smtp" {
 # next to this one: when two paths both match, OpenBao's priority rules could let the broader read
 # win, so the channel path is the only per-organization path the api touches, and only to write.
 path "secret/data/assetflow/orgs/+/channels/*" {
-  capabilities = ["create", "update", "delete"]
+  capabilities = ["create", "update", "patch", "delete"]
 }
 
 path "secret/metadata/assetflow/orgs/+/channels/*" {

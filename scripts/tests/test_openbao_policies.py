@@ -64,7 +64,7 @@ def test_the_api_can_never_read_or_list_a_channel_credential(path: str) -> None:
 
 
 def test_the_api_can_write_and_remove_a_channel_credential() -> None:
-    assert {"create", "update", "delete"} <= capabilities("api", DATA)
+    assert {"create", "update", "patch", "delete"} <= capabilities("api", DATA)
     assert "delete" in capabilities("api", METADATA)
 
 

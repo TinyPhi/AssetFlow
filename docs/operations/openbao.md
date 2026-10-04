@@ -124,7 +124,7 @@ holders, use it, and revoke it.
 | `assetflow-postgres` | `secret/assetflow/postgres` | none |
 | `zitadel` | `secret/assetflow/zitadel/{masterkey,database,admin}` | none |
 
-All application policies are read-only except one path: the api role may `create`, `update` and `delete`
+All application policies are read-only except one path: the api role may `create`, `update`, `patch` and `delete`
 (never `read` or `list`) `secret/assetflow/orgs/+/channels/*`, so an admin can save or remove a channel
 credential but nothing can read one back; only the worker's channel runtime reads it. `secret/assetflow/migrator` is explicitly denied to
 the api and worker. Secret layout (KV v2 under `secret/`):

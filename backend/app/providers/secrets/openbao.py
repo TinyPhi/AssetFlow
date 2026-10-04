@@ -150,6 +150,22 @@ class OpenBaoSecretsProvider(SecretsProvider):
             if res.status_code not in (200, 204):
                 raise SecretsUnavailableError("OpenBao refused the secret write.")
 
+    async def patch(self, path: str, values: Mapping[str, str | None]) -> None:
+        """KV v2 merge-patch: only the given keys change, a ``None`` removes its key."""
+        area, name = self._split_path(path)
+        if not values:
+            raise SecretsUnavailableError("A secret patch needs at least one key.")
+        url = f"{self.settings.address.rstrip('/')}/v1/{self.settings.mount_point}/data/{area}/{name}"
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            token = await self._ensure_token(client)
+            headers = {"X-Vault-Token": token, "Content-Type": "application/merge-patch+json"}
+            try:
+                res = await client.patch(url, headers=headers, json={"data": dict(values)})
+            except httpx.HTTPError as exc:
+                raise SecretsUnavailableError("OpenBao KV patch error.") from exc
+            if res.status_code not in (200, 204):
+                raise SecretsUnavailableError("OpenBao refused the secret patch.")
+
     async def encrypt(self, context: str, plaintext: str) -> str:
         """Encrypt `plaintext` bound to `context` using transit engine."""
         url = (

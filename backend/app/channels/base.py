@@ -57,6 +57,8 @@ class NotificationChannel(ABC):
     INTERFACE_VERSION: ClassVar[str] = "1.0"
 
     key: ClassVar[str]
+    display_name: ClassVar[str] = ""  # shown in the admin UI; falls back to `key`
+    accepts_allowed_hosts: ClassVar[bool] = False  # True for webhook-type channels (§B6.3)
     config_schema: ClassVar[type[BaseModel]]
     secret_fields: ClassVar[tuple[str, ...]] = ()
     egress_hosts: ClassVar[tuple[str, ...]] = ()

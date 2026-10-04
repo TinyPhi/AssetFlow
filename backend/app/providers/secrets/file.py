@@ -129,6 +129,23 @@ class FileSecretsProvider(SecretsProvider):
             raise SecretsUnavailableError("A secret needs at least one key with a text value.")
         await asyncio.to_thread(self._write_map, match.group("area"), match.group("name"), dict(values))
 
+    async def patch(self, path: str, values: Mapping[str, str | None]) -> None:
+        """Change only the given keys of an existing secret; ``None`` removes a key."""
+        match = _MAP_REF_PATTERN.match(path)
+        if match is None or any(seg in {".", ".."} for seg in path[len("secret://") :].split("/")):
+            raise SecretsUnavailableError("A secret reference is malformed.")
+        valid = all(_KEY_PATTERN.match(k) and (v is None or isinstance(v, str)) for k, v in values.items())
+        if not values or not valid:
+            raise SecretsUnavailableError("A secret patch needs at least one key with a text value or null.")
+        current = await asyncio.to_thread(self._read_map, match.group("area"), match.group("name"))
+        if not current:
+            raise SecretsUnavailableError("A required secret is not available.")
+        merged = {**current, **{k: v for k, v in values.items() if v is not None}}
+        for key, value in values.items():
+            if value is None:
+                merged.pop(key, None)
+        await asyncio.to_thread(self._write_map, match.group("area"), match.group("name"), merged)
+
     def _write_map(self, area: str, name: str, values: dict[str, str]) -> None:
         folder = self._inside(area, name)
         if folder is None:

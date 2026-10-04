@@ -138,6 +138,31 @@ async def test_put_refuses_malformed_or_traversing_paths(harness: Harness, path:
         await harness.provider.put(path, {"key": "value"})
 
 
+async def test_patch_changes_only_the_given_keys(harness: Harness) -> None:
+    path = "secret://assetflow/orgs/org-a/channels/chan-3"
+    await harness.provider.put(path, {"token": "one", "signing_key": "two"})
+    await harness.provider.patch(path, {"token": "three"})
+    assert await harness.provider.get_map(path) == {"token": "three", "signing_key": "two"}
+
+
+async def test_patch_with_none_removes_that_key_only(harness: Harness) -> None:
+    path = "secret://assetflow/orgs/org-a/channels/chan-4"
+    await harness.provider.put(path, {"token": "one", "signing_key": "two"})
+    await harness.provider.patch(path, {"signing_key": None})
+    assert await harness.provider.get_map(path) == {"token": "one"}
+
+
+async def test_patch_of_a_secret_that_does_not_exist_fails(harness: Harness) -> None:
+    with pytest.raises(SecretsUnavailableError):
+        await harness.provider.patch("secret://assetflow/orgs/org-a/channels/never-written", {"k": "v"})
+
+
+@pytest.mark.parametrize("path", ["secret://area", "secret://area/../x", "x/y"])
+async def test_patch_refuses_malformed_paths(harness: Harness, path: str) -> None:
+    with pytest.raises(SecretsUnavailableError):
+        await harness.provider.patch(path, {"k": "v"})
+
+
 async def test_put_refuses_an_empty_secret(harness: Harness) -> None:
     with pytest.raises(SecretsUnavailableError):
         await harness.provider.put("secret://area/name", {})

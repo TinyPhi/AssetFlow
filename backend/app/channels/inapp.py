@@ -24,6 +24,7 @@ class InAppChannel(NotificationChannel):
     """Always installed, no credentials, no egress (writes directly into `notifications`)."""
 
     key: ClassVar[str] = "inapp"
+    display_name: ClassVar[str] = "In-app"
     config_schema: ClassVar[type[BaseModel]] = InAppSettings
     secret_fields: ClassVar[tuple[str, ...]] = ()
     egress_hosts: ClassVar[tuple[str, ...]] = ()
