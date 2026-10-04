@@ -10,7 +10,7 @@ Implementations pass the shared suite in ``tests/contract/secrets/``.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 
@@ -50,6 +50,18 @@ class SecretsProvider(ABC):
     @abstractmethod
     async def encrypt(self, context: str, plaintext: str) -> str:
         """Encrypt ``plaintext`` bound to ``context`` (for example the organization id)."""
+
+    async def encrypt_many(self, items: Sequence[tuple[str, str]]) -> list[str]:
+        """Encrypt many ``(context, plaintext)`` pairs in one call; added in 1.1.
+
+        Each item may bind a different context (for example a different asset custom field key),
+        so a ciphertext encrypted for one field or one organization can never be replayed into
+        another (§B8.1). Default implementation loops over :meth:`encrypt`; a provider with a
+        native batch endpoint (OpenBao transit) overrides this for one round trip. Order of the
+        result matches the order of ``items``; any failure leaves nothing encrypted for the whole
+        call (callers must not act on a partial result).
+        """
+        return [await self.encrypt(context, plaintext) for context, plaintext in items]
 
     @abstractmethod
     async def decrypt(self, context: str, ciphertext: str) -> str:

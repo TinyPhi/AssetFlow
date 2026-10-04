@@ -118,3 +118,48 @@ async def test_openbao_put_refused_is_a_generic_error(monkeypatch: pytest.Monkey
 async def test_openbao_put_refuses_malformed_paths(path: str) -> None:
     with pytest.raises(SecretsUnavailableError):
         await _provider().put(path, {"k": "v"})
+
+
+async def test_openbao_encrypt_many_sends_one_batch_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    bao = _Bao(
+        monkeypatch,
+        lambda r: httpx.Response(
+            200,
+            json={
+                "data": {
+                    "batch_results": [
+                        {"ciphertext": "vault:v1:aaa"},
+                        {"ciphertext": "vault:v1:bbb"},
+                    ]
+                }
+            },
+        ),
+    )
+    items = [("asset:org-a:ssn", "123-45-6789"), ("asset:org-a:pin", "4321")]
+    ciphertexts = await _provider().encrypt_many(items)
+    assert ciphertexts == ["vault:v1:aaa", "vault:v1:bbb"]
+    assert len(bao.requests) == 1
+    body = json.loads(bao.requests[0].content)
+    assert len(body["batch_input"]) == 2
+    assert body["batch_input"][0]["context"] != body["batch_input"][1]["context"]
+
+
+async def test_openbao_encrypt_many_of_nothing_sends_no_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    bao = _Bao(monkeypatch, lambda r: httpx.Response(200, json={"data": {"batch_results": []}}))
+    assert await _provider().encrypt_many([]) == []
+    assert bao.requests == []
+
+
+@pytest.mark.parametrize("status", [403, 500])
+async def test_openbao_encrypt_many_refused_is_a_generic_error(
+    monkeypatch: pytest.MonkeyPatch, status: int
+) -> None:
+    _Bao(monkeypatch, lambda r: httpx.Response(status, json={"errors": ["denied"]}))
+    with pytest.raises(SecretsUnavailableError):
+        await _provider().encrypt_many([("ctx", "value-should-not-leak")])
+
+
+async def test_openbao_encrypt_many_result_count_mismatch_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    _Bao(monkeypatch, lambda r: httpx.Response(200, json={"data": {"batch_results": [{"ciphertext": "x"}]}}))
+    with pytest.raises(SecretsUnavailableError):
+        await _provider().encrypt_many([("ctx-1", "a"), ("ctx-2", "b")])

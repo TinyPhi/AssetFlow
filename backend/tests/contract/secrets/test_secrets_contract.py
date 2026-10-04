@@ -217,6 +217,40 @@ async def test_wrong_context_fails_generically(harness: Harness) -> None:
     assert "org-b" not in str(exc.value)
 
 
+async def test_encrypt_many_round_trips_each_item_with_its_own_context(harness: Harness) -> None:
+    items = [("asset:org-a:ssn", "123-45-6789"), ("asset:org-a:pin", "4321")]
+    ciphertexts = await harness.provider.encrypt_many(items)
+    assert len(ciphertexts) == len(items)
+    for (context, plaintext), ciphertext in zip(items, ciphertexts, strict=True):
+        assert await harness.provider.decrypt(context, ciphertext) == plaintext
+
+
+async def test_encrypt_many_of_nothing_returns_nothing(harness: Harness) -> None:
+    assert await harness.provider.encrypt_many([]) == []
+
+
+async def test_encrypt_many_ciphertext_cannot_be_replayed_into_another_context(harness: Harness) -> None:
+    (ciphertext,) = await harness.provider.encrypt_many([("asset:org-a:ssn", "value")])
+    with pytest.raises(SecretDecryptionError):
+        await harness.provider.decrypt("asset:org-a:pin", ciphertext)
+
+
+async def test_default_encrypt_many_loops_over_encrypt(
+    monkeypatch: pytest.MonkeyPatch, harness: Harness
+) -> None:
+    calls: list[tuple[str, str]] = []
+    real_encrypt = harness.provider.encrypt
+
+    async def spy_encrypt(context: str, plaintext: str) -> str:
+        calls.append((context, plaintext))
+        return await real_encrypt(context, plaintext)
+
+    monkeypatch.setattr(harness.provider, "encrypt", spy_encrypt)
+    items = [("ctx-1", "a"), ("ctx-2", "b")]
+    await harness.provider.encrypt_many(items)
+    assert calls == items
+
+
 @pytest.mark.parametrize("mutate", ["flip", "truncate", "garbage", "prefix"])
 async def test_tampered_ciphertext_fails(harness: Harness, mutate: str) -> None:
     ciphertext = await harness.provider.encrypt("org-a", "value")

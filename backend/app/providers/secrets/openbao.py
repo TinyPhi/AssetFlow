@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import base64
 import logging
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -84,8 +84,9 @@ class OpenBaoSecretsProvider(SecretsProvider):
                 )
                 if res.status_code == 200:
                     data = res.json()
-                    self._token = data.get("auth", {}).get("client_token")
-                    if self._token:
+                    token = data.get("auth", {}).get("client_token")
+                    if isinstance(token, str) and token:
+                        self._token = token
                         return self._token
             except Exception as exc:
                 raise SecretsUnavailableError(f"Failed to authenticate with OpenBao AppRole: {exc}") from exc
@@ -191,6 +192,43 @@ class OpenBaoSecretsProvider(SecretsProvider):
                 if isinstance(exc, SecretsUnavailableError):
                     raise
                 raise SecretsUnavailableError(f"OpenBao encryption error: {exc}") from exc
+
+    async def encrypt_many(self, items: Sequence[tuple[str, str]]) -> list[str]:
+        """Encrypt many `(context, plaintext)` pairs with transit's `batch_input` (one round trip)."""
+        if not items:
+            return []
+        batch_input = [
+            {
+                "plaintext": base64.b64encode(plaintext.encode("utf-8")).decode("ascii"),
+                "context": base64.b64encode(context.encode("utf-8")).decode("ascii"),
+            }
+            for context, plaintext in items
+        ]
+        url = (
+            f"{self.settings.address.rstrip('/')}/v1/"
+            f"{self.settings.transit_mount}/encrypt/{self.settings.transit_key}"
+        )
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            token = await self._ensure_token(client)
+            headers = {"X-Vault-Token": token}
+            try:
+                res = await client.post(url, headers=headers, json={"batch_input": batch_input})
+                if res.status_code != 200:
+                    raise SecretsUnavailableError("OpenBao transit batch encryption failed.")
+                results = res.json().get("data", {}).get("batch_results")
+                if not isinstance(results, list) or len(results) != len(items):
+                    raise SecretsUnavailableError("OpenBao transit batch result count mismatch.")
+                ciphertexts: list[str] = []
+                for result in results:
+                    ciphertext = result.get("ciphertext") if isinstance(result, dict) else None
+                    if not isinstance(ciphertext, str):
+                        raise SecretsUnavailableError("OpenBao transit batch item failed.")
+                    ciphertexts.append(ciphertext)
+                return ciphertexts
+            except Exception as exc:
+                if isinstance(exc, SecretsUnavailableError):
+                    raise
+                raise SecretsUnavailableError(f"OpenBao batch encryption error: {exc}") from exc
 
     async def decrypt(self, context: str, ciphertext: str) -> str:
         """Decrypt `ciphertext` bound to `context` using transit engine."""
