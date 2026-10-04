@@ -24,6 +24,7 @@ from pathlib import Path
 
 from app.core.config import AppConfig, ConfigError, load_config
 from app.core.db import DirectConnection, close_pool, connect_direct, init_pool
+from app.modules.notifications import retention as notifications_retention
 from app.providers.registry import ProviderRegistry
 from workers.housekeeping import default_registry as default_housekeeping_registry
 from workers.housekeeping import run_once as run_housekeeping
@@ -113,6 +114,11 @@ async def serve(
     scheduler = await _open_scheduler(cfg, providers)
     if scheduler is not None:
         housekeeping_registry = default_housekeeping_registry()
+        retention_days = cfg.notifications.channels.inapp.retention_days
+        housekeeping_registry.register_housekeeping_task(
+            notifications_retention.TASK_NAME,
+            lambda pool: notifications_retention.run(pool, retention_days=retention_days),
+        )
         scheduler.register_periodic(
             "housekeeping",
             HOUSEKEEPING_INTERVAL,
