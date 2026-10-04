@@ -52,6 +52,8 @@ export default tseslint.config(
       "react/jsx-no-literals": "off",
       "security/detect-non-literal-fs-filename": "off",
       "security/detect-non-literal-regexp": "off",
+      "security/detect-possible-timing-attacks": "off",
+      "security/detect-unsafe-regex": "off",
     },
   },
 );

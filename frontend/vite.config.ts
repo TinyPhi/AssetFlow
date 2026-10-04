@@ -21,5 +21,8 @@ export default defineConfig({
     globals: true,
     environment: "jsdom",
     setupFiles: "./src/test/setup.ts",
+    // react-router ships its DOM entry as ESM and its core as CJS; loaded by Node they become two copies
+    // with separate contexts. Inlining makes vite resolve both the way the production build does.
+    server: { deps: { inline: [/react-router/] } },
   },
 });

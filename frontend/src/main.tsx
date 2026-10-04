@@ -3,7 +3,11 @@
 
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import { initTheme } from "./lib/theme";
 import "./styles/index.css";
+
+// Apply the stored theme before the first render so a dark choice never flashes light.
+initTheme();
 
 const rootElement = document.getElementById("root");
 if (rootElement) {
