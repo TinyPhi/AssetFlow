@@ -22,10 +22,15 @@ import time
 from datetime import timedelta
 from pathlib import Path
 
+from app.channels.circuit import CircuitRegistry
+from app.channels.credentials import ChannelCredentialStore
+from app.channels.registry import default_registry as default_channel_registry
+from app.channels.runtime import ChannelRuntime
 from app.core.config import AppConfig, ConfigError, load_config
-from app.core.db import DirectConnection, close_pool, connect_direct, init_pool
+from app.core.db import DirectConnection, Pool, close_pool, connect_direct, init_pool
 from app.modules.notifications import retention as notifications_retention
 from app.providers.registry import ProviderRegistry
+from workers import notification_sender
 from workers.housekeeping import default_registry as default_housekeeping_registry
 from workers.housekeeping import run_once as run_housekeeping
 from workers.outbox_dispatcher import DispatcherOptions, run_once
@@ -37,6 +42,7 @@ logger = logging.getLogger(__name__)
 HEARTBEAT_MAX_AGE_SECONDS = 30.0
 DEFAULT_NOTIFY_CHANNEL = "outbox_events"
 HOUSEKEEPING_INTERVAL = timedelta(days=1)
+SENDER_POLL_SECONDS = 2.0
 
 
 def worker_id() -> str:
@@ -100,6 +106,24 @@ async def _open_scheduler(cfg: AppConfig, providers: ProviderRegistry) -> Schedu
     return Scheduler(conn)
 
 
+async def _sender_loop(
+    pool: Pool, deps: notification_sender.SenderDeps, me: str, wake: asyncio.Event, stop: asyncio.Event
+) -> None:
+    """Send pending deliveries until `stop`; wakes when the dispatcher queued some, else every 2 s."""
+    batch_size = notification_sender.SenderOptions().batch_size
+    while not stop.is_set():
+        attempted = 0
+        try:
+            attempted = await notification_sender.run_once(pool, deps, me)
+        except Exception as exc:  # noqa: BLE001 - the sender must outlive a failed pass
+            logger.warning("worker.sender_failed", extra={"error_code": type(exc).__name__})
+        if attempted >= batch_size:
+            continue
+        wake.clear()
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(wake.wait(), timeout=SENDER_POLL_SECONDS)
+
+
 async def serve(
     cfg: AppConfig, providers: ProviderRegistry, subscribers: SubscriberRegistry, stop: asyncio.Event
 ) -> None:
@@ -112,6 +136,14 @@ async def serve(
     wake = asyncio.Event()
     listener = await _listen(cfg, providers, wake)
     scheduler = await _open_scheduler(cfg, providers)
+    sender_wake = asyncio.Event()
+    sender_deps = notification_sender.SenderDeps(
+        default_channel_registry(),
+        ChannelRuntime(ChannelCredentialStore(providers.secrets)),
+        CircuitRegistry(),
+        providers.telemetry,
+    )
+    sender_task = asyncio.create_task(_sender_loop(pool, sender_deps, me, sender_wake, stop))
     if scheduler is not None:
         housekeeping_registry = default_housekeeping_registry()
         retention_days = cfg.notifications.channels.inapp.retention_days
@@ -132,6 +164,8 @@ async def serve(
             handled = await run_once(
                 pool, subscribers, me, options, telemetry=providers.telemetry, should_stop=stop.is_set
             )
+            if handled:
+                sender_wake.set()  # the subscribers may have queued external deliveries
             if handled >= outbox.batch_size:
                 continue  # a full batch: more is probably waiting
             wake.clear()
@@ -140,6 +174,9 @@ async def serve(
             if stop.is_set():
                 break
     finally:
+        stop.set()
+        sender_wake.set()
+        await sender_task
         if listener is not None:
             await listener.close()
         if scheduler is not None:
