@@ -78,18 +78,31 @@ async def _send_inapp(conn: Connection, intent: NotificationIntent) -> None:
 async def _record_pending(conn: Connection, intent: NotificationIntent) -> None:
     """Queue an external delivery with everything the sender needs to render it later.
 
-    Only the template's declared fields are stored (payload minimization); the sender renders and
-    sends outside any transaction (§B10).
+    Only the template's declared fields are stored (payload minimization), and its personal
+    fields only when this installation allows personal data (§B6.3 rule 3). The sender renders and
+    sends outside any transaction (§B10). A channel the organization has not installed delivers
+    nothing, so nothing is recorded.
     """
+    channel = await conn.fetchrow(
+        "SELECT id, allow_personal_data FROM public.notification_channels "
+        "WHERE organization_id = $1 AND channel_key = $2",
+        intent.organization_id,
+        intent.channel_key,
+    )
+    if channel is None:
+        return
+    message_data = minimized_data(
+        intent.template_key, intent.event_data, allow_personal=channel["allow_personal_data"]
+    )
     await conn.execute(
         "INSERT INTO public.notification_deliveries "
         "(id, organization_id, channel_id, channel_key, event_id, recipient_member_id, target, "
         "idempotency_key, status, template_key, event_type, entity_type, entity_id, message_data) "
-        "SELECT $1, $2, nc.id, $3, $4, $5, $6, $7, 'pending', $8, $9, $10, $11, $12::jsonb "
-        "FROM public.notification_channels nc WHERE nc.organization_id = $2 AND nc.channel_key = $3 "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, $10, $11, $12, $13::jsonb) "
         "ON CONFLICT (organization_id, idempotency_key) DO NOTHING",
         uuid7(),
         intent.organization_id,
+        channel["id"],
         intent.channel_key,
         intent.event_id,
         intent.member_id,
@@ -99,5 +112,5 @@ async def _record_pending(conn: Connection, intent: NotificationIntent) -> None:
         intent.event_type,
         intent.entity_type,
         intent.entity_id,
-        json.dumps(minimized_data(intent.template_key, intent.event_data)),
+        json.dumps(message_data),
     )

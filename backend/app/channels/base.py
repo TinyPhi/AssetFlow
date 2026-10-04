@@ -13,11 +13,18 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Protocol
 
 from pydantic import BaseModel
 
-__all__ = ["ChannelContext", "DeliveryResult", "NotificationChannel", "RenderedMessage"]
+__all__ = [
+    "ChannelContext",
+    "DeliveryResult",
+    "NotificationChannel",
+    "Recipient",
+    "RecipientResolver",
+    "RenderedMessage",
+]
 
 
 @dataclass(frozen=True)
@@ -26,6 +33,7 @@ class RenderedMessage:
 
     subject: str
     body: str
+    text: str = ""
     data: dict[str, Any] = field(default_factory=dict)
 
 
@@ -37,6 +45,24 @@ class DeliveryResult:
     error_code: str | None = None
     latency_ms: int | None = None
     retryable: bool = True  # read only when `delivered` is False; every 4xx sets it False (§C6.7)
+    skipped: bool = False  # nothing was sent because there is nobody to send to (not a failure)
+
+
+@dataclass(frozen=True)
+class Recipient:
+    """Where one member can be reached; held in memory for one send and never logged (§C5.2)."""
+
+    address: str = field(repr=False)
+    display_name: str = field(repr=False, default="")
+    language: str = "en"
+
+
+class RecipientResolver(Protocol):
+    """Looks a member's contact details up at send time (never stored in the delivery log)."""
+
+    async def resolve(self, member_id: str) -> Recipient | None:
+        """The active member's details, or None when they cannot be reached any more."""
+        ...
 
 
 @dataclass(frozen=True)
@@ -49,6 +75,8 @@ class ChannelContext:
         default_factory=lambda: MappingProxyType[str, str]({}), repr=False
     )
     http: Any | None = None  # an `EgressClient`, or None for a channel that never calls out
+    platform: dict[str, Any] = field(default_factory=dict, repr=False)  # installation-wide settings
+    recipients: RecipientResolver | None = field(default=None, repr=False)
 
 
 class NotificationChannel(ABC):
@@ -61,7 +89,12 @@ class NotificationChannel(ABC):
     accepts_allowed_hosts: ClassVar[bool] = False  # True for webhook-type channels (§B6.3)
     config_schema: ClassVar[type[BaseModel]]
     secret_fields: ClassVar[tuple[str, ...]] = ()
+    platform_secret_fields: ClassVar[tuple[str, ...]] = ()  # `secret://` refs in platform config
     egress_hosts: ClassVar[tuple[str, ...]] = ()
+
+    def egress_allowlist(self, platform: dict[str, Any]) -> tuple[str, ...]:
+        """Hosts this channel may reach, given the installation-wide platform settings."""
+        return self.egress_hosts
 
     @abstractmethod
     async def send(

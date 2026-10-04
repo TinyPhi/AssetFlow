@@ -330,3 +330,103 @@ def test_cli_missing_file_and_usage(tmp_path: Path, capsys: pytest.CaptureFixtur
     assert main(["validate", str(tmp_path / "absent.yaml")]) == 1
     assert main([]) == 1
     assert "usage" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------- email channel (P6-04)
+
+
+def _with_email(text: str, block: str) -> str:
+    return text.rstrip() + "\n" + textwrap.dedent(block)
+
+
+def test_email_defaults_are_safe_and_off() -> None:
+    from app.core.config import EmailChannelConfig  # noqa: PLC0415 - only this test needs it
+
+    cfg = EmailChannelConfig()
+    assert (cfg.enabled, cfg.port, cfg.security, cfg.allow_private_addresses) == (
+        False,
+        587,
+        "starttls",
+        False,
+    )
+    assert cfg.password is None
+
+
+def test_email_password_must_be_a_secret_reference(tmp_path: Path) -> None:
+    block = """
+    notifications:
+      channels:
+        email:
+          enabled: true
+          password: "a-literal-password"
+    """
+    with pytest.raises(ConfigError) as exc:
+        load_config(write(tmp_path, _with_email(base(), block)))
+    assert paths(exc) == ["notifications.channels.email.password"]
+
+
+def test_email_password_as_a_secret_reference_is_accepted(tmp_path: Path) -> None:
+    block = """
+    notifications:
+      channels:
+        email:
+          enabled: true
+          host: smtp.example.test
+          username: relay-user
+          password: secret://smtp/relay#password
+    """
+    cfg = load_config(write(tmp_path, _with_email(base(), block)))
+    assert cfg.notifications.channels.email.password == "secret://smtp/relay#password"
+
+
+@pytest.mark.parametrize(
+    ("setting", "path"),
+    [
+        ("security: none", "notifications.channels.email.security"),
+        ("allow_private_addresses: true", "notifications.channels.email.allow_private_addresses"),
+    ],
+)
+def test_production_refuses_unsafe_email_settings(tmp_path: Path, setting: str, path: str) -> None:
+    block = f"""
+    notifications:
+      channels:
+        email:
+          enabled: true
+          {setting}
+    """
+    text = _with_email(base(env="production", auth="oidc", secrets="openbao"), block)
+    with pytest.raises(ConfigError) as exc:
+        load_config(write(tmp_path, text))
+    assert paths(exc) == [path]
+
+
+def test_unsafe_email_settings_are_allowed_when_email_is_off_or_outside_production(tmp_path: Path) -> None:
+    block = """
+    notifications:
+      channels:
+        email:
+          enabled: true
+          security: none
+          allow_private_addresses: true
+    """
+    assert (
+        load_config(write(tmp_path, _with_email(base(), block))).notifications.channels.email.security
+        == "none"
+    )
+    off = block.replace("enabled: true", "enabled: false")
+    assert load_config(
+        write(tmp_path, _with_email(base(env="production", auth="oidc", secrets="openbao"), off))
+    )
+
+
+def test_email_port_and_security_are_validated(tmp_path: Path) -> None:
+    block = """
+    notifications:
+      channels:
+        email:
+          port: 70000
+          security: plaintext
+    """
+    with pytest.raises(ConfigError) as exc:
+        load_config(write(tmp_path, _with_email(base(), block)))
+    assert paths(exc) == ["notifications.channels.email.port", "notifications.channels.email.security"]

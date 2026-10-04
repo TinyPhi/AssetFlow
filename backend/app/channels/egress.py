@@ -69,18 +69,30 @@ class EgressClient:
         transport: httpx.AsyncBaseTransport | None = None,
         connect_timeout: float = DEFAULT_CONNECT_TIMEOUT,
         total_timeout: float = DEFAULT_TOTAL_TIMEOUT,
+        allow_private_addresses: bool = False,
     ) -> None:
         self._allowed = frozenset(h.strip().lower().rstrip(".") for h in allowed_hosts if h.strip())
         self._resolver = resolver
         self._transport = transport
         self._connect_timeout = connect_timeout
         self._total_timeout = total_timeout
+        # Only for the operator's own relay in development and test (a local mail catcher lives on a
+        # private address); platform config refuses it in production. The host must still be allowlisted.
+        self._allow_private = allow_private_addresses
 
     def __repr__(self) -> str:
         return f"EgressClient(allowed_hosts={len(self._allowed)})"
 
     async def resolve_checked(self, host: str, port: int) -> str:
-        """Return the one public address to connect to for an allowed `host` (also used for SMTP)."""
+        """Return the first checked address for an allowed `host`."""
+        return (await self.resolve_all_checked(host, port))[0]
+
+    async def resolve_all_checked(self, host: str, port: int) -> list[str]:
+        """Every address of an allowed `host`, all of which passed the check, in resolver order.
+
+        A caller that opens its own socket (SMTP) tries them in turn, so a name with both an IPv6
+        and an IPv4 address still connects when one family is unreachable.
+        """
         name = host.strip().lower().rstrip(".")
         if name not in self._allowed:
             raise ChannelEgressDeniedError
@@ -89,9 +101,9 @@ class EgressClient:
                 addresses = await self._resolver(name, port)
         except (OSError, TimeoutError) as exc:
             raise ChannelEgressDeniedError from exc
-        if not addresses or any(is_blocked_address(a) for a in addresses):
+        if not addresses or (not self._allow_private and any(is_blocked_address(a) for a in addresses)):
             raise ChannelEgressDeniedError
-        return addresses[0]
+        return addresses
 
     async def request(
         self,

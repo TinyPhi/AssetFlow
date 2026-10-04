@@ -220,10 +220,35 @@ class InAppChannelConfig(_Strict):
     retention_days: int = Field(default=180, ge=1, description="How long a read or unread notice is kept")
 
 
+class EmailChannelConfig(_Strict):
+    """``notifications.channels.email``: the installation-wide SMTP relay (§B6.3, §B7.2).
+
+    Every organization uses this relay and sets only its own sender fields; the password is a
+    ``secret://`` reference, never a value.
+    """
+
+    enabled: bool = Field(default=False, description="Offer the `email` channel to organizations")
+    host: str = Field(default="localhost", min_length=1, description="SMTP relay host name")
+    port: int = Field(default=587, ge=1, le=65535, description="SMTP relay port")
+    security: Literal["starttls", "tls", "none"] = Field(
+        default="starttls",
+        description="`starttls` (port 587), `tls` (implicit, port 465) or `none` (development and test only)",
+    )
+    username: str | None = Field(default=None, description="SMTP user name, when the relay needs one")
+    password: str | None = Field(default=None, description="`secret://<area>/<name>#<key>` reference only")
+    default_from: str = Field(default="noreply@example.invalid", min_length=3, description="Default sender")
+    timeout_seconds: float = Field(default=10.0, gt=0, le=120, description="Connect and total SMTP timeout")
+    allow_private_addresses: bool = Field(
+        default=False,
+        description="Let the relay resolve to a private address (a local mail catcher); not in production",
+    )
+
+
 class NotificationChannelsConfig(_Strict):
-    """``notifications.channels.*``. Only `inapp` has settings today; `email`/`webhook` are later plans."""
+    """``notifications.channels.*``. `webhook` is a later plan."""
 
     inapp: InAppChannelConfig = Field(default_factory=InAppChannelConfig)
+    email: EmailChannelConfig = Field(default_factory=EmailChannelConfig)
 
 
 class NotificationsConfig(_Strict):
@@ -253,6 +278,19 @@ class AppConfig(_Strict):
         """Directory that relative paths in provider settings resolve against."""
         return self._source.parent if self._source else Path.cwd()
 
+    def _email_errors(self) -> list[tuple[str, str]]:
+        email = self.notifications.channels.email
+        base = "notifications.channels.email"
+        errors: list[tuple[str, str]] = []
+        if email.password is not None and not is_secret_ref(email.password):
+            errors.append((f"{base}.password", "must be a secret://<area>/<name>#<key> reference"))
+        if self.env == "production" and email.enabled:
+            if email.security == "none":
+                errors.append((f"{base}.security", "plaintext SMTP is refused in production"))
+            if email.allow_private_addresses:
+                errors.append((f"{base}.allow_private_addresses", "is refused in production"))
+        return errors
+
     @model_validator(mode="after")
     def _guards(self, info: ValidationInfo) -> AppConfig:
         context: Mapping[str, Any] = info.context or {}
@@ -269,6 +307,8 @@ class AppConfig(_Strict):
                 errors.append((path, "must be a secret://<area>/<name>#<key> reference in production"))
             elif path not in env_interpolated:
                 errors.append((path, "must be a secret:// reference or a ${VAR} interpolation"))
+
+        errors.extend(self._email_errors())
 
         if self.env == "production":
             if self.providers.auth.type == "mock":

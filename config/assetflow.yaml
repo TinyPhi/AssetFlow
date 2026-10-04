@@ -68,3 +68,13 @@ notifications:
   channels:
     inapp:
       retention_days: 180
+    email:
+      # The installation-wide SMTP relay. In development it is the Mailpit container; production
+      # needs a real relay with security: starttls (or tls) and a secret:// password.
+      enabled: true
+      host: ${ASSETFLOW_SMTP_HOST:-mailpit}
+      port: ${ASSETFLOW_SMTP_PORT:-1025}
+      security: none
+      allow_private_addresses: true
+      default_from: noreply@assetflow.local
+      timeout_seconds: 10

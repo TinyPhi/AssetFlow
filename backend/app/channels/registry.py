@@ -13,7 +13,9 @@ from dataclasses import dataclass, field
 from importlib.metadata import entry_points
 
 from app.channels.base import NotificationChannel
+from app.channels.email import EmailChannel
 from app.channels.inapp import InAppChannel
+from app.core.config import AppConfig
 
 __all__ = ["ChannelRegistry", "default_registry"]
 
@@ -42,10 +44,15 @@ class ChannelRegistry:
         return list(self._by_key)
 
 
-def default_registry() -> ChannelRegistry:
-    """Built-in channels plus any `assetflow.channels` entry points found on this installation."""
+def default_registry(cfg: AppConfig | None = None) -> ChannelRegistry:
+    """Built-in channels plus any `assetflow.channels` entry points found on this installation.
+
+    `email` is offered only when the platform config enables the SMTP relay.
+    """
     registry = ChannelRegistry()
     registry.register(InAppChannel)
+    if cfg is not None and cfg.notifications.channels.email.enabled:
+        registry.register(EmailChannel)
     for entry_point in entry_points(group=ENTRY_POINT_GROUP):
         registry.register(entry_point.load())
     return registry
