@@ -64,6 +64,12 @@ ASSET_FIELDS: frozenset[str] = frozenset(
         "purchase_cost",
         "supplier",
         "warranty_end",
+        # Derived fields of the lifecycle check (P8-08): holder facts, the status's category, the
+        # asset's category code.
+        "holder.type",
+        "holder.is_set",
+        "status.category",
+        "category.code",
     }
 )
 

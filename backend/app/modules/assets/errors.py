@@ -9,6 +9,7 @@ from typing import ClassVar
 from app.core.problems import ConflictError, FieldError, NotFoundError, ValidationFailedError
 
 __all__ = [
+    "AssetInvalidTransitionError",
     "AssetNotFoundError",
     "AssetSavedViewNameConflictError",
     "AssetSavedViewNotFoundError",
@@ -75,6 +76,49 @@ class AssetVersionConflictError(ConflictError):
     title: ClassVar[str] = "Asset version conflict"
     default_detail: ClassVar[str] = "The asset was modified by another request."
     description: ClassVar[str] = "The provided version does not match the current database version."
+
+
+class AssetInvalidTransitionError(ConflictError):
+    """A status change the organization's domain template does not allow right now (§B8.1, §C4.5).
+
+    `reason_code` is one of `unknown_status`, `not_allowed`, `reason_required`,
+    `condition_failed:<field>`, `reserved_for_module:<module>`.
+    """
+
+    status_code = 409
+    code: ClassVar[str] = "asset.invalid_transition"
+    title: ClassVar[str] = "Invalid status transition"
+    default_detail: ClassVar[str] = "This status change is not allowed."
+    description: ClassVar[str] = (
+        "The requested status change is not allowed by the organization's domain template: the "
+        "move is not declared, a reason is required, a condition on the asset does not hold (for "
+        "example a holder is still set on a move to an ended status), the target status is unknown, "
+        "or the target status is set only by another module. `detail` names the current status, the "
+        "requested status and what to do."
+    )
+
+    def __init__(self, from_status: str, to_status: str, reason_code: str) -> None:
+        self.from_status = from_status
+        self.to_status = to_status
+        self.reason_code = reason_code
+        super().__init__(_transition_detail(from_status, to_status, reason_code))
+
+
+def _transition_detail(from_status: str, to_status: str, reason_code: str) -> str:
+    head = f'Cannot change the status from "{from_status}" to "{to_status}"'
+    kind, _, arg = reason_code.partition(":")
+    if kind == "unknown_status":
+        return f"{head}: a status is not defined in this organization's template. Choose a listed status."
+    if kind == "reason_required":
+        return f"{head}: a reason is required. Send `reason` with the request."
+    if kind == "reserved_for_module":
+        return f'{head}: "{to_status}" is set only by the {arg} module. Use that module instead.'
+    if kind == "condition_failed":
+        return (
+            f"{head}: the condition on `{arg}` does not hold. Fix that first (for example return "
+            "the asset from its holder), then retry."
+        )
+    return f"{head}: the template does not allow it. Read the asset's transitions to see the allowed moves."
 
 
 class TagConflictError(ConflictError):
