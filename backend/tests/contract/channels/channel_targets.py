@@ -14,6 +14,7 @@ from typing import cast
 from app.channels.base import NotificationChannel
 from app.channels.email import EmailChannel
 from app.channels.inapp import InAppChannel
+from app.channels.webhook import WebhookChannel
 from app.core.db import Connection
 
 ORG = "0192f000-0000-7000-8000-0000000000a1"
@@ -45,3 +46,8 @@ def _inapp() -> NotificationChannel:
 @contract_target("email")
 def _email() -> NotificationChannel:
     return EmailChannel()
+
+
+@contract_target("webhook")
+def _webhook() -> NotificationChannel:
+    return WebhookChannel()
