@@ -138,10 +138,11 @@ async def serve(
     scheduler = await _open_scheduler(cfg, providers)
     sender_wake = asyncio.Event()
     sender_deps = notification_sender.SenderDeps(
-        default_channel_registry(),
+        default_channel_registry(cfg),
         ChannelRuntime(ChannelCredentialStore(providers.secrets)),
         CircuitRegistry(),
         providers.telemetry,
+        platform={"email": cfg.notifications.channels.email.model_dump()},
     )
     sender_task = asyncio.create_task(_sender_loop(pool, sender_deps, me, sender_wake, stop))
     if scheduler is not None:

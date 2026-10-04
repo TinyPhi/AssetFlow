@@ -27,7 +27,8 @@ import hashlib
 import json
 import logging
 import time
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
@@ -46,6 +47,7 @@ from app.engines.automation.directory_pg import PgDirectory
 from app.engines.automation.planner import NotificationIntent
 from app.modules.audit.service import record_audit_event
 from app.modules.notifications.dispatch import enqueue
+from app.modules.notifications.recipients import PgRecipientResolver
 from app.modules.notifications.rendering import render_message
 from app.providers.telemetry.base import TelemetryProvider
 from workers.sweep import active_organization_ids
@@ -102,6 +104,7 @@ class SenderDeps:
     runtime: ChannelRuntime
     breakers: CircuitRegistry
     telemetry: TelemetryProvider | None = None
+    platform: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)  # per channel key
 
 
 @dataclass(frozen=True)
@@ -151,6 +154,14 @@ def _delivery(row: Any) -> _Delivery:
     )
 
 
+def _installation_dict(row: Any) -> dict[str, Any]:
+    """The installation row as the channel sees it: its jsonb `settings` decoded."""
+    installation = dict(row)
+    settings = installation.get("settings")
+    installation["settings"] = json.loads(settings) if isinstance(settings, str) else dict(settings or {})
+    return installation
+
+
 async def run_once(pool: Pool, deps: SenderDeps, worker: str, options: SenderOptions | None = None) -> int:
     """One pass over every active organization; returns how many deliveries were attempted."""
     opts = options or SenderOptions()
@@ -194,7 +205,7 @@ async def _claim(p: _Pass) -> list[_Delivery]:
 async def _deliver(p: _Pass, d: _Delivery) -> None:
     async with worker_context(p.pool, p.organization_id) as conn:
         installation = await conn.fetchrow(
-            "SELECT id, channel_key, settings, secret_ref, enabled, allowed_hosts "
+            "SELECT id, channel_key, settings, secret_ref, enabled, allowed_hosts, allow_personal_data "
             "FROM public.notification_channels WHERE id = $1",
             d.channel_id,
         )
@@ -212,7 +223,13 @@ async def _deliver(p: _Pass, d: _Delivery) -> None:
         return
 
     try:
-        message = render_message(d.template_key, d.event_type or "", d.event_id, d.message_data)
+        message = render_message(
+            d.template_key,
+            d.event_type or "",
+            d.event_id,
+            d.message_data,
+            allow_personal=installation["allow_personal_data"],
+        )
     except TemplateError:
         breaker.release_trial()
         await _record(p, d, DeliveryResult(delivered=False, error_code="template.invalid", retryable=False))
@@ -220,7 +237,13 @@ async def _deliver(p: _Pass, d: _Delivery) -> None:
     started = time.monotonic()
     try:
         channel = channel_class()
-        ctx = await p.deps.runtime.build_context(channel, str(p.organization_id), dict(installation))
+        ctx = await p.deps.runtime.build_context(
+            channel,
+            str(p.organization_id),
+            _installation_dict(installation),
+            platform=p.deps.platform.get(d.channel_key),
+            recipients=PgRecipientResolver(p.pool, p.organization_id),
+        )
         result = await channel.send(ctx, d.target, message, d.idempotency_key)
     except Exception as exc:  # noqa: BLE001 - a channel must not take the sender down
         result = failure_from_exception(exc)
@@ -231,6 +254,8 @@ async def _deliver(p: _Pass, d: _Delivery) -> None:
 
     if result.delivered:
         breaker.record_success()
+    elif result.skipped:
+        breaker.release_trial()
     elif result.retryable:
         breaker.record_failure(clock.now())
     else:
@@ -249,6 +274,18 @@ def _count(p: _Pass, metric: str, d: _Delivery) -> None:
 async def _record(p: _Pass, d: _Delivery, result: DeliveryResult) -> None:
     now = clock.now()
     async with worker_context(p.pool, p.organization_id) as conn:
+        if result.skipped:
+            await conn.execute(
+                "UPDATE public.notification_deliveries SET status = 'skipped', error_code = $3, "
+                "attempts = GREATEST(attempts - 1, 0), claimed_by = NULL, claimed_at = NULL, "
+                "next_retry_at = NULL, updated_at = $4 "
+                "WHERE id = $1 AND status = 'sending' AND claimed_by = $2",
+                d.id,
+                p.worker,
+                result.error_code,
+                now,
+            )
+            return
         if result.delivered:
             recorded = await conn.fetchval(
                 "UPDATE public.notification_deliveries SET status = 'sent', latency_ms = $3, "

@@ -12,6 +12,7 @@ from collections.abc import Callable
 from typing import cast
 
 from app.channels.base import NotificationChannel
+from app.channels.email import EmailChannel
 from app.channels.inapp import InAppChannel
 from app.core.db import Connection
 
@@ -39,3 +40,8 @@ def contract_target(
 def _inapp() -> NotificationChannel:
     # health and the class-level declarations never touch the connection.
     return InAppChannel(cast(Connection, None))
+
+
+@contract_target("email")
+def _email() -> NotificationChannel:
+    return EmailChannel()

@@ -40,7 +40,7 @@ READ_DELIVERIES = "notification_delivery.read"
 def _registry(request: Request) -> ChannelRegistry:
     registry: ChannelRegistry | None = getattr(request.app.state, "channel_registry", None)
     if registry is None:
-        registry = default_registry()
+        registry = default_registry(getattr(request.app.state, "config", None))
         request.app.state.channel_registry = registry
     return registry
 

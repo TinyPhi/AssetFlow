@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "isolation"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "contract" / "channels"))
 
 from pg_harness import isolation_db, make_pool, pg_server
 
