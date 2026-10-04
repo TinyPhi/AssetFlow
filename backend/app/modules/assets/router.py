@@ -115,6 +115,19 @@ async def create_asset_route(request: Request, body: AssetCreate) -> dict[str, A
     )
 
 
+@router.get(
+    "/vocabulary",
+    summary="The organization's status labels and criticality levels",
+    openapi_extra=permission_extra(READ_PERMISSION),
+)
+async def get_vocabulary_route(request: Request) -> dict[str, Any]:
+    member = _resolve_member(request)
+    vocabulary = await service.get_vocabulary(
+        request.app.state.pool, organization_id=UUID(member.organization_id), caller=member
+    )
+    return success_response(data=vocabulary.model_dump(mode="json"), request_id=_request_id(request))
+
+
 @router.patch("/{asset_id}", summary="Edit an asset", openapi_extra=permission_extra(UPDATE_PERMISSION))
 async def update_asset_route(request: Request, asset_id: UUID, body: AssetUpdate) -> dict[str, Any]:
     member = _resolve_member(request)

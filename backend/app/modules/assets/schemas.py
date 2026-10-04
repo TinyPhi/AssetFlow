@@ -26,7 +26,9 @@ __all__ = [
     "AssetUpdate",
     "HolderRead",
     "ParentRead",
+    "StatusRead",
     "TransitionRead",
+    "VocabularyRead",
 ]
 
 HolderType = Literal["member", "team", "location"]
@@ -205,3 +207,19 @@ class TransitionRead(BaseModel):
     to_status: str
     to_label: str
     requires_reason: bool
+
+
+class StatusRead(BaseModel):
+    """One status of the organization's template: its key, display label and category."""
+
+    key: str
+    label: str
+    category: str
+
+
+class VocabularyRead(BaseModel):
+    """The organization's asset vocabulary from its domain template: status labels and the
+    criticality levels, for the screens' pills, filters and pickers (template data, not code)."""
+
+    statuses: list[StatusRead]
+    criticality: list[str]

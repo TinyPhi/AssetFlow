@@ -70,7 +70,9 @@ from app.modules.assets.schemas import (
     AssetUpdate,
     HolderRead,
     ParentRead,
+    StatusRead,
     TransitionRead,
+    VocabularyRead,
 )
 from app.modules.assets.sensitive import (
     decrypt_custom_fields,
@@ -89,6 +91,7 @@ __all__ = [
     "create_asset",
     "ended_statuses",
     "get_asset",
+    "get_vocabulary",
     "list_assets",
     "list_transitions",
     "update_asset",
@@ -1106,3 +1109,23 @@ async def list_transitions(
             )
         )
     return out
+
+
+def vocabulary_of(template: AssetsConfig | None) -> VocabularyRead:
+    """The statuses (key, label, category) and criticality levels of a template; empty without one."""
+    if template is None:
+        return VocabularyRead(statuses=[], criticality=[])
+    return VocabularyRead(
+        statuses=[StatusRead(key=s.key, label=s.label, category=s.category) for s in template.statuses],
+        criticality=list(template.criticality),
+    )
+
+
+async def get_vocabulary(pool: Pool, *, organization_id: UUID, caller: MemberContext) -> VocabularyRead:
+    """The organization's asset vocabulary. Any member who may read assets may read it (no record)."""
+    if not default_scope_resolver.has_permission(caller, READ_PERMISSION):
+        raise PermissionDeniedError()
+    async with tenant_transaction(pool, organization_id) as conn:
+        domain_key = await _organization_domain_key(conn, organization_id)
+    template = _load_assets_config(domain_key, None) if domain_key else None
+    return vocabulary_of(template)
