@@ -18,6 +18,8 @@ from typing import Any
 from uuid import UUID
 
 from app.core.db import Connection
+from app.engines.automation import registry as automation_registry
+from app.engines.automation import subscriber as automation_subscriber
 
 
 @dataclass(frozen=True)
@@ -63,5 +65,7 @@ class SubscriberRegistry:
 
 
 def default_registry() -> SubscriberRegistry:
-    """The subscribers of the running worker. Later plans register theirs here."""
-    return SubscriberRegistry()
+    """The subscribers of the running worker."""
+    registry = SubscriberRegistry()
+    automation_subscriber.register(registry, automation_registry.default_registry())
+    return registry

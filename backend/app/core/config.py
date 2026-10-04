@@ -387,6 +387,46 @@ def _warn(cfg: AppConfig, organizations: Mapping[str, str]) -> None:
 _USAGE = "usage: python -m app.core.config validate <file>\n"
 
 
+#: Channels built into AssetFlow (§B6.3); a third-party channel package extends this at runtime,
+#: out of scope for this static check.
+_BUILTIN_CHANNELS = frozenset({"inapp", "email", "webhook"})
+
+
+def _validate_domain_templates(platform_config_file: str) -> list[str]:
+    """Validate every `config/domains/*.yaml` next to `platform_config_file` (§B7.3, §B7.4).
+
+    Returns one problem string per cross-reference failure, each naming its exact path; empty when
+    there is nothing to check yet (`config/domains/` has no real templates until master Phase 2).
+    """
+    # Local: keeps core/config's own import-time surface free of the organization feature module
+    # for every ordinary boot; only the CLI validate path (this function) needs it.
+    from app.core.domain_template import (  # noqa: PLC0415
+        DomainTemplateError,
+        load_domain_template,
+        validate_automations,
+    )
+    from app.engines.automation.registry import default_registry  # noqa: PLC0415
+
+    base = Path(platform_config_file).resolve().parent
+    domains_dir = base / "domains"
+    templates_dir = base / "templates" / "en"
+    if not domains_dir.is_dir():
+        return []
+    registry = default_registry()
+    problems: list[str] = []
+    for template_file in sorted(domains_dir.glob("*.yaml")):
+        try:
+            template = load_domain_template(template_file)
+        except DomainTemplateError as exc:
+            problems.append(f"{template_file.name}: {exc.path}: {exc.message}")
+            continue
+        for problem in validate_automations(
+            template, known_channels=set(_BUILTIN_CHANNELS), registry=registry, templates_dir=templates_dir
+        ):
+            problems.append(f"{template_file.name}: {problem}")
+    return problems
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """``validate <file>``: exit 0 when the file is valid, 1 otherwise (§B7.4)."""
     args: list[str] = list(sys.argv[1:] if argv is None else argv)
@@ -397,6 +437,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         cfg = load_config(args[1])
     except ConfigError as exc:
         sys.stderr.write(f"{exc}\n")
+        return 1
+    domain_problems = _validate_domain_templates(args[1])
+    if domain_problems:
+        for problem in domain_problems:
+            sys.stderr.write(f"{problem}\n")
         return 1
     sys.stdout.write(f"config valid: {args[1]} (env={cfg.env})\n")
     return 0
