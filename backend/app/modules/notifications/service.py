@@ -21,7 +21,10 @@ from app.core.problems import NotFoundError, PermissionDeniedError
 from app.modules.audit.service import record_audit_event
 from app.modules.notifications import repository
 
-__all__ = ["list_inbox", "mark_all_read", "mark_read", "unread_count"]
+__all__ = ["decode_cursor", "list_inbox", "mark_all_read", "mark_read", "unread_count"]
+
+#: The API layer parses a page cursor through the service, never the repository (§B4.2 rule 2).
+decode_cursor = repository.decode_cursor
 
 _READ_ACTION = "notification.read"
 _READ_ALL_ACTION = "notification.read_all"

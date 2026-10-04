@@ -114,8 +114,13 @@ class NotificationChannel(ABC):
         occurred_at: datetime | None,
         *,
         allow_personal: bool,
+        personal_fields: frozenset[str],
     ) -> dict[str, Any] | None:
-        """What a pending delivery stores for this channel; None means the template's declared fields."""
+        """What a pending delivery stores for this channel; None means the template's declared fields.
+
+        `personal_fields` are the event type's fields that identify a person (from the event registry,
+        which the caller owns); a channel keeps them only when `allow_personal`.
+        """
         return None
 
     @abstractmethod

@@ -13,11 +13,23 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Protocol
 
-from app.engines.automation.registry import EventFieldRegistry
+__all__ = ["RESERVED_KEYS", "EventCatalog", "build_payload", "canonical_json", "mapping_problems"]
 
-__all__ = ["RESERVED_KEYS", "build_payload", "canonical_json", "mapping_problems"]
+
+class EventSpecLike(Protocol):
+    """What the mapping needs to know about one event type."""
+
+    fields: frozenset[str]
+    personal_fields: frozenset[str]
+
+
+class EventCatalog(Protocol):
+    """Looks an event type up; the automation event registry satisfies it."""
+
+    def get(self, event_type: str) -> EventSpecLike | None: ...
+
 
 #: Always sent by the channel itself; a mapping may not claim them.
 RESERVED_KEYS = frozenset({"event_type", "event_id", "occurred_at", "organization_id"})
@@ -25,7 +37,7 @@ _TARGET = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
 
 
 def mapping_problems(
-    mapping: Mapping[str, str], events: list[str], registry: EventFieldRegistry
+    mapping: Mapping[str, str], events: list[str], registry: EventCatalog
 ) -> list[tuple[str, str]]:
     """Every problem with `mapping` for `events`, as `(path, message)` pairs (empty when valid)."""
     problems: list[tuple[str, str]] = []

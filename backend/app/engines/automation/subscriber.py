@@ -11,16 +11,17 @@ A missing or invalid template is not a subscriber failure: it is a boot-time pro
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from app.core.db import Connection
-from app.core.domain_template import DomainTemplateError, load_domain_template
 from app.engines.automation.directory_pg import PgDirectory
-from app.engines.automation.planner import plan
+from app.engines.automation.domain_template import DomainTemplateError, load_domain_template
+from app.engines.automation.planner import NotificationIntent, plan
 from app.engines.automation.preferences_pg import PgPreferences
-from app.engines.automation.registry import EventFieldRegistry, default_registry
-from app.modules.notifications.dispatch import enqueue
+from app.engines.automation.registry import EventFieldRegistry
 
 if TYPE_CHECKING:
     # A lazy annotation only (see `from __future__ import annotations`): importing the concrete
@@ -30,6 +31,9 @@ if TYPE_CHECKING:
 __all__ = ["CONSUMER", "handle", "mandatory_inapp_events", "register"]
 
 CONSUMER = "automation"
+
+#: Sends or queues planned intents (the notification module provides it).
+Enqueue = Callable[[Connection, list[NotificationIntent]], Awaitable[None]]
 
 #: `config/domains/` relative to the repository root (this file: backend/app/engines/automation/).
 DOMAINS_DIR = Path(__file__).resolve().parents[4] / "config" / "domains"
@@ -50,8 +54,14 @@ def mandatory_inapp_events(domain_key: str) -> set[str]:
     return {r.when for r in template.automations if r.then.mandatory and "inapp" in r.then.channels}
 
 
-async def handle(conn: Connection, event: OutboxEvent, *, registry: EventFieldRegistry | None = None) -> None:
-    """Plan and enqueue the notifications `event` triggers, for its organization's domain template."""
+async def handle(
+    conn: Connection, event: OutboxEvent, *, registry: EventFieldRegistry, enqueue: Enqueue
+) -> None:
+    """Plan and enqueue the notifications `event` triggers, for its organization's domain template.
+
+    `registry` (the events rules may use) and `enqueue` (what sends or queues an intent) are given by
+    the caller: the engine knows neither the modules that publish events nor the one that delivers.
+    """
     domain_key = await conn.fetchval("SELECT platform.get_domain_key($1)", event.organization_id)
     if not domain_key:
         return
@@ -69,7 +79,7 @@ async def handle(conn: Connection, event: OutboxEvent, *, registry: EventFieldRe
         event_type=event.event_type,
         event_data=event.payload,
         rules=template.automations,
-        registry=registry or default_registry(),
+        registry=registry,
         directory=directory,
         entity_type=event.aggregate_type,
         entity_id=event.aggregate_id,
@@ -79,7 +89,10 @@ async def handle(conn: Connection, event: OutboxEvent, *, registry: EventFieldRe
     await enqueue(conn, intents)
 
 
-def register(subscriber_registry: SubscriberRegistry, event_registry: EventFieldRegistry) -> None:
+def register(
+    subscriber_registry: SubscriberRegistry, event_registry: EventFieldRegistry, enqueue: Enqueue
+) -> None:
     """Subscribe `handle` to every event type `event_registry` knows."""
+    handler = partial(handle, registry=event_registry, enqueue=enqueue)
     for event_type in event_registry.known_event_types():
-        subscriber_registry.subscribe(event_type, CONSUMER, handle)
+        subscriber_registry.subscribe(event_type, CONSUMER, handler)

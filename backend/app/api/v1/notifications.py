@@ -15,7 +15,7 @@ from app.core.envelope import success_response
 from app.core.permissions import ScopeType
 from app.core.problems import NotFoundError, UnauthorizedError
 from app.core.scope import MemberContext, RoleGrant, default_scope_resolver
-from app.modules.notifications import repository, service
+from app.modules.notifications import service
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -60,7 +60,7 @@ async def list_notifications(
 ) -> dict[str, Any]:
     member = _resolve_member(request)
     _require_read(member)
-    cursor = repository.decode_cursor(after) if after else None
+    cursor = service.decode_cursor(after) if after else None
     pool = request.app.state.pool
     async with tenant_transaction(pool, UUID(member.organization_id)) as conn:
         rows, next_cursor = await service.list_inbox(

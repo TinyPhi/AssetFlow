@@ -16,9 +16,9 @@ from app.core import clock
 from app.core.db import Connection
 from app.core.ids import uuid7
 from app.core.problems import FieldError, ValidationFailedError
-from app.engines.automation.registry import default_registry
 from app.engines.automation.subscriber import mandatory_inapp_events
 from app.modules.audit.service import record_audit_event
+from app.modules.event_registry import default_event_registry
 from app.modules.notifications.errors import PreferenceLockedError, PreferenceVersionConflictError
 from app.modules.notifications.preference_schemas import (
     PreferenceCell,
@@ -68,7 +68,7 @@ async def get_matrix(conn: Connection, *, member_id: UUID) -> PreferenceMatrix:
                 for channel in channels
             ],
         )
-        for event_type in sorted(default_registry().known_event_types())
+        for event_type in sorted(default_event_registry().known_event_types())
     ]
     return PreferenceMatrix(channels=channels, events=events)
 
@@ -88,7 +88,7 @@ async def set_preferences(
     """Apply `changes` to the caller's own preferences, all or nothing."""
     channels = set(await _channels(conn))
     locked = await _mandatory(conn)
-    known = set(default_registry().known_event_types())
+    known = set(default_event_registry().known_event_types())
     seen: set[tuple[str, str]] = set()
     for index, change in enumerate(changes):
         cell = (change.event_type, change.channel_key)

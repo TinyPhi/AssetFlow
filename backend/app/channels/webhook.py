@@ -28,9 +28,8 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationInfo, fi
 
 from app.channels.base import ChannelContext, DeliveryResult, NotificationChannel, RenderedMessage
 from app.channels.retry import failure_from_exception, failure_from_status
-from app.channels.webhook_mapping import build_payload, canonical_json, mapping_problems
+from app.channels.webhook_mapping import EventCatalog, build_payload, canonical_json, mapping_problems
 from app.core import clock
-from app.engines.automation.registry import EventFieldRegistry, default_registry
 
 __all__ = ["WebhookChannel", "WebhookSettings", "sign"]
 
@@ -74,8 +73,10 @@ class WebhookSettings(BaseModel):
 
     @model_validator(mode="after")
     def _mapping_is_valid(self, info: ValidationInfo) -> WebhookSettings:
-        registry: EventFieldRegistry = (info.context or {}).get("event_registry") or default_registry()
-        problems = mapping_problems(self.field_mapping, self.events, registry)
+        catalog: EventCatalog | None = (info.context or {}).get("event_registry")
+        if catalog is None:
+            raise ValueError("the event catalog is needed to check events and mapped fields")
+        problems = mapping_problems(self.field_mapping, self.events, catalog)
         if problems:
             path, message = problems[0]
             raise ValueError(f"{path}: {message}")
@@ -89,9 +90,6 @@ class WebhookChannel(NotificationChannel):
     display_name: ClassVar[str] = "Webhook"
     config_schema: ClassVar[type[BaseModel]] = WebhookSettings
     secret_fields: ClassVar[tuple[str, ...]] = ("signing_secret",)
-
-    def __init__(self, *, event_registry: EventFieldRegistry | None = None) -> None:
-        self._events = event_registry or default_registry()
 
     # ----------------------------------------------------------------- enqueue-time hooks
 
@@ -112,13 +110,13 @@ class WebhookChannel(NotificationChannel):
         occurred_at: datetime | None,
         *,
         allow_personal: bool,
+        personal_fields: frozenset[str],
     ) -> dict[str, Any] | None:
         """The mapped fields of this event (personal ones only if allowed), plus when it happened."""
-        spec = self._events.get(event_type)
         payload = build_payload(
             settings.get("field_mapping") or {},
             event_data,
-            personal_fields=spec.personal_fields if spec is not None else frozenset(),
+            personal_fields=personal_fields,
             allow_personal=allow_personal and bool(settings.get("include_personal_data", False)),
         )
         return {"payload": payload, "occurred_at": occurred_at.isoformat() if occurred_at else None}

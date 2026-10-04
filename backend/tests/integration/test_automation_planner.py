@@ -13,7 +13,7 @@ from app.core.db import Pool, tenant_transaction
 from app.engines.automation.directory_pg import PgDirectory
 from app.engines.automation.models import AutomationRule
 from app.engines.automation.planner import plan
-from app.engines.automation.registry import default_registry
+from app.modules.event_registry import default_event_registry as default_registry
 from app.modules.organization.events import TEAM_MEMBER_ADDED
 
 RULE = AutomationRule.model_validate(

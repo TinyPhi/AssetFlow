@@ -6,8 +6,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.core.domain_template import DomainTemplateError, load_domain_template, validate_automations
-from app.engines.automation.registry import EventFieldRegistry, default_registry
+from app.engines.automation.domain_template import (
+    DomainTemplateError,
+    load_domain_template,
+    validate_automations,
+)
+from app.engines.automation.registry import EventFieldRegistry
+from app.modules.event_registry import default_event_registry as default_registry
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "domains" / "test-neutral.yaml"
 

@@ -8,7 +8,7 @@ import ast
 import re
 from pathlib import Path
 
-from app.engines.automation.registry import default_registry
+from app.modules.event_registry import default_event_registry as default_registry
 from app.modules.notifications.events import NOTIFICATION_EVENTS
 
 BACKEND = Path(__file__).resolve().parents[2]

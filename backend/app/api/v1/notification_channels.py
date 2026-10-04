@@ -24,7 +24,7 @@ from app.core.db import tenant_transaction
 from app.core.envelope import success_response
 from app.core.problems import NotFoundError, PermissionDeniedError, ValidationFailedError
 from app.core.scope import MemberContext, default_scope_resolver
-from app.modules.notifications import channels_service, repository
+from app.modules.notifications import channels_service, service
 from app.modules.notifications.channel_schemas import (
     DeliveryList,
     DeliveryRead,
@@ -192,7 +192,7 @@ async def list_deliveries(
     cursor = None
     if after is not None:
         try:
-            cursor = repository.decode_cursor(after)
+            cursor = service.decode_cursor(after)
         except (ValueError, TypeError) as exc:
             raise ValidationFailedError(detail="The cursor is not valid.") from exc
     async with tenant_transaction(request.app.state.pool, UUID(member.organization_id)) as conn:

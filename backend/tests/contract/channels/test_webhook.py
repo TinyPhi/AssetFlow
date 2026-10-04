@@ -27,6 +27,7 @@ from app.channels.egress import EgressClient
 from app.channels.webhook import WebhookChannel, WebhookSettings
 from app.channels.webhook_mapping import build_payload, canonical_json, mapping_problems
 from app.engines.automation.registry import EventFieldRegistry
+from app.modules.event_registry import default_event_registry
 
 HOST = "hooks.example.test"
 URL = f"https://{HOST}/inbound?token=abc"
@@ -170,15 +171,18 @@ def test_a_mapped_field_the_event_did_not_carry_is_left_out() -> None:
     ("setting", "allow", "present"), [(False, True, False), (True, False, False), (True, True, True)]
 )
 def test_personal_fields_need_both_switches(setting: bool, allow: bool, present: bool) -> None:
-    registry = EventFieldRegistry()
-    registry.register_event("person.event", {"id", "display_name"}, personal_fields={"display_name"})
     settings = {
         "events": ["person.event"],
         "field_mapping": {"who": "display_name", "id": "id"},
         "include_personal_data": setting,
     }
-    data = WebhookChannel(event_registry=registry).build_message_data(
-        settings, "person.event", {"id": "1", "display_name": "Ada"}, NOW, allow_personal=allow
+    data = WebhookChannel().build_message_data(
+        settings,
+        "person.event",
+        {"id": "1", "display_name": "Ada"},
+        NOW,
+        allow_personal=allow,
+        personal_fields=frozenset({"display_name"}),
     )
     assert data is not None
     assert ("who" in data["payload"]) is present
@@ -200,8 +204,11 @@ def _settings(**changes: Any) -> dict[str, Any]:
     return {**SETTINGS, "signing_secret": SECRET, **changes}
 
 
+CATALOG = {"event_registry": default_event_registry()}
+
+
 def test_valid_settings_are_accepted() -> None:
-    parsed = WebhookSettings.model_validate(_settings())
+    parsed = WebhookSettings.model_validate(_settings(), context=CATALOG)
     assert parsed.signing_secret.get_secret_value() == SECRET
     assert SECRET not in repr(parsed)
 
@@ -228,7 +235,7 @@ def test_valid_settings_are_accepted() -> None:
 )
 def test_invalid_settings_are_refused_at_save_time(changes: dict[str, Any]) -> None:
     with pytest.raises(ValidationError):
-        WebhookSettings.model_validate(_settings(**changes))
+        WebhookSettings.model_validate(_settings(**changes), context=CATALOG)
 
 
 def test_mapping_problems_name_the_path() -> None:
@@ -369,3 +376,9 @@ async def test_health_sends_nothing_and_reports_public_or_degraded() -> None:
     assert seen == []
     unconfigured = ChannelContext(organization_id=ORG, installation={})
     assert (await WebhookChannel().health(unconfigured))["status"] == "not_configured"
+
+
+def test_settings_cannot_be_validated_without_an_event_catalog() -> None:
+    """The channel does not import the engine; whoever validates (the admin service) supplies the catalog."""
+    with pytest.raises(ValidationError, match="event catalog"):
+        WebhookSettings.model_validate(_settings())

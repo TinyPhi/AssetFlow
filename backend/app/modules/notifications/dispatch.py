@@ -23,6 +23,7 @@ from app.channels.registry import ChannelRegistry, default_registry
 from app.core.db import Connection
 from app.core.ids import uuid7
 from app.engines.automation.planner import NotificationIntent
+from app.modules.event_registry import default_event_registry
 from app.modules.notifications.rendering import TEMPLATES_DIR, minimized_data, render_message
 
 __all__ = ["TEMPLATES_DIR", "enqueue"]
@@ -115,8 +116,14 @@ async def _record_pending(conn: Connection, intent: NotificationIntent) -> None:
         installed = channel_class()
         if not installed.accepts_event(settings, intent.event_type):
             return
+        spec = default_event_registry().get(intent.event_type)
         custom = installed.build_message_data(
-            settings, intent.event_type, intent.event_data, intent.occurred_at, allow_personal=allow_personal
+            settings,
+            intent.event_type,
+            intent.event_data,
+            intent.occurred_at,
+            allow_personal=allow_personal,
+            personal_fields=spec.personal_fields if spec is not None else frozenset(),
         )
     message_data = (
         custom

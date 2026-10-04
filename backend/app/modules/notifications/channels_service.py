@@ -29,6 +29,7 @@ from app.core.db import Connection
 from app.core.ids import uuid7
 from app.core.problems import FieldError, NotFoundError, ValidationFailedError
 from app.modules.audit.service import record_audit_event
+from app.modules.event_registry import default_event_registry
 from app.modules.notifications import repository
 from app.modules.notifications.channel_schemas import (
     AvailableChannel,
@@ -104,7 +105,9 @@ def _validated_settings(
 ) -> dict[str, Any]:
     """The settings the channel accepts, without its secret fields (those never reach the database)."""
     try:
-        model = channel.config_schema.model_validate({**settings, **present_secrets})
+        model = channel.config_schema.model_validate(
+            {**settings, **present_secrets}, context={"event_registry": default_event_registry()}
+        )
     except ValidationError as exc:
         errors = [
             FieldError(field="body.settings." + ".".join(str(p) for p in e["loc"]), message=str(e["msg"]))

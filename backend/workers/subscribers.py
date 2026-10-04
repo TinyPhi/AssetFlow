@@ -19,8 +19,9 @@ from typing import Any
 from uuid import UUID
 
 from app.core.db import Connection
-from app.engines.automation import registry as automation_registry
 from app.engines.automation import subscriber as automation_subscriber
+from app.modules.event_registry import default_event_registry
+from app.modules.notifications.dispatch import enqueue
 
 
 @dataclass(frozen=True)
@@ -69,5 +70,5 @@ class SubscriberRegistry:
 def default_registry() -> SubscriberRegistry:
     """The subscribers of the running worker."""
     registry = SubscriberRegistry()
-    automation_subscriber.register(registry, automation_registry.default_registry())
+    automation_subscriber.register(registry, default_event_registry(), enqueue)
     return registry
