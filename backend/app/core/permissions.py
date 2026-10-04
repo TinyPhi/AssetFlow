@@ -153,6 +153,9 @@ DEFAULT_PERMISSIONS: frozenset[str] = frozenset(
         "report.export",
         "notification.read",
         "notification.manage",
+        "notification_channel.read",
+        "notification_channel.manage",
+        "notification_delivery.read",
     }
 )
 

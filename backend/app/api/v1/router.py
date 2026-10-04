@@ -11,6 +11,7 @@ from fastapi import APIRouter, Request
 from app.api.v1.audit import router as audit_router
 from app.api.v1.bulk_import import router as bulk_import_router
 from app.api.v1.locations import router as locations_router
+from app.api.v1.notification_channels import router as notification_channels_router
 from app.api.v1.notifications import router as notifications_router
 from app.api.v1.org_settings import router as org_settings_router
 from app.api.v1.org_units import router as org_units_router
@@ -27,6 +28,7 @@ router.include_router(role_grants_router)
 router.include_router(bulk_import_router)
 router.include_router(org_settings_router)
 router.include_router(notifications_router)
+router.include_router(notification_channels_router)
 
 
 def _request_id(request: Request) -> str:

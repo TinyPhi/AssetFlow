@@ -79,7 +79,7 @@ async def test_notification_deliveries_worker_tenant_isolation(
             await conn.execute(insert, uuid.uuid4(), isolation_db.org_b, channel_b, uuid.uuid4(), token())
 
 
-async def test_api_can_read_but_not_write_deliveries(
+async def test_api_can_read_and_requeue_but_not_create_or_rewrite_deliveries(
     make_pool: PoolFactory, isolation_db: IsolationDb
 ) -> None:
     worker = await make_pool("worker")
@@ -93,10 +93,15 @@ async def test_api_can_read_but_not_write_deliveries(
     async with tenant_transaction(api, isolation_db.org_a) as conn:
         found = await conn.fetchval("SELECT status FROM public.notification_deliveries WHERE id = $1", row_id)
         assert found == "pending"
+        # P6-06c (0014): the api role may reset a delivery's retry state (re-queue a dead letter)
+        # - those columns only, never who or what it was for.
+        await conn.execute(
+            "UPDATE public.notification_deliveries SET status = 'pending', attempts = 0 WHERE id = $1", row_id
+        )
         with pytest.raises(asyncpg.InsufficientPrivilegeError, match="permission denied"):
             async with conn.transaction():
                 await conn.execute(
-                    "UPDATE public.notification_deliveries SET status = 'sent' WHERE id = $1", row_id
+                    "UPDATE public.notification_deliveries SET target = 'x' WHERE id = $1", row_id
                 )
         with pytest.raises(asyncpg.InsufficientPrivilegeError, match="permission denied"):
             async with conn.transaction():
