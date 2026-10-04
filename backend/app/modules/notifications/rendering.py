@@ -53,6 +53,7 @@ def render_message(
     *,
     allow_personal: bool = True,
     language: str = "en",
+    fields: dict[str, Any] | None = None,
 ) -> RenderedMessage:
     """Render every format `template_key` has: `body` is the HTML, `text` the plain text.
 
@@ -67,5 +68,10 @@ def render_message(
         subject=subject,
         body=html,
         text=text,
-        data={"event_type": event_type, "event_id": str(event_id), "template_key": template_key},
+        data={
+            "event_type": event_type,
+            "event_id": str(event_id),
+            "template_key": template_key,
+            "fields": dict(fields or {}),  # what the pending delivery stored for this channel
+        },
     )

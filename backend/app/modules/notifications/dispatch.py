@@ -12,16 +12,28 @@ transaction.
 from __future__ import annotations
 
 import json
+from functools import lru_cache
+from typing import Any
 from uuid import UUID
 
 from app.channels.base import ChannelContext
 from app.channels.inapp import InAppChannel
+from app.channels.registry import ChannelRegistry, default_registry
 from app.core.db import Connection
 from app.core.ids import uuid7
 from app.engines.automation.planner import NotificationIntent
 from app.modules.notifications.rendering import TEMPLATES_DIR, minimized_data, render_message
 
 __all__ = ["TEMPLATES_DIR", "enqueue"]
+
+
+@lru_cache(maxsize=1)
+def _channels() -> ChannelRegistry:
+    return default_registry()
+
+
+def _settings(value: Any) -> dict[str, Any]:
+    return json.loads(value) if isinstance(value, str) else dict(value or {})
 
 
 async def enqueue(conn: Connection, intents: list[NotificationIntent]) -> None:
@@ -84,15 +96,28 @@ async def _record_pending(conn: Connection, intent: NotificationIntent) -> None:
     nothing, so nothing is recorded.
     """
     channel = await conn.fetchrow(
-        "SELECT id, allow_personal_data FROM public.notification_channels "
+        "SELECT id, allow_personal_data, settings FROM public.notification_channels "
         "WHERE organization_id = $1 AND channel_key = $2",
         intent.organization_id,
         intent.channel_key,
     )
     if channel is None:
         return
-    message_data = minimized_data(
-        intent.template_key, intent.event_data, allow_personal=channel["allow_personal_data"]
+    allow_personal = channel["allow_personal_data"]
+    settings = _settings(channel["settings"])
+    channel_class = _channels().get(intent.channel_key)
+    custom: dict[str, Any] | None = None
+    if channel_class is not None:
+        installed = channel_class()
+        if not installed.accepts_event(settings, intent.event_type):
+            return
+        custom = installed.build_message_data(
+            settings, intent.event_type, intent.event_data, intent.occurred_at, allow_personal=allow_personal
+        )
+    message_data = (
+        custom
+        if custom is not None
+        else minimized_data(intent.template_key, intent.event_data, allow_personal=allow_personal)
     )
     await conn.execute(
         "INSERT INTO public.notification_deliveries "

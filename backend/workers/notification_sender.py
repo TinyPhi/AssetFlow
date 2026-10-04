@@ -229,6 +229,7 @@ async def _deliver(p: _Pass, d: _Delivery) -> None:
             d.event_id,
             d.message_data,
             allow_personal=installation["allow_personal_data"],
+            fields=d.message_data,
         )
     except TemplateError:
         breaker.release_trial()

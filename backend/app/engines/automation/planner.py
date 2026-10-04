@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID
 
 from app.engines.automation.conditions import evaluate
@@ -35,6 +36,7 @@ class NotificationIntent:
     event_data: dict[str, object]
     entity_type: str | None = None
     entity_id: UUID | None = None
+    occurred_at: datetime | None = None
 
 
 def _idempotency_key(event_id: UUID, member_id: UUID, channel_key: str) -> str:
@@ -54,6 +56,7 @@ async def plan(
     directory: Directory,
     entity_type: str | None = None,
     entity_id: UUID | None = None,
+    occurred_at: datetime | None = None,
 ) -> list[NotificationIntent]:
     """Every notification intent `rules` produce for one event; `rules` not matching are skipped."""
     spec = registry.get(event_type)
@@ -79,6 +82,7 @@ async def plan(
                         event_data=event_data,
                         entity_type=entity_type,
                         entity_id=entity_id,
+                        occurred_at=occurred_at,
                     )
                 )
     return filter_by_preferences(intents)

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -33,6 +34,7 @@ class OutboxEvent:
     aggregate_id: UUID
     payload: dict[str, Any]
     attempts: int
+    occurred_at: datetime | None = None  # when the event was written to the outbox
 
 
 SubscriberHandler = Callable[[Connection, OutboxEvent], Awaitable[None]]

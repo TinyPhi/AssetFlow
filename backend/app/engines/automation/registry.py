@@ -20,6 +20,7 @@ class EventSpec:
 
     fields: frozenset[str]
     holder_field: str | None = None
+    personal_fields: frozenset[str] = frozenset()  # fields that identify a person (§B6.3 rule 3)
 
 
 @dataclass
@@ -34,8 +35,13 @@ class EventFieldRegistry:
         fields: set[str] | frozenset[str],
         *,
         holder_field: str | None = None,
+        personal_fields: set[str] | frozenset[str] = frozenset(),
     ) -> None:
-        """Register `event_type`'s data fields, and which one (if any) names the notice's holder."""
+        """Register `event_type`'s data fields, and which one (if any) names the notice's holder.
+
+        `personal_fields` (a subset of `fields`) are dropped from an outbound payload unless the
+        installation allows personal data.
+        """
         if event_type in self._events:
             raise ValueError(f"event {event_type!r} is already registered")
         frozen = frozenset(fields)
@@ -43,7 +49,9 @@ class EventFieldRegistry:
             raise ValueError(
                 f"event {event_type!r}: holder_field {holder_field!r} is not one of its own fields"
             )
-        self._events[event_type] = EventSpec(frozen, holder_field)
+        if not frozenset(personal_fields) <= frozen:
+            raise ValueError(f"event {event_type!r}: personal_fields must be among its fields")
+        self._events[event_type] = EventSpec(frozen, holder_field, frozenset(personal_fields))
 
     def get(self, event_type: str) -> EventSpec | None:
         """Return the spec of `event_type`, or None if nothing is registered for it."""

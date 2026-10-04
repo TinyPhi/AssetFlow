@@ -55,6 +55,9 @@ __all__ = [
     "update",
 ]
 
+#: Stands in for a secret that is already stored (the API cannot read it back) when the rest of the
+#: settings are validated; long enough for any sensible length rule, never stored or sent.
+_STORED = "stored-secret-placeholder-value"
 _HOST = re.compile(
     r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"
 )
@@ -267,7 +270,7 @@ async def install(
     if data.allowed_hosts and not channel.accepts_allowed_hosts:
         raise _invalid("body.allowed_hosts", "This channel does not take allowed hosts.")
     settings = _validated_settings(channel, data.settings, data.secrets)
-    hosts = normalize_hosts(data.allowed_hosts)
+    hosts = normalize_hosts([*data.allowed_hosts, *channel.allowed_hosts_for(settings)])
 
     channel_id = uuid7()
     row = await conn.fetchrow(
@@ -340,7 +343,7 @@ async def update(
     }
     settings = _json(current["settings"]) if data.settings is None else data.settings
     # Validate the whole object a send would see; a secret that stays set counts as present.
-    present = {name: "set" for name in set_after if name not in changes}
+    present = {name: _STORED for name in set_after if name not in changes}
     present.update({k: v for k, v in changes.items() if v is not None})
     settings = _validated_settings(channel, settings, present)
 
@@ -353,9 +356,13 @@ async def update(
         else:
             await store.change(secret_ref, changes)
 
-    hosts = (
-        list(current["allowed_hosts"]) if data.allowed_hosts is None else normalize_hosts(data.allowed_hosts)
+    previous = channel.allowed_hosts_for(_json(current["settings"]))
+    own = (
+        [h for h in current["allowed_hosts"] if h not in previous]
+        if data.allowed_hosts is None
+        else data.allowed_hosts
     )
+    hosts = normalize_hosts([*own, *channel.allowed_hosts_for(settings)])
     row = await conn.fetchrow(
         "UPDATE public.notification_channels SET display_name = $3, settings = $4::jsonb, secret_ref = $5, "
         "secret_fields_set = $6, allowed_hosts = $7, allow_personal_data = $8, version = version + 1, "

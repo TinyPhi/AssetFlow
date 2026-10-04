@@ -57,6 +57,7 @@ async def handle(conn: Connection, event: OutboxEvent, *, registry: EventFieldRe
         directory=directory,
         entity_type=event.aggregate_type,
         entity_id=event.aggregate_id,
+        occurred_at=event.occurred_at,
     )
     await enqueue(conn, intents)
 

@@ -53,7 +53,8 @@ WHERE o.id IN (
     FOR UPDATE SKIP LOCKED
 )
 RETURNING o.id, o.organization_id, o.event_type, o.aggregate_type, o.aggregate_id, o.payload,
-          o.attempts, EXTRACT(EPOCH FROM now() - o.created_at)::float8 AS lag_seconds
+          o.attempts, o.created_at AS occurred_at,
+          EXTRACT(EPOCH FROM now() - o.created_at)::float8 AS lag_seconds
 """
 
 _DEAD_LETTER_EXPIRED_SQL = """
@@ -75,6 +76,7 @@ def _event(row: Any) -> OutboxEvent:
         aggregate_id=row["aggregate_id"],
         payload=json.loads(payload) if isinstance(payload, str) else dict(payload),
         attempts=row["attempts"],
+        occurred_at=row["occurred_at"],
     )
 
 

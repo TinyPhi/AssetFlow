@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from datetime import datetime
 from types import MappingProxyType
 from typing import Any, ClassVar, Protocol
 
@@ -95,6 +96,27 @@ class NotificationChannel(ABC):
     def egress_allowlist(self, platform: dict[str, Any]) -> tuple[str, ...]:
         """Hosts this channel may reach, given the installation-wide platform settings."""
         return self.egress_hosts
+
+    @classmethod
+    def allowed_hosts_for(cls, settings: dict[str, Any]) -> list[str]:
+        """Hosts the installation's own settings imply (a webhook's destination); added when saved."""
+        return []
+
+    def accepts_event(self, settings: dict[str, Any], event_type: str) -> bool:
+        """False when this installation does not want `event_type` (nothing is queued for it)."""
+        return True
+
+    def build_message_data(
+        self,
+        settings: dict[str, Any],
+        event_type: str,
+        event_data: dict[str, Any],
+        occurred_at: datetime | None,
+        *,
+        allow_personal: bool,
+    ) -> dict[str, Any] | None:
+        """What a pending delivery stores for this channel; None means the template's declared fields."""
+        return None
 
     @abstractmethod
     async def send(

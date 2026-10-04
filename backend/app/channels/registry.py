@@ -15,6 +15,7 @@ from importlib.metadata import entry_points
 from app.channels.base import NotificationChannel
 from app.channels.email import EmailChannel
 from app.channels.inapp import InAppChannel
+from app.channels.webhook import WebhookChannel
 from app.core.config import AppConfig
 
 __all__ = ["ChannelRegistry", "default_registry"]
@@ -51,6 +52,7 @@ def default_registry(cfg: AppConfig | None = None) -> ChannelRegistry:
     """
     registry = ChannelRegistry()
     registry.register(InAppChannel)
+    registry.register(WebhookChannel)
     if cfg is not None and cfg.notifications.channels.email.enabled:
         registry.register(EmailChannel)
     for entry_point in entry_points(group=ENTRY_POINT_GROUP):
