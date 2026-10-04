@@ -13,11 +13,13 @@ from datetime import datetime
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Query, Request, Response
+from fastapi.responses import JSONResponse
 
 from app.api.v1.caller import request_id, resolve_member
 from app.channels.credentials import ChannelCredentialStore
 from app.channels.registry import ChannelRegistry, default_registry
+from app.channels.schema_export import export_schema, schema_etag
 from app.core.db import tenant_transaction
 from app.core.envelope import success_response
 from app.core.problems import NotFoundError, PermissionDeniedError, ValidationFailedError
@@ -29,6 +31,7 @@ from app.modules.notifications.channel_schemas import (
     InstallationCreate,
     InstallationUpdate,
 )
+from app.modules.notifications.errors import ChannelNotFoundError
 
 router = APIRouter(prefix="/notification-channels", tags=["notification-channels"])
 
@@ -72,6 +75,22 @@ async def list_available_channels(request: Request) -> dict[str, Any]:
     _can_read(member, READ_CHANNELS)
     channels = channels_service.available_channels(_registry(request))
     return success_response(data=[c.model_dump() for c in channels], request_id=request_id(request))
+
+
+@router.get("/{key}/schema", summary="A channel's settings as JSON Schema")
+async def channel_schema(request: Request, key: str) -> Response:
+    """The settings schema the admin form is built from; secret fields are marked write-only."""
+    member = resolve_member(request)
+    _can_read(member, READ_CHANNELS)
+    channel = _registry(request).get(key)
+    if channel is None:
+        raise ChannelNotFoundError()
+    schema = export_schema(channel)
+    etag = schema_etag(schema)
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers={"ETag": etag})
+    body = success_response(data=schema, request_id=request_id(request))
+    return JSONResponse(body, headers={"ETag": etag})
 
 
 @router.get("/installations", summary="List the organization's channel installations")

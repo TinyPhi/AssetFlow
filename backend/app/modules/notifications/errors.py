@@ -10,6 +10,7 @@ from app.core.problems import ConflictError, ProblemError
 
 __all__ = [
     "ChannelAlreadyInstalledError",
+    "ChannelNotFoundError",
     "ChannelVersionConflictError",
     "DeliveryNotDeadLetteredError",
     "PreferenceLockedError",
@@ -23,6 +24,14 @@ class ChannelAlreadyInstalledError(ConflictError):
     title: ClassVar[str] = "Channel already installed"
     default_detail: ClassVar[str] = "This channel is already installed for the organization."
     description: ClassVar[str] = "An organization has one installation per channel key."
+
+
+class ChannelNotFoundError(ProblemError):
+    status_code = 404
+    code: ClassVar[str] = "notification_channel.not_found"
+    title: ClassVar[str] = "Channel not found"
+    default_detail: ClassVar[str] = "There is no such notification channel."
+    description: ClassVar[str] = "No channel with this key is available on this installation."
 
 
 class ChannelVersionConflictError(ConflictError):
