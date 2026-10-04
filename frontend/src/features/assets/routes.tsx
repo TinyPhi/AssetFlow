@@ -5,5 +5,5 @@ import type { RouteObject } from "react-router";
 import { placeholderRoute } from "@/app/routeHelpers";
 
 export const assetRoutes: RouteObject[] = [
-  placeholderRoute({ path: "assets", titleKey: "nav.assets", permission: "asset.read", module: "assets" }),
+  placeholderRoute({ path: "assets", titleKey: "nav.items.assets", permission: "asset.read", module: "assets" }),
 ];

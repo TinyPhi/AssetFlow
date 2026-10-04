@@ -9,6 +9,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Request, status
 
+from app.api.deps import permission_extra
 from app.core.envelope import success_response
 from app.core.permissions import ScopeType
 from app.core.problems import UnauthorizedError, ValidationFailedError
@@ -91,7 +92,7 @@ def _request_id(request: Request) -> str:
     return str(val) if val else ""
 
 
-@router.post("", status_code=status.HTTP_201_CREATED, summary="Create a physical location")
+@router.post("", status_code=status.HTTP_201_CREATED, summary="Create a physical location", openapi_extra=permission_extra("location.create"))
 async def create_loc(request: Request, body: LocationCreate) -> dict[str, Any]:
     """Create a new location or sub-location in the facility hierarchy."""
     org_id, caller = _resolve_caller(request)
@@ -101,7 +102,7 @@ async def create_loc(request: Request, body: LocationCreate) -> dict[str, Any]:
     return success_response(data=loc.model_dump(mode="json"), request_id=req_id)
 
 
-@router.get("", summary="List physical locations")
+@router.get("", summary="List physical locations", openapi_extra=permission_extra("location.read"))
 async def get_locs(
     request: Request,
     parent_id: UUID | None = None,
@@ -114,7 +115,7 @@ async def get_locs(
     return success_response(data=[loc.model_dump(mode="json") for loc in locs], request_id=req_id)
 
 
-@router.get("/{id}", summary="Get a physical location by ID")
+@router.get("/{id}", summary="Get a physical location by ID", openapi_extra=permission_extra("location.read"))
 async def get_loc(request: Request, id: UUID) -> dict[str, Any]:  # noqa: A002
     """Retrieve details for a specific physical location."""
     org_id, caller = _resolve_caller(request)
@@ -124,8 +125,8 @@ async def get_loc(request: Request, id: UUID) -> dict[str, Any]:  # noqa: A002
     return success_response(data=loc.model_dump(mode="json"), request_id=req_id)
 
 
-@router.patch("/{id}", summary="Update a physical location")
-@router.put("/{id}", summary="Update a physical location")
+@router.patch("/{id}", summary="Update a physical location", openapi_extra=permission_extra("location.update"))
+@router.put("/{id}", summary="Update a physical location", openapi_extra=permission_extra("location.update"))
 async def update_loc(
     request: Request,
     body: LocationUpdate,
@@ -146,7 +147,7 @@ async def update_loc(
     return success_response(data=loc.model_dump(mode="json"), request_id=req_id)
 
 
-@router.post("/{id}/move", summary="Move a physical location to a new parent")
+@router.post("/{id}/move", summary="Move a physical location to a new parent", openapi_extra=permission_extra("location.update"))
 async def move_loc(
     request: Request,
     body: LocationMove,
@@ -167,7 +168,7 @@ async def move_loc(
     return success_response(data=loc.model_dump(mode="json"), request_id=req_id)
 
 
-@router.delete("/{id}", summary="Delete a physical location")
+@router.delete("/{id}", summary="Delete a physical location", openapi_extra=permission_extra("location.delete"))
 async def delete_loc(
     request: Request,
     id: UUID,  # noqa: A002

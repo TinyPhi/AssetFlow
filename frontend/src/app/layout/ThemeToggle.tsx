@@ -7,16 +7,16 @@ import { t, type TranslationKey } from "@/lib/i18n";
 import { useTheme, type ThemePreference } from "@/lib/theme";
 
 const OPTIONS: readonly { value: ThemePreference; icon: LucideIcon; labelKey: TranslationKey }[] = [
-  { value: "light", icon: Sun, labelKey: "theme.light" },
-  { value: "dark", icon: Moon, labelKey: "theme.dark" },
-  { value: "system", icon: Monitor, labelKey: "theme.system" },
+  { value: "light", icon: Sun, labelKey: "theme.toggle.light" },
+  { value: "dark", icon: Moon, labelKey: "theme.toggle.dark" },
+  { value: "system", icon: Monitor, labelKey: "theme.toggle.system" },
 ];
 
 /** Light, dark or follow the system; the choice is remembered in this browser. */
 export const ThemeToggle: React.FC = () => {
   const { preference, setPreference } = useTheme();
   return (
-    <div role="radiogroup" aria-label={t("theme.label")} className="flex rounded-lg border border-border">
+    <div role="radiogroup" aria-label={t("theme.toggle.label")} className="flex rounded-lg border border-border">
       {OPTIONS.map(({ value, icon: Icon, labelKey }) => {
         const selected = preference === value;
         return (

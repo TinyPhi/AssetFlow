@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 POLICY_DIR = Path(__file__).resolve().parent.parent.parent / "deploy" / "openbao" / "policies"
-STANZA = re.compile(r'path\s+"(?P<path>[^"]+)"\s*\{[^}]*?capabilities\s*=\s*\[(?P<caps>[^\]]*)\]', re.S)
+STANZA = re.compile(r'path\s+"(?P<path>[^"]+)"\s*\{[^}]*?capabilities\s*=\s*\[(?P<caps>[^\]]*)\]', re.DOTALL)
 ORG = "0190a000-0000-7000-8000-00000000000a"
 CHANNEL = "0190a000-0000-7000-8000-00000000000b"
 DATA = f"secret/data/assetflow/orgs/{ORG}/channels/{CHANNEL}"

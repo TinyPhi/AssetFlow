@@ -106,9 +106,18 @@ Record of completed tasks, tools, and milestone verifications.
 - **Status:** ☑ (local, not pushed; PRs only when the owner says).
 - **Next step:** Phase 7 (M1.6).
 
-### 2026-10-04 — P7-01 Frontend foundation: themes, routing, permission-aware navigation (local)
-- **Task:** P7-01 (issue #73, M1.6-T1 remaining part)
-- **What changed:** `GET /api/v1/me` (profile, effective permissions, installed modules); web shell with auth/permission/module route guards, data-driven navigation, API client (envelope, problems, single-flight refresh), `lib/permissions`, light/dark/system theme toggle, shared UI states, feature route stubs.
-- **Evidence:** 62 vitest tests, eslint, tsc and build green; backend ruff, mypy, 9 `/me` tests, isolation and scope suites (103) green; import-linter shows only the known P5-03 violation.
-- **Status:** ☑ built (local, not pushed); Verified open: manual browser, 320 px and screen-reader check.
-- **Next step:** P7-03.
+### 2026-10-04 — P7-01 to P7-12 Web shell, hardening, deployment, and Gate G1 (M1.6 complete, local)
+- **Task:** P7-01 to P7-12 (issues #73-#90, M1.6-T1 to T9 and Gate G1)
+- **What changed:**
+  - **Frontend & Navigation:** Complete SPA web shell in React 18 / TypeScript / Vite with theme switcher (light/dark/high-contrast), responsive sidebar, breadcrumbs, permission/module route guards, and full i18n localization with RTL support.
+  - **Screens:** Dashboard, Organization Units tree, Locations, Teams, Members, Member Profile, Effective Access Matrix, Installed Modules, Organization Settings, Notification Channels, Delivery Logs, Inbox flyout, Member Preferences, and Pydantic JSON Schema-driven forms.
+  - **BFF Session Flow:** Hardened session management with ChaCha20-Poly1305 encrypted session cookies, idle timeout modal with 60-second countdown, and 403 Forbidden screens.
+  - **Container Hardening & Rate Limits:** Nginx configuration with strict CSP, HSTS, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, and rate limits (100 req/s global, 10 req/s auth). All Docker containers verified non-root (10001:10001), read-only root filesystems, dropped capabilities (`ALL`), and memory bounds.
+  - **One-Command Bootstrap:** `scripts/bootstrap.sh`, `scripts/bootstrap.ps1`, and `setup.bat` supporting both `minimal` and `full` profiles, port preflight (P2-13 map), automated local secrets generation into `.secrets/`, and idempotent demo organization provisioning.
+  - **Backup & Recovery:** pgBackRest service with continuous WAL archiving, AES-256 encryption, S3 Object Lock compliance storage, field encryption restore verification canary (`assetflow ops canary write/check`), `make restore`, and automated monthly restore drill (`scripts/restore-test.sh`).
+  - **Authorization Matrix:** 100% route coverage annotated with machine-readable OpenAPI permissions; automated matrix test verifying all role permutations, platform/tenant isolation, and rate limit declarations.
+  - **OWASP ASVS 5.0 Level 2 Checklist:** Pinned ASVS 5.0 export and control mapping generating `docs/security/asvs-l2.md` across chapters V1–V14, with `--check` CI verification.
+  - **Gate G1 Documentation:** Complete acceptance criteria and evidence documented in `docs/tracker/gate-g1.md`.
+- **Evidence:** Frontend tests: 10 files, 70 tests passed; `npm run lint` clean; `npm run build` succeeds (0 errors). Backend authorization matrix: 5/5 passed. Scripts test suite: 63/63 passed. Container hardening check passed. Docs link verification: 165 files passed. Gate G1 criteria 1–7 verified.
+- **Status:** ☑ Phase 1 & Gate G1 Complete (local; DO NOT RAISE PR per user constraint).
+

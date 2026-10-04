@@ -76,9 +76,11 @@ TEMPLATE = (
 
 def _mailpit_up() -> bool:
     try:
-        with socket.create_connection(("127.0.0.1", SMTP_PORT), timeout=1):
-            return True
-    except OSError:
+        with socket.create_connection(("127.0.0.1", SMTP_PORT), timeout=1) as sock:
+            sock.settimeout(1.0)
+            banner = sock.recv(64)
+            return b"220" in banner
+    except (OSError, TimeoutError):
         return False
 
 

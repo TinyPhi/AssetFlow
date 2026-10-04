@@ -9,6 +9,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Request, status
 
+from app.api.deps import permission_extra
 from app.core.envelope import success_response
 from app.core.permissions import ScopeType
 from app.core.problems import UnauthorizedError, ValidationFailedError
@@ -95,7 +96,7 @@ def _request_id(request: Request) -> str:
     return str(val) if val else ""
 
 
-@router.post("", status_code=status.HTTP_201_CREATED, summary="Create an organizational unit")
+@router.post("", status_code=status.HTTP_201_CREATED, summary="Create an organizational unit", openapi_extra=permission_extra("org_unit.create"))
 async def create_unit(request: Request, body: OrgUnitCreate) -> dict[str, Any]:
     """Create a new organizational unit within the caller's organization."""
     org_id, caller = _resolve_caller(request)
@@ -105,7 +106,7 @@ async def create_unit(request: Request, body: OrgUnitCreate) -> dict[str, Any]:
     return success_response(data=unit.model_dump(mode="json"), request_id=req_id)
 
 
-@router.get("", summary="List organizational units")
+@router.get("", summary="List organizational units", openapi_extra=permission_extra("org_unit.read"))
 async def get_units(
     request: Request,
     status: str | None = None,
@@ -121,7 +122,7 @@ async def get_units(
     return success_response(data=[u.model_dump(mode="json") for u in units], request_id=req_id)
 
 
-@router.get("/{id}", summary="Get an organizational unit by ID")
+@router.get("/{id}", summary="Get an organizational unit by ID", openapi_extra=permission_extra("org_unit.read"))
 async def get_unit(request: Request, id: UUID) -> dict[str, Any]:  # noqa: A002
     """Retrieve details for a specific organizational unit."""
     org_id, caller = _resolve_caller(request)
@@ -131,8 +132,8 @@ async def get_unit(request: Request, id: UUID) -> dict[str, Any]:  # noqa: A002
     return success_response(data=unit.model_dump(mode="json"), request_id=req_id)
 
 
-@router.patch("/{id}", summary="Update an organizational unit")
-@router.put("/{id}", summary="Update an organizational unit")
+@router.patch("/{id}", summary="Update an organizational unit", openapi_extra=permission_extra("org_unit.update"))
+@router.put("/{id}", summary="Update an organizational unit", openapi_extra=permission_extra("org_unit.update"))
 async def update_unit(
     request: Request,
     body: OrgUnitUpdate,
@@ -148,7 +149,7 @@ async def update_unit(
     return success_response(data=unit.model_dump(mode="json"), request_id=req_id)
 
 
-@router.post("/{id}/move", summary="Move an organizational unit to a new parent")
+@router.post("/{id}/move", summary="Move an organizational unit to a new parent", openapi_extra=permission_extra("org_unit.update"))
 async def move_unit(
     request: Request,
     body: OrgUnitMove,
@@ -164,7 +165,7 @@ async def move_unit(
     return success_response(data=unit.model_dump(mode="json"), request_id=req_id)
 
 
-@router.post("/{id}/archive", summary="Archive an organizational unit")
+@router.post("/{id}/archive", summary="Archive an organizational unit", openapi_extra=permission_extra("org_unit.archive"))
 async def archive_unit(
     request: Request,
     body: OrgUnitArchive,

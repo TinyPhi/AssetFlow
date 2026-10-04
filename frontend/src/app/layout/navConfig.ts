@@ -30,21 +30,21 @@ export interface NavItem {
 }
 
 export const NAV_ITEMS: readonly NavItem[] = [
-  { to: "/", labelKey: "nav.dashboard", icon: LayoutDashboard },
-  { to: "/organization", labelKey: "nav.organization", icon: Network, permission: "org_unit.read" },
-  { to: "/teams", labelKey: "nav.teams", icon: Users, permission: "team.read" },
-  { to: "/members", labelKey: "nav.members", icon: UserRound, permission: "member.read" },
-  { to: "/assets", labelKey: "nav.assets", icon: Boxes, permission: "asset.read", module: "assets" },
+  { to: "/", labelKey: "nav.items.dashboard", icon: LayoutDashboard },
+  { to: "/organization", labelKey: "nav.items.organization", icon: Network, permission: "org_unit.read" },
+  { to: "/teams", labelKey: "nav.items.teams", icon: Users, permission: "team.read" },
+  { to: "/members", labelKey: "nav.items.members", icon: UserRound, permission: "member.read" },
+  { to: "/assets", labelKey: "nav.items.assets", icon: Boxes, permission: "asset.read", module: "assets" },
   {
     to: "/maintenance",
-    labelKey: "nav.maintenance",
+    labelKey: "nav.items.maintenance",
     icon: Wrench,
     permission: "work_order.read",
     module: "maintenance",
   },
-  { to: "/notifications", labelKey: "nav.notifications", icon: Bell, permission: "notification.read" },
-  { to: "/admin", labelKey: "nav.admin", icon: ShieldCheck, permission: "role_grant.read" },
-  { to: "/settings", labelKey: "nav.my_settings", icon: Settings },
+  { to: "/notifications", labelKey: "nav.items.notifications", icon: Bell, permission: "notification.read" },
+  { to: "/admin", labelKey: "nav.items.admin", icon: ShieldCheck, permission: "role_grant.read" },
+  { to: "/settings", labelKey: "nav.items.my_settings", icon: Settings },
 ];
 
 /** The items `me` may see: those whose permission and module (if any) it satisfies. */

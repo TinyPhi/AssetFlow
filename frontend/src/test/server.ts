@@ -39,4 +39,22 @@ export function meHandler(me: Me): ReturnType<typeof http.get> {
 export const server = setupServer(
   meHandler(makeMe()),
   http.get("/api/health", () => HttpResponse.json({ status: "ok" })),
+  http.get("/api/config/public", () =>
+    HttpResponse.json({
+      authority: "https://idp.example.org",
+      client_id: "assetflow-web",
+      redirect_uri: "/auth/callback",
+      scopes: ["openid", "profile"],
+      auth_mode: "mock",
+      idle_timeout_minutes: 30,
+      features: ["organization", "teams", "members", "notifications"],
+    }),
+  ),
+  http.get("/api/v1/notifications/unread-count", () => HttpResponse.json({ count: 0 })),
+  http.get("/api/v1/notifications", () => HttpResponse.json(envelope({ items: [] }))),
+  http.get("/api/v1/teams", () => HttpResponse.json(envelope([]))),
+  http.get("/api/v1/org-units", () => HttpResponse.json(envelope([]))),
+  http.get("/api/v1/locations", () => HttpResponse.json(envelope([]))),
+  http.get("/api/v1/members", () => HttpResponse.json([])),
+  http.get("/api/v1/modules", () => HttpResponse.json([])),
 );

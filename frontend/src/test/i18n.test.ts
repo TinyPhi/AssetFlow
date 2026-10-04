@@ -3,6 +3,7 @@
 
 // Every translation key a component asks for must exist in en.json, and en.json must not keep keys
 // nothing uses (§C1.7). Keys are read from the source: `t("a.b")` calls and `titleKey`/`labelKey` fields.
+// Every key in en.json must follow <feature>.<screen_or_component>.<element> in snake_case (§C1.6).
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -41,11 +42,22 @@ describe("en.json", () => {
 
   it("holds no key that nothing uses", () => {
     // Keys reached through a table (the theme options, the page titles) are listed here on purpose.
-    const reached = new Set(["theme.light", "theme.dark", "theme.system"]);
+    const reached = new Set(["theme.toggle.light", "theme.toggle.dark", "theme.toggle.system"]);
     expect([...DEFINED].filter((key) => !USED.has(key) && !reached.has(key))).toEqual([]);
   });
 
   it("finds the keys the navigation declares", () => {
-    expect(USED.has("nav.teams")).toBe(true);
+    expect(USED.has("nav.items.teams")).toBe(true);
+  });
+
+  it("follows the <feature>.<component>.<element> snake_case key rule (§C1.6)", () => {
+    const SNAKE_SEGMENT = /^[a-z0-9_]+$/;
+    for (const key of DEFINED) {
+      const parts = key.split(".");
+      expect(parts.length).toBeGreaterThanOrEqual(3);
+      for (const part of parts) {
+        expect(part).toMatch(SNAKE_SEGMENT);
+      }
+    }
   });
 });

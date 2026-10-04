@@ -12,6 +12,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Request
 
+from app.api.deps import permission_extra
 from app.core.db import tenant_transaction
 from app.core.envelope import success_response
 from app.core.permissions import ScopeType
@@ -46,7 +47,7 @@ def _request_id(request: Request) -> str:
     return value if isinstance(value, str) else ""
 
 
-@router.post("/preview", summary="Validate an import; writes nothing")
+@router.post("/preview", summary="Validate an import; writes nothing", openapi_extra=permission_extra(MANAGE_PERMISSION))
 async def preview_import(request: Request, body: ImportRequest) -> dict[str, Any]:
     member = _resolve_member(request)
     if not default_scope_resolver.has_permission(member, MANAGE_PERMISSION):
@@ -58,7 +59,7 @@ async def preview_import(request: Request, body: ImportRequest) -> dict[str, Any
     return success_response(data=result.as_dict(), request_id=_request_id(request))
 
 
-@router.post("/commit", summary="Commit an import: all rows, or none")
+@router.post("/commit", summary="Commit an import: all rows, or none", openapi_extra=permission_extra(MANAGE_PERMISSION))
 async def commit_import(request: Request, body: ImportRequest) -> dict[str, Any]:
     member = _resolve_member(request)
     if not default_scope_resolver.has_permission(member, MANAGE_PERMISSION):

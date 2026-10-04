@@ -11,3 +11,4 @@ How-to guides for organization administrators: organization unit hierarchies, te
 - [Member provisioning policies](member-provisioning.md)
 - [Organization structure: units, locations and teams](organization-structure.md)
 - [Roles and scopes](roles-and-scopes.md)
+- [Notification channels and deliveries](notifications.md)

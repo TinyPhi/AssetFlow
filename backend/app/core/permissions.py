@@ -126,6 +126,9 @@ DEFAULT_PERMISSIONS: frozenset[str] = frozenset(
         "member.invite",
         "member.update",
         "member.read",
+        "module.manage",
+        "module.read",
+        "organization.manage",
         # Assets
         "asset.create",
         "asset.read",

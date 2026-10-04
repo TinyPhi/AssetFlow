@@ -10,6 +10,7 @@ from uuid import UUID
 from fastapi import APIRouter, Query, Request, status
 from pydantic import BaseModel, ConfigDict
 
+from app.api.deps import permission_extra
 from app.core.db import tenant_transaction
 from app.core.envelope import success_response
 from app.core.permissions import ScopeType
@@ -19,6 +20,7 @@ from app.modules.organization.grants import grant_role, list_grants, revoke_role
 
 router = APIRouter(prefix="/role-grants", tags=["role-grants"])
 
+READ_PERMISSION = "role_grant.read"
 MANAGE_PERMISSION = "role_grant.manage"
 
 
@@ -53,7 +55,7 @@ def _request_id(request: Request) -> str:
     return value if isinstance(value, str) else ""
 
 
-@router.post("", status_code=status.HTTP_201_CREATED, summary="Grant a role at a scope")
+@router.post("", status_code=status.HTTP_201_CREATED, summary="Grant a role at a scope", openapi_extra=permission_extra(MANAGE_PERMISSION))
 async def create_role_grant(request: Request, body: RoleGrantCreate) -> dict[str, Any]:
     member = _resolve_member(request)
     if not default_scope_resolver.has_permission(member, MANAGE_PERMISSION):
@@ -76,7 +78,7 @@ async def create_role_grant(request: Request, body: RoleGrantCreate) -> dict[str
     )
 
 
-@router.delete("/{grant_id}", summary="Revoke a role grant")
+@router.delete("/{grant_id}", summary="Revoke a role grant", openapi_extra=permission_extra(MANAGE_PERMISSION))
 async def delete_role_grant(request: Request, grant_id: UUID) -> dict[str, Any]:
     member = _resolve_member(request)
     if not default_scope_resolver.has_permission(member, MANAGE_PERMISSION):
@@ -92,13 +94,13 @@ async def delete_role_grant(request: Request, grant_id: UUID) -> dict[str, Any]:
     return success_response(data={"revoked": True}, request_id=_request_id(request))
 
 
-@router.get("", summary="List a member's role grants")
+@router.get("", summary="List a member's role grants", openapi_extra=permission_extra(READ_PERMISSION))
 async def get_role_grants(
     request: Request,
     member_id: UUID = Query(...),  # noqa: B008 - FastAPI's own dependency idiom
 ) -> dict[str, Any]:
     member = _resolve_member(request)
-    if not default_scope_resolver.has_permission(member, MANAGE_PERMISSION):
+    if not (default_scope_resolver.has_permission(member, READ_PERMISSION) or default_scope_resolver.has_permission(member, MANAGE_PERMISSION)):
         raise NotFoundError()
     pool = request.app.state.pool
     org_id = UUID(member.organization_id)

@@ -10,6 +10,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query, Request
 
+from app.api.deps import permission_extra
 from app.core.db import tenant_transaction
 from app.core.envelope import success_response
 from app.core.permissions import ScopeType
@@ -49,7 +50,7 @@ def _request_id(request: Request) -> str:
     return value if isinstance(value, str) else ""
 
 
-@router.get("", summary="List the caller's own inbox")
+@router.get("", summary="List the caller's own inbox", openapi_extra=permission_extra(READ_PERMISSION))
 async def list_notifications(
     request: Request,
     *,
@@ -75,7 +76,7 @@ async def list_notifications(
     return success_response(data=data, request_id=_request_id(request))
 
 
-@router.get("/unread-count", summary="How many of the caller's own notices are unread")
+@router.get("/unread-count", summary="How many of the caller's own notices are unread", openapi_extra=permission_extra(READ_PERMISSION))
 async def get_unread_count(request: Request) -> dict[str, Any]:
     member = _resolve_member(request)
     _require_read(member)
@@ -85,7 +86,7 @@ async def get_unread_count(request: Request) -> dict[str, Any]:
     return success_response(data={"unread": count}, request_id=_request_id(request))
 
 
-@router.post("/{notification_id}/read", summary="Mark one notice as read")
+@router.post("/{notification_id}/read", summary="Mark one notice as read", openapi_extra=permission_extra(READ_PERMISSION))
 async def mark_read(request: Request, notification_id: UUID) -> dict[str, Any]:
     member = _resolve_member(request)
     _require_read(member)
@@ -102,7 +103,7 @@ async def mark_read(request: Request, notification_id: UUID) -> dict[str, Any]:
     return success_response(data={"changed": changed}, request_id=req_id)
 
 
-@router.post("/read-all", summary="Mark every one of the caller's own notices as read")
+@router.post("/read-all", summary="Mark every one of the caller's own notices as read", openapi_extra=permission_extra(READ_PERMISSION))
 async def mark_all_read(request: Request) -> dict[str, Any]:
     member = _resolve_member(request)
     _require_read(member)

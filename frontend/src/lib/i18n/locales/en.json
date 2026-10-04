@@ -20,35 +20,43 @@
     }
   },
   "nav": {
-    "label": "Main navigation",
-    "open_menu": "Open navigation menu",
-    "close_menu": "Close navigation menu",
-    "skip_to_content": "Skip to content",
-    "dashboard": "Dashboard",
-    "organization": "Organization",
-    "teams": "Teams",
-    "members": "Members",
-    "assets": "Assets",
-    "maintenance": "Maintenance",
-    "notifications": "Notifications",
-    "admin": "Administration",
-    "my_settings": "My settings"
+    "menu": {
+      "label": "Main navigation",
+      "open": "Open navigation menu",
+      "close": "Close navigation menu",
+      "skip_to_content": "Skip to content"
+    },
+    "items": {
+      "dashboard": "Dashboard",
+      "organization": "Organization",
+      "teams": "Teams",
+      "members": "Members",
+      "assets": "Assets",
+      "maintenance": "Maintenance",
+      "notifications": "Notifications",
+      "admin": "Administration",
+      "my_settings": "My settings"
+    }
   },
   "theme": {
-    "label": "Theme",
-    "light": "Light",
-    "dark": "Dark",
-    "system": "System"
+    "toggle": {
+      "label": "Theme",
+      "light": "Light",
+      "dark": "Dark",
+      "system": "System"
+    }
   },
   "pages": {
     "dashboard": {
       "title": "Dashboard",
       "welcome": "Welcome back"
     },
-    "coming_soon": "This screen is not built yet.",
     "sign_in": {
       "title": "Sign in",
-      "pending": "Sign-in is not available in this build yet."
+      "pending": "Sign-in is not available in this build yet.",
+      "button": "Sign in with Identity Provider",
+      "mock_button": "Sign in with Dev Mock",
+      "description": "Enter your credentials to manage organization assets and maintenance."
     },
     "not_authorized": {
       "title": "You do not have access to this page",
@@ -58,10 +66,12 @@
     "not_found": {
       "title": "Page not found",
       "body": "The page you asked for does not exist."
+    },
+    "coming_soon": {
+      "title": "This screen is not built yet."
     }
   },
   "ui": {
-    "loading": "Loading…",
     "error": {
       "title": "Something went wrong",
       "retry": "Try again"
@@ -71,6 +81,9 @@
     },
     "table": {
       "caption_fallback": "Data table"
+    },
+    "state": {
+      "loading": "Loading…"
     }
   }
 }

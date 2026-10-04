@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 TinyPhi
+# SPDX-License-Identifier: AGPL-3.0-only
+# RBAC Authorization Matrix Exceptions (§B11.6, §C8.4)
+# Each entry MUST have: route, method, role, expected ("allow" or "deny"), and reason.
+
+- route: /api/v1/me
+  method: GET
+  role: member
+  expected: allow
+  reason: "Every authenticated member can read their own identity and effective permissions without explicit member.read grant (§C4.9, M1.6-T1)"
+
+- route: /api/v1/me
+  method: GET
+  role: technician
+  expected: allow
+  reason: "Every authenticated member can read their own identity and effective permissions without explicit member.read grant (§C4.9, M1.6-T1)"
+
+- route: /api/v1/me
+  method: GET
+  role: none
+  expected: allow
+  reason: "Every authenticated member can read their own identity and effective permissions without explicit member.read grant (§C4.9, M1.6-T1)"
+

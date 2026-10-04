@@ -548,6 +548,7 @@ async def list_org_units(
     status: str | None = None,
     parent_id: UUID | None = None,
 ) -> list[OrgUnitRead]:
+    default_scope_resolver.require(caller, "org_unit.read", None)
     scope_filter = default_scope_resolver.resolve_scope_filter(caller, "org_unit.read")
     if scope_filter.is_empty:
         return []
@@ -1148,6 +1149,7 @@ async def list_teams(
     status: str | None = None,
     owning_org_unit_id: UUID | None = None,
 ) -> list[TeamRead]:
+    default_scope_resolver.require(caller, "team.read", None)
     scope_filter = default_scope_resolver.resolve_scope_filter(caller, "team.read")
     if scope_filter.is_empty:
         return []

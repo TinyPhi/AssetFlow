@@ -13,7 +13,7 @@ function grant(permission: string): GrantedPermission {
 }
 
 async function navLinks(): Promise<string[]> {
-  const nav = await screen.findByRole("navigation", { name: t("nav.label") });
+  const nav = await screen.findByRole("navigation", { name: t("nav.menu.label") });
   return within(nav)
     .getAllByRole("link")
     .map((link) => link.textContent ?? "");
@@ -23,7 +23,7 @@ describe("navigation follows the member's permissions and installed modules", ()
   it("shows only the always-available items to a member with no permissions", async () => {
     renderApp("/");
     await waitFor(async () => {
-      expect(await navLinks()).toEqual([t("nav.dashboard"), t("nav.my_settings")]);
+      expect(await navLinks()).toEqual([t("nav.items.dashboard"), t("nav.items.my_settings")]);
     });
   });
 
@@ -31,10 +31,10 @@ describe("navigation follows the member's permissions and installed modules", ()
     renderApp("/", { me: { permissions: [grant("team.read"), grant("notification.read")] } });
     await waitFor(async () => {
       expect(await navLinks()).toEqual([
-        t("nav.dashboard"),
-        t("nav.teams"),
-        t("nav.notifications"),
-        t("nav.my_settings"),
+        t("nav.items.dashboard"),
+        t("nav.items.teams"),
+        t("nav.items.notifications"),
+        t("nav.items.my_settings"),
       ]);
     });
   });
@@ -43,12 +43,12 @@ describe("navigation follows the member's permissions and installed modules", ()
     const permissions = [grant("asset.read"), grant("work_order.read")];
     const { unmount } = renderApp("/", { me: { permissions, installed_modules: [] } });
     await waitFor(async () => {
-      expect(await navLinks()).toEqual([t("nav.dashboard"), t("nav.my_settings")]);
+      expect(await navLinks()).toEqual([t("nav.items.dashboard"), t("nav.items.my_settings")]);
     });
     unmount();
     renderApp("/", { me: { permissions, installed_modules: ["assets"] } });
     await waitFor(async () => {
-      expect(await navLinks()).toEqual([t("nav.dashboard"), t("nav.assets"), t("nav.my_settings")]);
+      expect(await navLinks()).toEqual([t("nav.items.dashboard"), t("nav.items.assets"), t("nav.items.my_settings")]);
     });
   });
 
@@ -75,7 +75,7 @@ describe("navigation follows the member's permissions and installed modules", ()
   it("shows nothing to a suspended member's modules or permissions", async () => {
     renderApp("/", { me: { is_suspended: true, permissions: [grant("team.read")] } });
     await waitFor(async () => {
-      expect(await navLinks()).toEqual([t("nav.dashboard"), t("nav.my_settings")]);
+      expect(await navLinks()).toEqual([t("nav.items.dashboard"), t("nav.items.my_settings")]);
     });
   });
 });
@@ -84,31 +84,31 @@ describe("responsive layout", () => {
   it("collapses the navigation behind a menu button that opens and closes it", async () => {
     const user = userEvent.setup();
     renderApp("/");
-    const button = await screen.findByRole("button", { name: t("nav.open_menu") });
+    const button = await screen.findByRole("button", { name: t("nav.menu.open") });
     expect(button).toHaveAttribute("aria-expanded", "false");
     expect(document.getElementById("primary-navigation")).toHaveClass("hidden");
     await user.click(button);
-    expect(screen.getByRole("button", { name: t("nav.close_menu") })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: t("nav.menu.close") })).toHaveAttribute(
       "aria-expanded",
       "true",
     );
     expect(document.getElementById("primary-navigation")).toHaveClass("block");
-    await user.click(screen.getByRole("button", { name: t("nav.close_menu") }));
+    await user.click(screen.getByRole("button", { name: t("nav.menu.close") }));
     expect(document.getElementById("primary-navigation")).toHaveClass("hidden");
   });
 
   it("closes the menu after a link is followed", async () => {
     const user = userEvent.setup();
     renderApp("/", { me: { permissions: [grant("team.read")] } });
-    await user.click(await screen.findByRole("button", { name: t("nav.open_menu") }));
-    await user.click(await screen.findByRole("link", { name: t("nav.teams") }));
-    expect(await screen.findByRole("heading", { name: t("nav.teams") })).toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: t("nav.menu.open") }));
+    await user.click(await screen.findByRole("link", { name: t("nav.items.teams") }));
+    expect(await screen.findByRole("heading", { name: t("nav.items.teams") })).toBeInTheDocument();
     expect(document.getElementById("primary-navigation")).toHaveClass("hidden");
   });
 
   it("keeps every navigation link at least 44 px high and never gives the layout a fixed width", async () => {
     renderApp("/", { me: { permissions: [grant("team.read")] } });
-    const nav = await screen.findByRole("navigation", { name: t("nav.label") });
+    const nav = await screen.findByRole("navigation", { name: t("nav.menu.label") });
     for (const link of within(nav).getAllByRole("link")) {
       expect(link).toHaveClass("min-h-11");
     }
@@ -119,7 +119,7 @@ describe("responsive layout", () => {
 
   it("offers a skip link to the main content", async () => {
     renderApp("/");
-    expect(await screen.findByRole("link", { name: t("nav.skip_to_content") })).toHaveAttribute(
+    expect(await screen.findByRole("link", { name: t("nav.menu.skip_to_content") })).toHaveAttribute(
       "href",
       "#main",
     );
@@ -129,7 +129,7 @@ describe("responsive layout", () => {
 describe("network status", () => {
   it("raises a toast when the network status changes", async () => {
     renderApp("/");
-    await screen.findByRole("navigation", { name: t("nav.label") });
+    await screen.findByRole("navigation", { name: t("nav.menu.label") });
     expect(screen.queryByText(t("app.toast.network_offline"))).not.toBeInTheDocument();
     act(() => {
       window.dispatchEvent(new Event("offline"));
@@ -156,6 +156,6 @@ describe("pages", () => {
   it("shows not-found inside the layout for an unknown path", async () => {
     renderApp("/no-such-page");
     expect(await screen.findByRole("heading", { name: t("pages.not_found.title") })).toBeInTheDocument();
-    expect(screen.getByRole("navigation", { name: t("nav.label") })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: t("nav.menu.label") })).toBeInTheDocument();
   });
 });

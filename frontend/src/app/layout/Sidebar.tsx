@@ -17,7 +17,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate }) => {
   const { data: me } = useMe();
   const items = visibleItems(NAV_ITEMS, me);
   return (
-    <nav aria-label={t("nav.label")}>
+    <nav aria-label={t("nav.menu.label")}>
       <ul className="space-y-1">
         {items.map((item) => (
           <li key={item.to}>

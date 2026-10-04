@@ -10,6 +10,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query, Request
 
+from app.api.deps import permission_extra
 from app.core.db import tenant_transaction
 from app.core.envelope import success_response
 from app.core.permissions import ScopeFilter, ScopeType
@@ -55,8 +56,8 @@ def _resolve_caller(request: Request) -> tuple[UUID, ScopeFilter]:
     return org_uuid, scope_filter
 
 
-@router.get("", summary="List audit events")
-@router.get("/events", summary="List audit events")
+@router.get("", summary="List audit events", openapi_extra=permission_extra("audit.read"))
+@router.get("/events", summary="List audit events", openapi_extra=permission_extra("audit.read"))
 async def get_audit_events(
     request: Request,
     *,

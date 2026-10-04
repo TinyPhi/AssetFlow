@@ -7,7 +7,7 @@ import { placeholderRoute } from "@/app/routeHelpers";
 export const maintenanceRoutes: RouteObject[] = [
   placeholderRoute({
     path: "maintenance",
-    titleKey: "nav.maintenance",
+    titleKey: "nav.items.maintenance",
     permission: "work_order.read",
     module: "maintenance",
   }),

@@ -14,6 +14,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Request
 
+from app.api.deps import permission_extra
 from app.api.v1.caller import request_id, resolve_member
 from app.core.db import tenant_transaction
 from app.core.envelope import success_response
@@ -37,7 +38,7 @@ def _own_ids(request: Request, *, read: bool) -> tuple[UUID, UUID]:
         raise UnauthorizedError() from exc
 
 
-@router.get("", summary="Read my notification preferences")
+@router.get("", summary="Read my notification preferences", openapi_extra=permission_extra(PERMISSION))
 async def get_preferences(request: Request) -> dict[str, Any]:
     organization_id, member_id = _own_ids(request, read=True)
     async with tenant_transaction(request.app.state.pool, organization_id) as conn:
@@ -45,7 +46,7 @@ async def get_preferences(request: Request) -> dict[str, Any]:
     return success_response(data=matrix.model_dump(mode="json"), request_id=request_id(request))
 
 
-@router.put("", summary="Change my notification preferences")
+@router.put("", summary="Change my notification preferences", openapi_extra=permission_extra(PERMISSION))
 async def put_preferences(request: Request, body: PreferencesUpdate) -> dict[str, Any]:
     organization_id, member_id = _own_ids(request, read=False)
     async with tenant_transaction(request.app.state.pool, organization_id) as conn:

@@ -6,6 +6,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Outlet } from "react-router";
 import { useToast } from "@/app/toastContext";
 import { useOnlineStatus } from "@/app/useOnlineStatus";
+import { NotificationBell } from "@/features/notifications/components/NotificationBell";
 import { t } from "@/lib/i18n";
 import { Sidebar } from "./Sidebar";
 import { ThemeToggle } from "./ThemeToggle";
@@ -42,7 +43,7 @@ export const Layout: React.FC = () => {
         href="#main"
         className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:rounded focus:bg-surface focus:p-2"
       >
-        {t("nav.skip_to_content")}
+        {t("nav.menu.skip_to_content")}
       </a>
       <header className="flex items-center justify-between gap-3 border-b border-border bg-surface px-4 py-2 md:px-6">
         <div className="flex min-w-0 items-center gap-3">
@@ -51,7 +52,7 @@ export const Layout: React.FC = () => {
             className="flex h-11 w-11 items-center justify-center rounded-lg hover:bg-border focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus md:hidden"
             aria-expanded={menuOpen}
             aria-controls="primary-navigation"
-            aria-label={menuOpen ? t("nav.close_menu") : t("nav.open_menu")}
+            aria-label={menuOpen ? t("nav.menu.close") : t("nav.menu.open")}
             onClick={() => {
               setMenuOpen((open) => !open);
             }}
@@ -86,6 +87,7 @@ export const Layout: React.FC = () => {
               </>
             )}
           </div>
+          <NotificationBell />
           <ThemeToggle />
         </div>
       </header>

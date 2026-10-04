@@ -16,6 +16,7 @@ from uuid import UUID
 from fastapi import APIRouter, Query, Request, Response
 from fastapi.responses import JSONResponse
 
+from app.api.deps import permission_extra
 from app.api.v1.caller import request_id, resolve_member
 from app.channels.credentials import ChannelCredentialStore
 from app.channels.registry import ChannelRegistry, default_registry
@@ -69,7 +70,7 @@ def _actor(member: MemberContext) -> UUID | None:
         return None
 
 
-@router.get("", summary="Channels that can be installed")
+@router.get("", summary="Channels that can be installed", openapi_extra=permission_extra(READ_CHANNELS))
 async def list_available_channels(request: Request) -> dict[str, Any]:
     member = resolve_member(request)
     _can_read(member, READ_CHANNELS)
@@ -77,7 +78,7 @@ async def list_available_channels(request: Request) -> dict[str, Any]:
     return success_response(data=[c.model_dump() for c in channels], request_id=request_id(request))
 
 
-@router.get("/{key}/schema", summary="A channel's settings as JSON Schema")
+@router.get("/{key}/schema", summary="A channel's settings as JSON Schema", openapi_extra=permission_extra(READ_CHANNELS))
 async def channel_schema(request: Request, key: str) -> Response:
     """The settings schema the admin form is built from; secret fields are marked write-only."""
     member = resolve_member(request)
@@ -93,7 +94,7 @@ async def channel_schema(request: Request, key: str) -> Response:
     return JSONResponse(body, headers={"ETag": etag})
 
 
-@router.get("/installations", summary="List the organization's channel installations")
+@router.get("/installations", summary="List the organization's channel installations", openapi_extra=permission_extra(READ_CHANNELS))
 async def list_installations(request: Request) -> dict[str, Any]:
     member = resolve_member(request)
     _can_read(member, READ_CHANNELS)
@@ -102,7 +103,7 @@ async def list_installations(request: Request) -> dict[str, Any]:
     return success_response(data=[i.model_dump(mode="json") for i in items], request_id=request_id(request))
 
 
-@router.post("/installations", status_code=201, summary="Install a channel")
+@router.post("/installations", status_code=201, summary="Install a channel", openapi_extra=permission_extra(MANAGE_CHANNELS))
 async def install_channel(request: Request, body: InstallationCreate) -> dict[str, Any]:
     member = resolve_member(request)
     _can_manage(member)
@@ -120,7 +121,7 @@ async def install_channel(request: Request, body: InstallationCreate) -> dict[st
     return success_response(data=created.model_dump(mode="json"), request_id=request_id(request))
 
 
-@router.get("/installations/{installation_id}", summary="Read one channel installation")
+@router.get("/installations/{installation_id}", summary="Read one channel installation", openapi_extra=permission_extra(READ_CHANNELS))
 async def get_installation(request: Request, installation_id: UUID) -> dict[str, Any]:
     member = resolve_member(request)
     _can_read(member, READ_CHANNELS)
@@ -129,7 +130,7 @@ async def get_installation(request: Request, installation_id: UUID) -> dict[str,
     return success_response(data=item.model_dump(mode="json"), request_id=request_id(request))
 
 
-@router.patch("/installations/{installation_id}", summary="Change a channel installation")
+@router.patch("/installations/{installation_id}", summary="Change a channel installation", openapi_extra=permission_extra(MANAGE_CHANNELS))
 async def update_installation(
     request: Request, installation_id: UUID, body: InstallationUpdate
 ) -> dict[str, Any]:
@@ -167,17 +168,17 @@ async def _switch(request: Request, installation_id: UUID, *, enabled: bool) -> 
     return success_response(data=item.model_dump(mode="json"), request_id=request_id(request))
 
 
-@router.post("/installations/{installation_id}/disable", summary="Kill switch: stop sending")
+@router.post("/installations/{installation_id}/disable", summary="Kill switch: stop sending", openapi_extra=permission_extra(MANAGE_CHANNELS))
 async def disable_installation(request: Request, installation_id: UUID) -> dict[str, Any]:
     return await _switch(request, installation_id, enabled=False)
 
 
-@router.post("/installations/{installation_id}/enable", summary="Resume sending")
+@router.post("/installations/{installation_id}/enable", summary="Resume sending", openapi_extra=permission_extra(MANAGE_CHANNELS))
 async def enable_installation(request: Request, installation_id: UUID) -> dict[str, Any]:
     return await _switch(request, installation_id, enabled=True)
 
 
-@router.get("/deliveries", summary="The delivery log")
+@router.get("/deliveries", summary="The delivery log", openapi_extra=permission_extra(READ_DELIVERIES))
 async def list_deliveries(
     request: Request,
     *,
@@ -203,7 +204,7 @@ async def list_deliveries(
     return success_response(data=page.model_dump(mode="json"), request_id=request_id(request))
 
 
-@router.post("/deliveries/{delivery_id}/requeue", summary="Send a dead-lettered delivery again")
+@router.post("/deliveries/{delivery_id}/requeue", summary="Send a dead-lettered delivery again", openapi_extra=permission_extra(MANAGE_CHANNELS))
 async def requeue_delivery(request: Request, delivery_id: UUID) -> dict[str, Any]:
     member = resolve_member(request)
     _can_manage(member)

@@ -10,6 +10,7 @@ from uuid import UUID
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.api.deps import permission_extra
 from app.core.db import tenant_transaction
 from app.core.envelope import success_response
 from app.core.permissions import ScopeType
@@ -57,7 +58,7 @@ def _request_id(request: Request) -> str:
     return value if isinstance(value, str) else ""
 
 
-@router.get("", summary="Read organization settings")
+@router.get("", summary="Read organization settings", openapi_extra=permission_extra(READ_PERMISSION))
 async def get_organization_settings(request: Request) -> dict[str, Any]:
     member = _resolve_member(request)
     if not default_scope_resolver.has_permission(member, READ_PERMISSION):
@@ -68,7 +69,7 @@ async def get_organization_settings(request: Request) -> dict[str, Any]:
     return success_response(data=settings, request_id=_request_id(request))
 
 
-@router.patch("", summary="Change organization settings")
+@router.patch("", summary="Change organization settings", openapi_extra=permission_extra(MANAGE_PERMISSION))
 async def patch_organization_settings(
     request: Request, body: Annotated[OrganizationSettingsUpdate, Field()]
 ) -> dict[str, Any]:

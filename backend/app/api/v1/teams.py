@@ -9,6 +9,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Request, status
 
+from app.api.deps import permission_extra
 from app.core.envelope import success_response
 from app.core.permissions import ScopeType
 from app.core.problems import UnauthorizedError, ValidationFailedError
@@ -99,7 +100,7 @@ def _request_id(request: Request) -> str:
     return str(val) if val else ""
 
 
-@router.post("", status_code=status.HTTP_201_CREATED, summary="Create a team")
+@router.post("", status_code=status.HTTP_201_CREATED, summary="Create a team", openapi_extra=permission_extra("team.create"))
 async def create_t(request: Request, body: TeamCreate) -> dict[str, Any]:
     """Create a new operational or functional team."""
     org_id, caller = _resolve_caller(request)
@@ -109,7 +110,7 @@ async def create_t(request: Request, body: TeamCreate) -> dict[str, Any]:
     return success_response(data=team.model_dump(mode="json"), request_id=req_id)
 
 
-@router.get("", summary="List teams")
+@router.get("", summary="List teams", openapi_extra=permission_extra("team.read"))
 async def get_t_list(
     request: Request,
     status: str | None = None,
@@ -129,7 +130,7 @@ async def get_t_list(
     return success_response(data=[t.model_dump(mode="json") for t in teams], request_id=req_id)
 
 
-@router.get("/{id}", summary="Get a team by ID")
+@router.get("/{id}", summary="Get a team by ID", openapi_extra=permission_extra("team.read"))
 async def get_t(request: Request, id: UUID) -> dict[str, Any]:  # noqa: A002
     """Retrieve details for a specific team."""
     org_id, caller = _resolve_caller(request)
@@ -139,8 +140,8 @@ async def get_t(request: Request, id: UUID) -> dict[str, Any]:  # noqa: A002
     return success_response(data=team.model_dump(mode="json"), request_id=req_id)
 
 
-@router.patch("/{id}", summary="Update a team")
-@router.put("/{id}", summary="Update a team")
+@router.patch("/{id}", summary="Update a team", openapi_extra=permission_extra("team.update"))
+@router.put("/{id}", summary="Update a team", openapi_extra=permission_extra("team.update"))
 async def update_t(
     request: Request,
     body: TeamUpdate,
@@ -156,7 +157,7 @@ async def update_t(
     return success_response(data=team.model_dump(mode="json"), request_id=req_id)
 
 
-@router.post("/{id}/archive", summary="Archive a team")
+@router.post("/{id}/archive", summary="Archive a team", openapi_extra=permission_extra("team.archive"))
 async def archive_t(
     request: Request,
     body: TeamArchive,
@@ -177,7 +178,7 @@ async def archive_t(
 # ==============================================================================
 
 
-@router.get("/{id}/members", summary="List team members")
+@router.get("/{id}/members", summary="List team members", openapi_extra=permission_extra("team.read"))
 async def get_members(request: Request, id: UUID) -> dict[str, Any]:  # noqa: A002
     """List members assigned to a team."""
     org_id, caller = _resolve_caller(request)
@@ -187,7 +188,7 @@ async def get_members(request: Request, id: UUID) -> dict[str, Any]:  # noqa: A0
     return success_response(data=[m.model_dump(mode="json") for m in members], request_id=req_id)
 
 
-@router.post("/{id}/members", status_code=status.HTTP_201_CREATED, summary="Add a member to a team")
+@router.post("/{id}/members", status_code=status.HTTP_201_CREATED, summary="Add a member to a team", openapi_extra=permission_extra("team.update"))
 async def add_member(
     request: Request,
     body: TeamMemberAdd,
@@ -203,8 +204,8 @@ async def add_member(
     return success_response(data=member.model_dump(mode="json"), request_id=req_id)
 
 
-@router.patch("/{id}/members/{member_id}", summary="Update a team member assignment")
-@router.put("/{id}/members/{member_id}", summary="Update a team member assignment")
+@router.patch("/{id}/members/{member_id}", summary="Update a team member assignment", openapi_extra=permission_extra("team.update"))
+@router.put("/{id}/members/{member_id}", summary="Update a team member assignment", openapi_extra=permission_extra("team.update"))
 async def update_member(
     request: Request,
     body: TeamMemberUpdate,
@@ -227,7 +228,7 @@ async def update_member(
     return success_response(data=member.model_dump(mode="json"), request_id=req_id)
 
 
-@router.delete("/{id}/members/{member_id}", summary="Remove a member from a team")
+@router.delete("/{id}/members/{member_id}", summary="Remove a member from a team", openapi_extra=permission_extra("team.update"))
 async def remove_member(
     request: Request,
     id: UUID,  # noqa: A002

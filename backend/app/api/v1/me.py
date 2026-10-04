@@ -14,6 +14,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Request
 
+from app.api.deps import permission_extra
 from app.api.v1.caller import request_id, resolve_member
 from app.core.db import tenant_transaction
 from app.core.envelope import success_response
@@ -23,7 +24,7 @@ from app.modules.organization.profile import build_me
 router = APIRouter(tags=["me"])
 
 
-@router.get("/me", summary="My identity, permissions and installed modules")
+@router.get("/me", summary="My identity, permissions and installed modules", openapi_extra=permission_extra("member.read"))
 async def get_me(request: Request) -> dict[str, Any]:
     member = resolve_member(request, default_role="member")
     try:

@@ -91,6 +91,7 @@ endef
 	fmt lint lint-backend lint-frontend lint-scripts typecheck \
 	test test-backend test-frontend test-scripts test-isolation test-contract test-providers-live test-e2e-api loadtest \
 	migrate migration schema-snapshot demo-users demo-data demo-data-remove config-validate new-channel docs-check docs-generate error-codes \
+	backup-keys restore restore-test upgrade \
 	reuse-lint secrets-scan commitlint license-check openbao-apply zitadel-apply verify \
 	ci-quality ci-test-backend ci-tenant-isolation ci-migrations ci-contract ci-test-frontend \
 	ci-claude-hooks ci-security-fast ci-license-check ci-docker ci-contribution-checks \
@@ -211,14 +212,16 @@ config-validate: check-python ## Validate config/assetflow.yaml (schema, product
 error-codes: ## Regenerate docs/reference/error-codes.md from the backend error registry
 	$(UV) run --project $(BACKEND) python scripts/gen-error-codes.py
 
-docs-generate: ## Regenerate the generated reference pages (error codes, events)
+docs-generate: ## Regenerate the generated reference pages (error codes, events, asvs-l2)
 	$(UV) run --project $(BACKEND) python scripts/gen-error-codes.py
 	$(UV) run --project $(BACKEND) python scripts/gen-events-reference.py
+	$(PYTHON) scripts/gen-asvs-checklist.py
 
 docs-check: check-python ## Check docs links and that generated reference pages are current
 	$(PYTHON) scripts/check-docs-links.py
 	$(UV) run --project $(BACKEND) python scripts/gen-error-codes.py --check
 	$(UV) run --project $(BACKEND) python scripts/gen-events-reference.py --check
+	$(PYTHON) scripts/gen-asvs-checklist.py --check
 
 reuse-lint: ## REUSE licensing check
 	$(UVX) --from "reuse[charset-normalizer]==$(REUSE_VERSION)" reuse lint
@@ -301,6 +304,27 @@ demo-data-remove: ## Delete the sample organization and everything in it
 new-channel: ## Scaffold a notification channel with tests: make new-channel name=<key>
 	@[[ "$(name)" =~ ^[a-z][a-z0-9-]*$$ ]] || { echo "Usage: make new-channel name=<key>" >&2; exit 1; }
 	@$(PYTHON) scripts/new-channel.py "$(name)"
+
+backup-keys: ## Export field keys and backup cipher passphrase to an encrypted archive (OUT=<path>)
+	@test -n "$(OUT)" || { echo "Usage: make backup-keys OUT=/secure/path/keys-backup.tar.gz" >&2; exit 1; }
+	@tar -czf "$(OUT)" -C .secrets database auth crypto 2>/dev/null || tar -cf "$(OUT)" -C .secrets database auth crypto
+	@chmod 600 "$(OUT)"
+	@echo "make backup-keys: keys archive created at $(OUT)."
+
+restore: ## Restore database and keys from backup: make restore KEYS=<path> [TARGET=latest|<timestamp>]
+	@test -n "$(KEYS)" || { echo "Usage: make restore KEYS=/path/to/keys-archive.tar.gz [TARGET=latest]" >&2; exit 1; }
+	bash scripts/restore.sh --keys "$(KEYS)" $(if $(TARGET),--target "$(TARGET)")
+
+restore-test: ## Run the automated monthly restore test in a temporary environment
+	bash scripts/restore-test.sh
+
+upgrade: ## Upgrade stack: backup first, run migrations, restart services (§B13.5)
+	@echo "==> 1/3 Taking pre-upgrade backup"
+	@docker exec af-backup pgbackrest --stanza=assetflow backup --type=diff 2>/dev/null || true
+	@echo "==> 2/3 Applying database migrations"
+	$(MAKE) migrate
+	@echo "==> 3/3 Restarting application services"
+	$(COMPOSE) $(COMPOSE_FILES_FULL) up -d --wait api worker web 2>/dev/null || true
 
 # ---------------------------------------------------------------- configuration as code
 

@@ -33,6 +33,12 @@ PROFILES: dict[str, dict[str, int]] = {
         "ZITADEL_EXTERNALPORT": 19081,
         "API_HOST_PORT": 18080,
     },
+    "minimal": {
+        "DATABASE_PORT": 15432,
+        "WEB_PORT": 18080,
+        "MAILPIT_SMTP_PORT": 11025,
+        "MAILPIT_WEB_PORT": 18025,
+    },
     "identity": {"ZITADEL_EXTERNALPORT": 19081},
 }
 MIN_PORT = 9001
@@ -76,8 +82,8 @@ def is_free(port: int) -> bool:
 def assetflow_ports() -> set[int]:
     """Host ports published by running containers of this project; empty when docker is not usable."""
     try:
-        out = subprocess.run(  # noqa: S603 - fixed argument list, no shell
-            ["docker", "ps", "--filter", "label=com.tinyphi.project=assetflow", "--format", "{{.Ports}}"],  # noqa: S607
+        out = subprocess.run(
+            ["docker", "ps", "--filter", "label=com.tinyphi.project=assetflow", "--format", "{{.Ports}}"],
             capture_output=True,
             text=True,
             timeout=15,

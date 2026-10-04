@@ -88,13 +88,18 @@ async def _collect(request: Request) -> tuple[bool, State, dict[str, State], Sta
     return ready, overall, pillars, database
 
 
-@router.get("/healthz", summary="Liveness probe")
+@router.get("/healthz", summary="Liveness probe", openapi_extra={"x-assetflow-public": True})
 async def liveness() -> dict[str, str]:
     """The process is up and serving HTTP; no dependency is checked."""
     return {"status": "ok", "service": "assetflow"}
 
 
-@router.get("/api/health", summary="Readiness probe", responses={503: {"description": "Not ready"}})
+@router.get(
+    "/api/health",
+    summary="Readiness probe",
+    responses={503: {"description": "Not ready"}},
+    openapi_extra={"x-assetflow-public": True},
+)
 async def readiness(request: Request) -> JSONResponse:
     """Public readiness: ``ok`` with 200 when the database and providers are ready, else 503."""
     ready, *_ = await _collect(request)
@@ -108,6 +113,7 @@ async def readiness(request: Request) -> JSONResponse:
     summary="Provider and database health (platform admin)",
     dependencies=[Depends(require_platform_admin)],
     responses={401: {"description": "Not signed in as a platform admin"}},
+    openapi_extra={"x-assetflow-permission": "platform.admin"},
 )
 async def provider_health(request: Request) -> JSONResponse:
     """Sanitized state per provider pillar and for the database; 503 when not ready."""

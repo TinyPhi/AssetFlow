@@ -11,7 +11,7 @@ describe("Skeleton", () => {
   it("announces loading once and renders the requested blocks", () => {
     const { container } = render(<Skeleton rows={4} />);
     expect(screen.getByRole("status")).toHaveAttribute("aria-busy", "true");
-    expect(screen.getByText(t("ui.loading"))).toBeInTheDocument();
+    expect(screen.getByText(t("ui.state.loading"))).toBeInTheDocument();
     expect(container.querySelectorAll("[aria-hidden='true']")).toHaveLength(4);
   });
 });

@@ -2,11 +2,52 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { RouteObject } from "react-router";
-import { placeholderRoute } from "@/app/routeHelpers";
+import { RequirePermission } from "@/app/guards";
+import { LocationsPage } from "./pages/LocationsPage";
+import { MemberProfilePage } from "./pages/MemberProfilePage";
+import { MembersPage } from "./pages/MembersPage";
+import { OrgChartPage } from "./pages/OrgChartPage";
+import { TeamsPage } from "./pages/TeamsPage";
 
-// Organization structure and people (M1.6-T4): P7-04b/c replace each placeholder with its screen.
 export const organizationRoutes: RouteObject[] = [
-  placeholderRoute({ path: "organization", titleKey: "nav.organization", permission: "org_unit.read" }),
-  placeholderRoute({ path: "teams", titleKey: "nav.teams", permission: "team.read" }),
-  placeholderRoute({ path: "members", titleKey: "nav.members", permission: "member.read" }),
+  {
+    path: "organization",
+    element: (
+      <RequirePermission permission="org_unit.read">
+        <OrgChartPage />
+      </RequirePermission>
+    ),
+  },
+  {
+    path: "locations",
+    element: (
+      <RequirePermission permission="location.read">
+        <LocationsPage />
+      </RequirePermission>
+    ),
+  },
+  {
+    path: "teams",
+    element: (
+      <RequirePermission permission="team.read">
+        <TeamsPage />
+      </RequirePermission>
+    ),
+  },
+  {
+    path: "members",
+    element: (
+      <RequirePermission permission="member.read">
+        <MembersPage />
+      </RequirePermission>
+    ),
+  },
+  {
+    path: "members/:memberId",
+    element: (
+      <RequirePermission permission="member.read">
+        <MemberProfilePage />
+      </RequirePermission>
+    ),
+  },
 ];
