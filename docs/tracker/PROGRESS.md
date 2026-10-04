@@ -105,3 +105,10 @@ Record of completed tasks, tools, and milestone verifications.
 - **Evidence:** full backend suite 789 passed, 2 skipped; acceptance e2e `reports/p6-acceptance.xml` (2 passed, real Mailpit); `scripts/tests` 42; migration roundtrip and snapshot; gitleaks over 15 commits clean. Details in each plan's Record.
 - **Status:** ☑ (local, not pushed; PRs only when the owner says).
 - **Next step:** Phase 7 (M1.6).
+
+### 2026-10-04 — P7-01 Frontend foundation: themes, routing, permission-aware navigation (local)
+- **Task:** P7-01 (issue #73, M1.6-T1 remaining part)
+- **What changed:** `GET /api/v1/me` (profile, effective permissions, installed modules); web shell with auth/permission/module route guards, data-driven navigation, API client (envelope, problems, single-flight refresh), `lib/permissions`, light/dark/system theme toggle, shared UI states, feature route stubs.
+- **Evidence:** 62 vitest tests, eslint, tsc and build green; backend ruff, mypy, 9 `/me` tests, isolation and scope suites (103) green; import-linter shows only the known P5-03 violation.
+- **Status:** ☑ built (local, not pushed); Verified open: manual browser, 320 px and screen-reader check.
+- **Next step:** P7-03.
