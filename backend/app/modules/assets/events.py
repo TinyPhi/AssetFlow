@@ -18,6 +18,7 @@ __all__ = [
     "ASSET_SAVED_VIEW_CREATED",
     "ASSET_SAVED_VIEW_DELETED",
     "ASSET_SAVED_VIEW_UPDATED",
+    "ASSET_STATUS_CHANGED",
     "ASSET_UPDATED",
     "CUSTOM_FIELD_DEFINITION_ARCHIVED",
     "CUSTOM_FIELD_DEFINITION_CREATED",
@@ -37,6 +38,7 @@ __all__ = [
     "AssetSavedViewCreatedEvent",
     "AssetSavedViewDeletedEvent",
     "AssetSavedViewUpdatedEvent",
+    "AssetStatusChangedEvent",
     "AssetUpdatedEvent",
     "CustomFieldDefinitionArchivedEvent",
     "CustomFieldDefinitionCreatedEvent",
@@ -51,6 +53,7 @@ __all__ = [
 
 ASSET_CREATED = "asset.created"
 ASSET_UPDATED = "asset.updated"
+ASSET_STATUS_CHANGED = "asset.status_changed"
 ASSET_SAVED_VIEW_CREATED = "asset_saved_view.created"
 ASSET_SAVED_VIEW_UPDATED = "asset_saved_view.updated"
 ASSET_SAVED_VIEW_DELETED = "asset_saved_view.deleted"
@@ -83,6 +86,14 @@ class AssetCreatedEvent(BaseModel):
 
 class AssetUpdatedEvent(BaseModel):
     id: UUID = Field(description="Updated asset ID")
+    version: int = Field(description="New record version")
+
+
+class AssetStatusChangedEvent(BaseModel):
+    id: UUID = Field(description="Asset ID")
+    from_status: str = Field(description="Status before the change")
+    to_status: str = Field(description="Status after the change")
+    reason: str | None = Field(description="Reason given for the change, if any")
     version: int = Field(description="New record version")
 
 

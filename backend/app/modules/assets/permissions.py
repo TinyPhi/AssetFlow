@@ -12,6 +12,7 @@ from __future__ import annotations
 __all__ = [
     "CREATE_PERMISSION",
     "READ_PERMISSION",
+    "RETIRE_PERMISSION",
     "UPDATE_PERMISSION",
 ]
 
@@ -23,3 +24,6 @@ READ_PERMISSION = "asset.read"
 
 #: Editing an asset's fields (not status, holder or tag - those belong to other plans).
 UPDATE_PERMISSION = "asset.update"
+
+#: Moving an asset to an ended status, when the transition names no permission of its own.
+RETIRE_PERMISSION = "asset.retire"

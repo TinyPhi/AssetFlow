@@ -44,10 +44,25 @@ from app.modules.assets.custom_fields import (
     refuse_encrypted_field_filter,
     validate_custom_fields,
 )
-from app.modules.assets.errors import AssetNotFoundError, AssetVersionConflictError
-from app.modules.assets.events import ASSET_CREATED, ASSET_UPDATED
-from app.modules.assets.permissions import CREATE_PERMISSION, READ_PERMISSION, UPDATE_PERMISSION
-from app.modules.assets.schemas import AssetCreate, AssetRead, AssetUpdate, HolderRead
+from app.modules.assets.errors import (
+    AssetInvalidTransitionError,
+    AssetNotFoundError,
+    AssetVersionConflictError,
+)
+from app.modules.assets.events import ASSET_CREATED, ASSET_STATUS_CHANGED, ASSET_UPDATED
+from app.modules.assets.lifecycle import (
+    AssetSnapshot,
+    allowed_transitions,
+    check_transition,
+    find_transition,
+)
+from app.modules.assets.permissions import (
+    CREATE_PERMISSION,
+    READ_PERMISSION,
+    RETIRE_PERMISSION,
+    UPDATE_PERMISSION,
+)
+from app.modules.assets.schemas import AssetCreate, AssetRead, AssetUpdate, HolderRead, TransitionRead
 from app.modules.assets.sensitive import (
     decrypt_custom_fields,
     encrypt_custom_fields,
@@ -61,9 +76,11 @@ from app.providers.secrets.base import SecretsProvider
 __all__ = [
     "READ_SENSITIVE_PERMISSION",
     "AssetListResult",
+    "change_status",
     "create_asset",
     "get_asset",
     "list_assets",
+    "list_transitions",
     "update_asset",
 ]
 
@@ -868,3 +885,157 @@ def _next_cursor(items: list[dict[str, Any]], *, sort: str, has_more: bool, has_
     else:
         value = raw.isoformat() if isinstance(raw, date | datetime) else str(raw)
     return repo.encode_cursor(value, last["id"])
+
+
+# ==============================================================================
+# Lifecycle: status change and the transitions available now (§B8.1, §C4.3, P8-08)
+# ==============================================================================
+
+
+async def _lifecycle_context(
+    conn: Any, organization_id: UUID, current: Any
+) -> tuple[AssetsConfig | None, AssetSnapshot]:
+    domain_key = await _organization_domain_key(conn, organization_id)
+    template = _load_assets_config(domain_key, None) if domain_key else None
+    category = await _category_repo.get_by_id(
+        conn, organization_id=organization_id, category_id=current["category_id"]
+    )
+    holder_type, holder_id = (
+        ("member", current["holder_member_id"])
+        if current["holder_member_id"]
+        else ("team", current["holder_team_id"])
+        if current["holder_team_id"]
+        else ("location", current["holder_location_id"])
+        if current["holder_location_id"]
+        else (None, None)
+    )
+    snapshot = AssetSnapshot(
+        status=current["status"],
+        criticality=current["criticality"],
+        category_code=category["code"] if category is not None else None,
+        holder_type=holder_type,
+        holder_id=str(holder_id) if holder_id is not None else None,
+        custom_fields=_as_dict(current["custom_fields"]),
+    )
+    return template, snapshot
+
+
+def _transition_permission(template: AssetsConfig, from_status: str, to_status: str) -> str:
+    """The transition's own permission, else `asset.retire` for an ended target, else `asset.update`."""
+    transition = find_transition(template, from_status, to_status)
+    if transition is not None and transition.permission is not None:
+        return transition.permission
+    target = template.status(to_status)
+    return RETIRE_PERMISSION if target is not None and target.category == "ended" else UPDATE_PERMISSION
+
+
+async def change_status(
+    pool: Pool,
+    *,
+    organization_id: UUID,
+    caller: MemberContext,
+    secrets_provider: SecretsProvider,
+    asset_id: UUID,
+    to_status: str,
+    version: int,
+    reason: str | None,
+    request_id: str | None = None,
+) -> AssetRead:
+    async with tenant_transaction(pool, organization_id) as conn:
+        current = await _asset_repo.get_by_id(
+            conn, organization_id=organization_id, asset_id=asset_id, for_update=True
+        )
+        if current is None:
+            raise AssetNotFoundError()
+        template, snapshot = await _lifecycle_context(conn, organization_id, current)
+        permission = (
+            _transition_permission(template, current["status"], to_status)
+            if template is not None
+            else UPDATE_PERMISSION
+        )
+        # Permission and scope on the loaded record come before any answer about the transition,
+        # so a caller outside scope learns nothing about the asset's status (§C4.3, §C4.5).
+        default_scope_resolver.require(caller, permission, _current_resource(current))
+        if template is None:
+            raise AssetInvalidTransitionError(current["status"], to_status, "not_allowed")
+        check_transition(template, snapshot, to_status, reason=reason)
+
+        # Terminal statuses end custody (§B8.1): closing an open assignment joins this transaction
+        # once P9's custody tables exist (P9-02). Until then the shipped `holder.is_set` rule makes
+        # a final target with a holder impossible.
+        row = await _asset_repo.update(
+            conn,
+            organization_id=organization_id,
+            asset_id=asset_id,
+            version=version,
+            sets={"status": to_status},
+        )
+        if row is None:
+            raise AssetVersionConflictError()
+
+        clean_reason = reason.strip() if reason and reason.strip() else None
+        await record_audit_event(
+            conn,
+            organization_id=organization_id,
+            actor_member_id=_actor_id(caller),
+            action="asset.status_changed",
+            entity_type="asset",
+            entity_id=asset_id,
+            request_id=request_id,
+            before_state={"status": current["status"]},
+            after_state={"status": to_status, "reason": clean_reason},
+        )
+        await _outbox(
+            conn,
+            organization_id=organization_id,
+            event_type=ASSET_STATUS_CHANGED,
+            aggregate_type="asset",
+            aggregate_id=asset_id,
+            payload={
+                "id": str(asset_id),
+                "from_status": current["status"],
+                "to_status": to_status,
+                "reason": clean_reason,
+                "version": row["version"],
+            },
+        )
+
+        detail = await _asset_repo.get_detail(conn, organization_id=organization_id, asset_id=asset_id)
+        assert detail is not None  # noqa: S101
+        return await _to_asset_read(
+            conn, detail, organization_id=organization_id, caller=caller, secrets_provider=secrets_provider
+        )
+
+
+async def list_transitions(
+    pool: Pool, *, organization_id: UUID, caller: MemberContext, asset_id: UUID
+) -> list[TransitionRead]:
+    """The status changes the caller may take now: declared, permitted on this record, conditions
+    met, not reserved for a module. A reason-required move is listed with `requires_reason`."""
+    async with tenant_transaction(pool, organization_id) as conn:
+        current = await _asset_repo.get_by_id(conn, organization_id=organization_id, asset_id=asset_id)
+        if current is None:
+            raise AssetNotFoundError()
+        resource = _current_resource(current)
+        if not default_scope_resolver.check_access(caller, READ_PERMISSION, resource):
+            raise AssetNotFoundError()
+        template, snapshot = await _lifecycle_context(conn, organization_id, current)
+    if template is None:
+        return []
+    out: list[TransitionRead] = []
+    for transition in allowed_transitions(template, current["status"]):
+        permission = _transition_permission(template, current["status"], transition.to)
+        if not default_scope_resolver.check_access(caller, permission, resource):
+            continue
+        try:
+            check_transition(template, snapshot, transition.to, reason="-")
+        except AssetInvalidTransitionError:
+            continue
+        target = template.status(transition.to)
+        assert target is not None  # noqa: S101 - validated at config load
+        out.append(
+            TransitionRead(
+                to_status=transition.to, to_label=target.label, requires_reason=transition.requires_reason
+            )
+        )
+    return out

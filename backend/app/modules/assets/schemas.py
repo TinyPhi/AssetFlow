@@ -22,8 +22,10 @@ __all__ = [
     "AssetListItem",
     "AssetListPage",
     "AssetRead",
+    "AssetStatusChange",
     "AssetUpdate",
     "HolderRead",
+    "TransitionRead",
 ]
 
 HolderType = Literal["member", "team", "location"]
@@ -165,3 +167,21 @@ class AssetListPage(BaseModel):
     items: list[AssetListItem]
     next_cursor: str | None
     total: int | None = Field(default=None, description="Only present when `include_total` was set")
+
+
+class AssetStatusChange(BaseModel):
+    """Body of `POST /assets/{id}/change-status` (§B8.1, P8-08)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    to_status: str = Field(min_length=1, max_length=64)
+    version: int = Field(ge=1)
+    reason: str | None = Field(default=None, max_length=2000)
+
+
+class TransitionRead(BaseModel):
+    """One status change the caller may take now (for the UI's status menu; the API still decides)."""
+
+    to_status: str
+    to_label: str
+    requires_reason: bool

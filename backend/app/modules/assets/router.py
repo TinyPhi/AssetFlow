@@ -20,7 +20,7 @@ from app.core.scope import MemberContext, RoleGrant
 from app.modules.assets import repository as repo
 from app.modules.assets import service
 from app.modules.assets.permissions import CREATE_PERMISSION, READ_PERMISSION, UPDATE_PERMISSION
-from app.modules.assets.schemas import AssetCreate, AssetListItem, AssetUpdate
+from app.modules.assets.schemas import AssetCreate, AssetListItem, AssetStatusChange, AssetUpdate
 
 _CUSTOM_FIELD_OPS = ("gte", "lte")
 
@@ -244,3 +244,42 @@ def _render_list_item(item: dict[str, Any], selected: frozenset[str] | None) -> 
     if selected is None:
         return full
     return {k: v for k, v in full.items() if k == "id" or k in selected}
+
+
+@router.post(
+    "/{asset_id}/change-status",
+    summary="Change an asset's status along the domain template's transitions",
+    openapi_extra=permission_extra(UPDATE_PERMISSION),
+)
+async def change_status_route(request: Request, asset_id: UUID, body: AssetStatusChange) -> dict[str, Any]:
+    member = _resolve_member(request)
+    asset = await service.change_status(
+        request.app.state.pool,
+        organization_id=UUID(member.organization_id),
+        caller=member,
+        secrets_provider=_secrets_provider(request),
+        asset_id=asset_id,
+        to_status=body.to_status,
+        version=body.version,
+        reason=body.reason,
+        request_id=_request_id(request),
+    )
+    return success_response(data=asset.model_dump(mode="json"), request_id=_request_id(request))
+
+
+@router.get(
+    "/{asset_id}/transitions",
+    summary="The status changes the caller may take now",
+    openapi_extra=permission_extra(READ_PERMISSION),
+)
+async def list_transitions_route(request: Request, asset_id: UUID) -> dict[str, Any]:
+    member = _resolve_member(request)
+    items = await service.list_transitions(
+        request.app.state.pool,
+        organization_id=UUID(member.organization_id),
+        caller=member,
+        asset_id=asset_id,
+    )
+    return success_response(
+        data={"items": [item.model_dump(mode="json") for item in items]}, request_id=_request_id(request)
+    )
