@@ -36,9 +36,7 @@ DOMAINS_DIR = Path(__file__).resolve().parents[4] / "config" / "domains"
 
 async def handle(conn: Connection, event: OutboxEvent, *, registry: EventFieldRegistry | None = None) -> None:
     """Plan and enqueue the notifications `event` triggers, for its organization's domain template."""
-    domain_key = await conn.fetchval(
-        "SELECT domain_key FROM public.organizations WHERE id = $1", event.organization_id
-    )
+    domain_key = await conn.fetchval("SELECT platform.get_domain_key($1)", event.organization_id)
     if not domain_key:
         return
     template_path = DOMAINS_DIR / f"{domain_key}.yaml"

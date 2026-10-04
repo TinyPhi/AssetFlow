@@ -18,7 +18,12 @@ __all__ = ["NotificationIntent", "filter_by_preferences", "plan"]
 
 @dataclass(frozen=True)
 class NotificationIntent:
-    """One (event, recipient, channel) notification to send."""
+    """One (event, recipient, channel) notification to send.
+
+    `event_type` and `event_data` travel with the intent because a channel renders its template at
+    send time (P6-03), not at plan time: the planner only decides *who* gets notified *how*, never
+    *what the text says*.
+    """
 
     event_id: UUID
     organization_id: UUID
@@ -26,6 +31,8 @@ class NotificationIntent:
     channel_key: str
     template_key: str
     idempotency_key: str
+    event_type: str
+    event_data: dict[str, object]
 
 
 def _idempotency_key(event_id: UUID, member_id: UUID, channel_key: str) -> str:
@@ -64,6 +71,8 @@ async def plan(
                         channel_key=channel_key,
                         template_key=rule.then.template,
                         idempotency_key=_idempotency_key(event_id, member_id, channel_key),
+                        event_type=event_type,
+                        event_data=event_data,
                     )
                 )
     return filter_by_preferences(intents)

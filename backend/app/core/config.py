@@ -214,6 +214,24 @@ class WorkersConfig(_Strict):
     )
 
 
+class InAppChannelConfig(_Strict):
+    """``notifications.channels.inapp`` (§B6.3, §B13.5)."""
+
+    retention_days: int = Field(default=180, ge=1, description="How long a read or unread notice is kept")
+
+
+class NotificationChannelsConfig(_Strict):
+    """``notifications.channels.*``. Only `inapp` has settings today; `email`/`webhook` are later plans."""
+
+    inapp: InAppChannelConfig = Field(default_factory=InAppChannelConfig)
+
+
+class NotificationsConfig(_Strict):
+    """``notifications.*`` (§B6.3, M1.5-T3)."""
+
+    channels: NotificationChannelsConfig = Field(default_factory=NotificationChannelsConfig)
+
+
 class AppConfig(_Strict):
     """Root of ``config/assetflow.yaml``."""
 
@@ -222,6 +240,7 @@ class AppConfig(_Strict):
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
     database: DatabaseConfig
     workers: WorkersConfig = Field(default_factory=WorkersConfig)
+    notifications: NotificationsConfig = Field(default_factory=NotificationsConfig)
     _source: Path | None = PrivateAttr(default=None)
 
     @property

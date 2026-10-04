@@ -34,9 +34,12 @@ async def test_notification_channels_api_tenant_isolation(
     )
 
 
-async def test_worker_can_read_but_not_write_notification_channels(
+async def test_worker_can_read_and_install_but_not_update_or_delete_notification_channels(
     make_pool: PoolFactory, isolation_db: IsolationDb
 ) -> None:
+    """P6-03 grants the worker INSERT too (0011), so it can auto-install `inapp` on first use
+    (§B6.3: it needs no admin setup) - but never UPDATE or DELETE an installation row; that stays
+    the admin API's job."""
     api = await make_pool("api")
     row_id = uuid.uuid4()
     async with tenant_transaction(api, isolation_db.org_a) as conn:
@@ -57,6 +60,11 @@ async def test_worker_can_read_but_not_write_notification_channels(
         with pytest.raises(asyncpg.InsufficientPrivilegeError, match="permission denied"):
             async with conn.transaction():
                 await conn.execute("DELETE FROM public.notification_channels WHERE id = $1", row_id)
-        with pytest.raises(asyncpg.InsufficientPrivilegeError, match="permission denied"):
-            async with conn.transaction():
-                await conn.execute(INSERT, uuid.uuid4(), isolation_db.org_a, token())
+        installed_id = uuid.uuid4()
+        await conn.execute(INSERT, installed_id, isolation_db.org_a, token())
+        assert (
+            await conn.fetchval(
+                "SELECT count(*) FROM public.notification_channels WHERE id = $1", installed_id
+            )
+            == 1
+        )

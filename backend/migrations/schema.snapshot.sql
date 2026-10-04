@@ -51,6 +51,17 @@ $$;
 
 ALTER FUNCTION platform.find_organization_id(p_slug text) OWNER TO assetflow_resolver;
 
+CREATE FUNCTION platform.get_domain_key(p_organization_id uuid) RETURNS text
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'pg_temp'
+    AS $$
+    SELECT o.domain_key
+    FROM public.organizations AS o
+    WHERE o.id = p_organization_id
+$$;
+
+ALTER FUNCTION platform.get_domain_key(p_organization_id uuid) OWNER TO assetflow_resolver;
+
 CREATE FUNCTION platform.list_active_organizations() RETURNS SETOF uuid
     LANGUAGE sql STABLE SECURITY DEFINER
     SET search_path TO 'pg_catalog', 'pg_temp'
@@ -1065,6 +1076,9 @@ GRANT ALL ON FUNCTION platform.audit_partition_health(base_date timestamp with t
 REVOKE ALL ON FUNCTION platform.find_organization_id(p_slug text) FROM PUBLIC;
 GRANT ALL ON FUNCTION platform.find_organization_id(p_slug text) TO assetflow_api;
 
+REVOKE ALL ON FUNCTION platform.get_domain_key(p_organization_id uuid) FROM PUBLIC;
+GRANT ALL ON FUNCTION platform.get_domain_key(p_organization_id uuid) TO assetflow_worker;
+
 REVOKE ALL ON FUNCTION platform.list_active_organizations() FROM PUBLIC;
 GRANT ALL ON FUNCTION platform.list_active_organizations() TO assetflow_worker;
 
@@ -1096,7 +1110,7 @@ GRANT SELECT,UPDATE ON TABLE public.members TO assetflow_worker;
 GRANT SELECT ON TABLE public.members TO assetflow_readonly;
 
 GRANT SELECT,INSERT,UPDATE ON TABLE public.notification_channels TO assetflow_api;
-GRANT SELECT ON TABLE public.notification_channels TO assetflow_worker;
+GRANT SELECT,INSERT ON TABLE public.notification_channels TO assetflow_worker;
 GRANT SELECT ON TABLE public.notification_channels TO assetflow_readonly;
 
 GRANT SELECT ON TABLE public.notification_deliveries TO assetflow_api;
@@ -1126,6 +1140,8 @@ GRANT SELECT(id) ON TABLE public.organizations TO assetflow_resolver;
 GRANT SELECT(slug) ON TABLE public.organizations TO assetflow_resolver;
 
 GRANT SELECT(idp_organization_id) ON TABLE public.organizations TO assetflow_resolver;
+
+GRANT SELECT(domain_key) ON TABLE public.organizations TO assetflow_resolver;
 
 GRANT SELECT(status) ON TABLE public.organizations TO assetflow_resolver;
 

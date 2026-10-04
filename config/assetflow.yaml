@@ -63,3 +63,8 @@ workers:
     reclaim_after_seconds: 300
     max_attempts: 5
   heartbeat_file: "/tmp/af-worker-heartbeat"
+
+notifications:
+  channels:
+    inapp:
+      retention_days: 180
