@@ -33,6 +33,8 @@ class NotificationIntent:
     idempotency_key: str
     event_type: str
     event_data: dict[str, object]
+    entity_type: str | None = None
+    entity_id: UUID | None = None
 
 
 def _idempotency_key(event_id: UUID, member_id: UUID, channel_key: str) -> str:
@@ -50,6 +52,8 @@ async def plan(
     rules: list[AutomationRule],
     registry: EventFieldRegistry,
     directory: Directory,
+    entity_type: str | None = None,
+    entity_id: UUID | None = None,
 ) -> list[NotificationIntent]:
     """Every notification intent `rules` produce for one event; `rules` not matching are skipped."""
     spec = registry.get(event_type)
@@ -73,6 +77,8 @@ async def plan(
                         idempotency_key=_idempotency_key(event_id, member_id, channel_key),
                         event_type=event_type,
                         event_data=event_data,
+                        entity_type=entity_type,
+                        entity_id=entity_id,
                     )
                 )
     return filter_by_preferences(intents)

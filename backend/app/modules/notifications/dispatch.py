@@ -11,20 +11,17 @@ transaction.
 
 from __future__ import annotations
 
-from pathlib import Path
+import json
 from uuid import UUID
 
-from app.channels.base import ChannelContext, RenderedMessage
+from app.channels.base import ChannelContext
 from app.channels.inapp import InAppChannel
-from app.channels.templates import load_template_set
 from app.core.db import Connection
 from app.core.ids import uuid7
 from app.engines.automation.planner import NotificationIntent
+from app.modules.notifications.rendering import TEMPLATES_DIR, minimized_data, render_message
 
 __all__ = ["TEMPLATES_DIR", "enqueue"]
-
-#: `config/templates/en/` relative to the repository root (this file: backend/app/modules/notifications/).
-TEMPLATES_DIR = Path(__file__).resolve().parents[4] / "config" / "templates" / "en"
 
 
 async def enqueue(conn: Connection, intents: list[NotificationIntent]) -> None:
@@ -57,16 +54,7 @@ async def _ensure_inapp_channel(conn: Connection, organization_id: UUID) -> UUID
 
 async def _send_inapp(conn: Connection, intent: NotificationIntent) -> None:
     channel_id = await _ensure_inapp_channel(conn, intent.organization_id)
-    template = load_template_set(TEMPLATES_DIR, intent.template_key)
-    message = RenderedMessage(
-        subject=template.render("txt", intent.event_data) if "txt" in template.formats() else "",
-        body=template.render("html", intent.event_data) if "html" in template.formats() else "",
-        data={
-            "event_type": intent.event_type,
-            "event_id": str(intent.event_id),
-            "template_key": intent.template_key,
-        },
-    )
+    message = render_message(intent.template_key, intent.event_type, intent.event_id, intent.event_data)
     ctx = ChannelContext(organization_id=str(intent.organization_id), installation={})
     channel = InAppChannel(conn)
     result = await channel.send(ctx, str(intent.member_id), message, intent.idempotency_key)
@@ -88,11 +76,16 @@ async def _send_inapp(conn: Connection, intent: NotificationIntent) -> None:
 
 
 async def _record_pending(conn: Connection, intent: NotificationIntent) -> None:
+    """Queue an external delivery with everything the sender needs to render it later.
+
+    Only the template's declared fields are stored (payload minimization); the sender renders and
+    sends outside any transaction (§B10).
+    """
     await conn.execute(
         "INSERT INTO public.notification_deliveries "
         "(id, organization_id, channel_id, channel_key, event_id, recipient_member_id, target, "
-        "idempotency_key, status) "
-        "SELECT $1, $2, nc.id, $3, $4, $5, $6, $7, 'pending' "
+        "idempotency_key, status, template_key, event_type, entity_type, entity_id, message_data) "
+        "SELECT $1, $2, nc.id, $3, $4, $5, $6, $7, 'pending', $8, $9, $10, $11, $12::jsonb "
         "FROM public.notification_channels nc WHERE nc.organization_id = $2 AND nc.channel_key = $3 "
         "ON CONFLICT (organization_id, idempotency_key) DO NOTHING",
         uuid7(),
@@ -102,4 +95,9 @@ async def _record_pending(conn: Connection, intent: NotificationIntent) -> None:
         intent.member_id,
         str(intent.member_id),
         intent.idempotency_key,
+        intent.template_key,
+        intent.event_type,
+        intent.entity_type,
+        intent.entity_id,
+        json.dumps(minimized_data(intent.template_key, intent.event_data)),
     )

@@ -36,6 +36,7 @@ class DeliveryResult:
     delivered: bool
     error_code: str | None = None
     latency_ms: int | None = None
+    retryable: bool = True  # read only when `delivered` is False; every 4xx sets it False (§C6.7)
 
 
 @dataclass(frozen=True)

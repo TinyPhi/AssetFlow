@@ -19,11 +19,16 @@ logger = logging.getLogger(__name__)
 SweepFn = Callable[[Connection, UUID], Awaitable[None]]
 
 
-async def for_each_active_organization(pool: Pool, fn: SweepFn) -> None:
-    """Run `fn(conn, organization_id)` for every active organization, each in its own transaction."""
+async def active_organization_ids(pool: Pool) -> list[UUID]:
+    """Every active organization's id (the one cross-organization read a worker may make)."""
     async with platform_transaction(pool) as conn:
         rows = await conn.fetch("SELECT * FROM platform.list_active_organizations()")
-        organization_ids = [row[0] for row in rows]
+    return [row[0] for row in rows]
+
+
+async def for_each_active_organization(pool: Pool, fn: SweepFn) -> None:
+    """Run `fn(conn, organization_id)` for every active organization, each in its own transaction."""
+    organization_ids = await active_organization_ids(pool)
     for organization_id in organization_ids:
         try:
             async with worker_context(pool, organization_id) as org_conn:

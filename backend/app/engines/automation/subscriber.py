@@ -55,6 +55,8 @@ async def handle(conn: Connection, event: OutboxEvent, *, registry: EventFieldRe
         rules=template.automations,
         registry=registry or default_registry(),
         directory=directory,
+        entity_type=event.aggregate_type,
+        entity_id=event.aggregate_id,
     )
     await enqueue(conn, intents)
 

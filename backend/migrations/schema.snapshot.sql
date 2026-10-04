@@ -294,7 +294,13 @@ CREATE TABLE public.notification_deliveries (
     claimed_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    template_key text,
+    event_type text,
+    entity_type text,
+    entity_id uuid,
+    message_data jsonb DEFAULT '{}'::jsonb NOT NULL,
     CONSTRAINT ck_notification_deliveries__attempts CHECK ((attempts >= 0)),
+    CONSTRAINT ck_notification_deliveries__message_data_object CHECK ((jsonb_typeof(message_data) = 'object'::text)),
     CONSTRAINT ck_notification_deliveries__status CHECK ((status = ANY (ARRAY['pending'::text, 'sending'::text, 'sent'::text, 'failed'::text, 'dead_lettered'::text, 'skipped'::text])))
 );
 
