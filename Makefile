@@ -90,7 +90,7 @@ endef
 .PHONY: help bootstrap deps frontend-deps up-minimal up-full up-identity down-identity down reset logs smoke-full \
 	fmt lint lint-backend lint-frontend lint-scripts typecheck \
 	test test-backend test-frontend test-scripts test-isolation test-contract test-providers-live test-e2e-api loadtest \
-	migrate migration schema-snapshot demo-users demo-data demo-data-remove config-validate new-channel docs-check error-codes \
+	migrate migration schema-snapshot demo-users demo-data demo-data-remove config-validate new-channel docs-check docs-generate error-codes \
 	reuse-lint secrets-scan commitlint license-check openbao-apply zitadel-apply verify \
 	ci-quality ci-test-backend ci-tenant-isolation ci-migrations ci-contract ci-test-frontend \
 	ci-claude-hooks ci-security-fast ci-license-check ci-docker ci-contribution-checks \
@@ -209,9 +209,14 @@ config-validate: check-python ## Validate config/assetflow.yaml (schema, product
 error-codes: ## Regenerate docs/reference/error-codes.md from the backend error registry
 	$(UV) run --project $(BACKEND) python scripts/gen-error-codes.py
 
+docs-generate: ## Regenerate the generated reference pages (error codes, events)
+	$(UV) run --project $(BACKEND) python scripts/gen-error-codes.py
+	$(UV) run --project $(BACKEND) python scripts/gen-events-reference.py
+
 docs-check: check-python ## Check docs links and that generated reference pages are current
 	$(PYTHON) scripts/check-docs-links.py
 	$(UV) run --project $(BACKEND) python scripts/gen-error-codes.py --check
+	$(UV) run --project $(BACKEND) python scripts/gen-events-reference.py --check
 
 reuse-lint: ## REUSE licensing check
 	$(UVX) --from "reuse[charset-normalizer]==$(REUSE_VERSION)" reuse lint
@@ -293,7 +298,7 @@ demo-data-remove: ## Delete the sample organization and everything in it
 
 new-channel: ## Scaffold a notification channel with tests: make new-channel name=<key>
 	@[[ "$(name)" =~ ^[a-z][a-z0-9-]*$$ ]] || { echo "Usage: make new-channel name=<key>" >&2; exit 1; }
-	@$(call not_implemented,M1.5,the channel scaffold)
+	@$(PYTHON) scripts/new-channel.py "$(name)"
 
 # ---------------------------------------------------------------- configuration as code
 

@@ -12,6 +12,7 @@ transaction.
 from __future__ import annotations
 
 import json
+import time
 from functools import lru_cache
 from typing import Any
 from uuid import UUID
@@ -69,12 +70,14 @@ async def _send_inapp(conn: Connection, intent: NotificationIntent) -> None:
     message = render_message(intent.template_key, intent.event_type, intent.event_id, intent.event_data)
     ctx = ChannelContext(organization_id=str(intent.organization_id), installation={})
     channel = InAppChannel(conn)
+    started = time.monotonic()
     result = await channel.send(ctx, str(intent.member_id), message, intent.idempotency_key)
+    latency_ms = int((time.monotonic() - started) * 1000)
     await conn.execute(
         "INSERT INTO public.notification_deliveries "
         "(id, organization_id, channel_id, channel_key, event_id, recipient_member_id, target, "
-        "idempotency_key, status) "
-        "VALUES ($1, $2, $3, 'inapp', $4, $5, $6, $7, $8) "
+        "idempotency_key, status, latency_ms) "
+        "VALUES ($1, $2, $3, 'inapp', $4, $5, $6, $7, $8, $9) "
         "ON CONFLICT (organization_id, idempotency_key) DO NOTHING",
         uuid7(),
         intent.organization_id,
@@ -84,6 +87,7 @@ async def _send_inapp(conn: Connection, intent: NotificationIntent) -> None:
         str(intent.member_id),
         intent.idempotency_key,
         "sent" if result.delivered else "skipped",
+        latency_ms,
     )
 
 
