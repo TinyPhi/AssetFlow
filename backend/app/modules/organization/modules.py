@@ -37,6 +37,17 @@ async def is_module_installed(conn: DbConn, organization_id: UUID, module_key: M
     return bool(status == "installed")
 
 
+async def list_installed_modules(conn: DbConn, organization_id: UUID) -> list[ModuleKey]:
+    """The module keys currently installed for the organization, in a stable order."""
+    rows = await conn.fetch(
+        "SELECT module_key FROM public.organization_modules "
+        "WHERE organization_id = $1 AND status = 'installed' ORDER BY module_key",
+        organization_id,
+    )
+    installed = {row["module_key"] for row in rows}
+    return [key for key in MODULE_KEYS if key in installed]
+
+
 async def install_module(
     conn: DbConn, organization_id: UUID, module_key: ModuleKey, *, installed_by: UUID | None = None
 ) -> UUID:
