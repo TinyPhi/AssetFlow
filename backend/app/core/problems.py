@@ -254,6 +254,19 @@ class JobMemoryLimitError(ProblemError):
     )
 
 
+class ChannelEgressDeniedError(ProblemError):
+    status_code = 502
+    code = "channel.egress_denied"
+    title = "Outbound call blocked"
+    default_detail = "A notification channel tried to reach a destination that is not allowed."
+    description = (
+        "A notification channel's outbound call was refused by the egress allowlist (§B6.3 rule 2): "
+        "the host is not allowed for this channel, the address is private, loopback, link-local or "
+        "otherwise reserved, the scheme is not HTTPS, or the name does not resolve. The detail "
+        "never contains the destination or any credential."
+    )
+
+
 ERROR_REGISTRY: tuple[type[ProblemError], ...] = (
     InternalError,
     ValidationFailedError,
@@ -271,6 +284,7 @@ ERROR_REGISTRY: tuple[type[ProblemError], ...] = (
     ModuleDependencyError,
     JobTimeLimitError,
     JobMemoryLimitError,
+    ChannelEgressDeniedError,
 )
 
 _BY_STATUS: dict[int, type[ProblemError]] = {

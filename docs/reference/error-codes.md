@@ -26,6 +26,7 @@ Every error response is RFC 9457 Problem Details (`application/problem+json`, §
 | --- | :---: | --- |
 | [`auth.permission_denied`](#auth.permission_denied) | 403 | Permission denied |
 | [`auth.unauthorized`](#auth.unauthorized) | 401 | Authentication required |
+| [`channel.egress_denied`](#channel.egress_denied) | 502 | Outbound call blocked |
 | [`http.error`](#http.error) | 400 | Request could not be processed |
 | [`http.method_not_allowed`](#http.method_not_allowed) | 405 | Method not allowed |
 | [`http.not_found`](#http.not_found) | 404 | Route not found |
@@ -66,6 +67,18 @@ The caller is signed in but lacks the required permission.
 - **Type URI:** `https://github.com/tinyphi/assetflow/blob/main/docs/reference/error-codes.md#auth.unauthorized`
 
 No valid session or token was presented.
+
+<a id="channel.egress_denied"></a>
+
+### `channel.egress_denied`
+
+- **Status:** 502
+- **Title:** Outbound call blocked
+- **Default detail:** A notification channel tried to reach a destination that is not allowed.
+- **Error class:** `ChannelEgressDeniedError`
+- **Type URI:** `https://github.com/tinyphi/assetflow/blob/main/docs/reference/error-codes.md#channel.egress_denied`
+
+A notification channel's outbound call was refused by the egress allowlist (§B6.3 rule 2): the host is not allowed for this channel, the address is private, loopback, link-local or otherwise reserved, the scheme is not HTTPS, or the name does not resolve. The detail never contains the destination or any credential.
 
 <a id="http.error"></a>
 

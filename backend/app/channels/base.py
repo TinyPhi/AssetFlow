@@ -4,8 +4,8 @@
 
 Every channel declares its key, its per-organization settings schema, which of those settings are
 secrets, and which hosts it may ever call (§B6.3 "Channel connector interface"). The runtime builds
-`ChannelContext` for one call only; credentials are filled by P6-06a and never logged, and the HTTP
-client (also P6-06a) enforces the egress allowlist on every call.
+`ChannelContext` for one call only; credentials come from the runtime alone and are never logged, and
+the HTTP client enforces the egress allowlist on every call.
 """
 
 from __future__ import annotations
@@ -44,8 +44,10 @@ class ChannelContext:
 
     organization_id: str
     installation: dict[str, Any]
-    credentials: MappingProxyType[str, str] = field(default_factory=lambda: MappingProxyType[str, str]({}))
-    http: Any | None = None  # filled by P6-06a's EgressClient
+    credentials: MappingProxyType[str, str] = field(
+        default_factory=lambda: MappingProxyType[str, str]({}), repr=False
+    )
+    http: Any | None = None  # an `EgressClient`, or None for a channel that never calls out
 
 
 class NotificationChannel(ABC):

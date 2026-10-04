@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import timedelta
 
 import asyncpg
@@ -65,27 +65,25 @@ async def test_two_schedulers_at_once_run_the_job_once_per_tick(worker_dsn: str)
     conn_a = await asyncpg.connect(worker_dsn)
     conn_b = await asyncpg.connect(worker_dsn)
     runs: list[str] = []
-    overlap = asyncio.Event()
 
-    async def holds_the_lock_briefly() -> None:
-        # Gives the other scheduler's concurrent tick a window to try (and fail) the same lock,
-        # proving real mutual exclusion rather than a lock released before the other side asks.
-        runs.append("a")
-        overlap.set()
-        await asyncio.sleep(0.2)
+    def holds_the_lock_briefly(name: str) -> Callable[[], Awaitable[None]]:
+        async def job() -> None:
+            # Whichever scheduler wins the lock keeps it long enough for the other one's
+            # concurrent tick to try (and fail) the same lock, proving real mutual exclusion
+            # rather than a lock released before the other side asks.
+            runs.append(name)
+            await asyncio.sleep(0.2)
 
-    async def runs_if_it_gets_the_lock() -> None:
-        await overlap.wait()
-        runs.append("b")
+        return job
 
     try:
         scheduler_a = Scheduler(conn_a)
         scheduler_b = Scheduler(conn_b)
         with time_machine.travel("2026-01-01T00:00:00Z", tick=False):
-            scheduler_a.register_periodic("shared", timedelta(seconds=10), holds_the_lock_briefly)
-            scheduler_b.register_periodic("shared", timedelta(seconds=10), runs_if_it_gets_the_lock)
+            scheduler_a.register_periodic("shared", timedelta(seconds=10), holds_the_lock_briefly("a"))
+            scheduler_b.register_periodic("shared", timedelta(seconds=10), holds_the_lock_briefly("b"))
             await asyncio.gather(scheduler_a.tick(), scheduler_b.tick())
-        assert runs == ["a"]  # b's try_advisory_lock failed while a's tick still held it
+        assert len(runs) == 1  # the loser's try_advisory_lock failed while the winner held it
     finally:
         await conn_a.close()
         await conn_b.close()
