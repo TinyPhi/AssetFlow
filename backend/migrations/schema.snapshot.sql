@@ -582,6 +582,23 @@ ALTER TABLE ONLY public.organization_modules FORCE ROW LEVEL SECURITY;
 
 ALTER TABLE public.organization_modules OWNER TO assetflow_migrator;
 
+CREATE TABLE public.organization_sequences (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    sequence_key text NOT NULL,
+    next_value bigint DEFAULT 1 NOT NULL,
+    version integer DEFAULT 1 NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_organization_sequences__next_value CHECK ((next_value >= 1)),
+    CONSTRAINT ck_organization_sequences__sequence_key_format CHECK ((sequence_key ~ '^[a-z][a-z0-9_]*:[A-Za-z0-9]+$'::text)),
+    CONSTRAINT ck_organization_sequences__version CHECK ((version >= 1))
+);
+
+ALTER TABLE ONLY public.organization_sequences FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.organization_sequences OWNER TO assetflow_migrator;
+
 CREATE TABLE public.organizations (
     id uuid NOT NULL,
     slug text NOT NULL,
@@ -850,6 +867,9 @@ ALTER TABLE ONLY public.org_units
 ALTER TABLE ONLY public.organization_modules
     ADD CONSTRAINT organization_modules_pkey PRIMARY KEY (id);
 
+ALTER TABLE ONLY public.organization_sequences
+    ADD CONSTRAINT organization_sequences_pkey PRIMARY KEY (id);
+
 ALTER TABLE ONLY public.organizations
     ADD CONSTRAINT organizations_idp_organization_id_key UNIQUE (idp_organization_id);
 
@@ -972,6 +992,9 @@ ALTER TABLE ONLY public.organization_modules
 
 ALTER TABLE ONLY public.organization_modules
     ADD CONSTRAINT uq_organization_modules__organization_id_module_key UNIQUE (organization_id, module_key);
+
+ALTER TABLE ONLY public.organization_sequences
+    ADD CONSTRAINT uq_organization_sequences__organization_id_sequence_key UNIQUE (organization_id, sequence_key);
 
 ALTER TABLE ONLY public.outbox
     ADD CONSTRAINT uq_outbox__org_id_id UNIQUE (organization_id, id);
@@ -1109,6 +1132,8 @@ CREATE INDEX ix_org_units__organization_id_parent ON public.org_units USING btre
 CREATE INDEX ix_org_units__path_gist ON public.org_units USING gist (path);
 
 CREATE INDEX ix_organization_modules__organization_id ON public.organization_modules USING btree (organization_id);
+
+CREATE INDEX ix_organization_sequences__organization_id ON public.organization_sequences USING btree (organization_id);
 
 CREATE INDEX ix_outbox__claimed_by ON public.outbox USING btree (claimed_by);
 
@@ -1295,6 +1320,9 @@ ALTER TABLE ONLY public.organization_modules
 ALTER TABLE ONLY public.organization_modules
     ADD CONSTRAINT fk_organization_modules__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
 
+ALTER TABLE ONLY public.organization_sequences
+    ADD CONSTRAINT fk_organization_sequences__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
+
 ALTER TABLE ONLY public.outbox
     ADD CONSTRAINT fk_outbox__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
 
@@ -1463,6 +1491,8 @@ CREATE POLICY organization_modules_select ON public.organization_modules FOR SEL
 
 CREATE POLICY organization_modules_update ON public.organization_modules FOR UPDATE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
 
+ALTER TABLE public.organization_sequences ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE public.organizations ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY organizations_delete ON public.organizations FOR DELETE USING ((id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
@@ -1554,6 +1584,14 @@ CREATE POLICY rls_meters_insert ON public.meters FOR INSERT WITH CHECK ((organiz
 CREATE POLICY rls_meters_select ON public.meters FOR SELECT USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
 
 CREATE POLICY rls_meters_update ON public.meters FOR UPDATE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_organization_sequences_delete ON public.organization_sequences FOR DELETE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_organization_sequences_insert ON public.organization_sequences FOR INSERT WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_organization_sequences_select ON public.organization_sequences FOR SELECT USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_organization_sequences_update ON public.organization_sequences FOR UPDATE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
 
 CREATE POLICY rls_suppliers_delete ON public.suppliers FOR DELETE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
 
@@ -1719,6 +1757,10 @@ GRANT SELECT ON TABLE public.org_units TO assetflow_readonly;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.organization_modules TO assetflow_api;
 GRANT SELECT ON TABLE public.organization_modules TO assetflow_worker;
 GRANT SELECT ON TABLE public.organization_modules TO assetflow_readonly;
+
+GRANT SELECT,INSERT,UPDATE ON TABLE public.organization_sequences TO assetflow_api;
+GRANT SELECT ON TABLE public.organization_sequences TO assetflow_worker;
+GRANT SELECT ON TABLE public.organization_sequences TO assetflow_readonly;
 
 GRANT SELECT,INSERT,UPDATE ON TABLE public.organizations TO assetflow_api;
 
