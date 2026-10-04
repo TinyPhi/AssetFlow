@@ -4,8 +4,12 @@
 
 from __future__ import annotations
 
+import json
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
+import httpx
 import pytest
 
 from app.core.config import ConfigError
@@ -38,3 +42,61 @@ async def test_openbao_health() -> None:
     provider = OpenBaoSecretsProvider.from_settings({"address": "http://localhost:8200"}, ctx)
     health = await provider.health()
     assert health["provider"] == "openbao"
+
+
+class _Bao:
+    """A fake OpenBao KV v2 endpoint: records requests, answers from a handler."""
+
+    def __init__(
+        self, monkeypatch: pytest.MonkeyPatch, answer: Callable[[httpx.Request], httpx.Response]
+    ) -> None:
+        self.requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.requests.append(request)
+            return answer(request)
+
+        real = httpx.AsyncClient
+
+        def factory(*args: Any, **kwargs: Any) -> httpx.AsyncClient:
+            return real(*args, transport=httpx.MockTransport(handler), **kwargs)
+
+        monkeypatch.setattr("app.providers.secrets.openbao.httpx.AsyncClient", factory)
+
+
+def _provider() -> OpenBaoSecretsProvider:
+    ctx = ProviderContext(env="test", pillar="secrets", base_dir=Path.cwd())
+    return OpenBaoSecretsProvider.from_settings({"address": "http://bao.test:8200", "token": "t-1"}, ctx)
+
+
+CHANNEL = "secret://assetflow/orgs/org-a/channels/chan-1"
+
+
+async def test_openbao_put_writes_the_kv_v2_data_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    bao = _Bao(monkeypatch, lambda r: httpx.Response(200, json={"data": {"version": 1}}))
+    await _provider().put(CHANNEL, {"token": "abc"})
+    request = bao.requests[0]
+    assert request.method == "POST"
+    assert request.url.path == "/v1/secret/data/assetflow/orgs/org-a/channels/chan-1"
+    assert json.loads(request.content) == {"data": {"token": "abc"}}
+    assert request.headers["x-vault-token"] == "t-1"
+
+
+async def test_openbao_get_map_reads_a_nested_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    bao = _Bao(monkeypatch, lambda r: httpx.Response(200, json={"data": {"data": {"token": "abc"}}}))
+    assert await _provider().get_map(CHANNEL) == {"token": "abc"}
+    assert bao.requests[0].url.path == "/v1/secret/data/assetflow/orgs/org-a/channels/chan-1"
+
+
+@pytest.mark.parametrize("status", [403, 404, 500])
+async def test_openbao_put_refused_is_a_generic_error(monkeypatch: pytest.MonkeyPatch, status: int) -> None:
+    _Bao(monkeypatch, lambda r: httpx.Response(status, json={"errors": ["token abc denied"]}))
+    with pytest.raises(SecretsUnavailableError) as exc:
+        await _provider().put(CHANNEL, {"token": "abc"})
+    assert "abc" not in str(exc.value)
+
+
+@pytest.mark.parametrize("path", ["secret://area", "secret://area/../x", "secret://area//x", "area/name"])
+async def test_openbao_put_refuses_malformed_paths(path: str) -> None:
+    with pytest.raises(SecretsUnavailableError):
+        await _provider().put(path, {"k": "v"})

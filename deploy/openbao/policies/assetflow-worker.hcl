@@ -16,6 +16,12 @@ path "secret/data/assetflow/orgs/*" {
   capabilities = ["read"]
 }
 
+# The channel runtime reads one installation's credentials at send time (§B6.3 rule 1); the worker
+# never writes them (the api role does, write-only).
+path "secret/data/assetflow/orgs/+/channels/*" {
+  capabilities = ["read"]
+}
+
 # Explicit deny on the migrator credentials (deny wins over any other grant)
 path "secret/data/assetflow/migrator" {
   capabilities = ["deny"]

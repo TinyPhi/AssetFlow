@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import logging
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -104,16 +105,7 @@ class OpenBaoSecretsProvider(SecretsProvider):
 
     async def get_map(self, path: str) -> dict[str, str]:
         """Fetch all key-value pairs for `secret://<area>/<name>`."""
-        prefix = "secret://"
-        if not path.startswith(prefix):
-            raise SecretsUnavailableError(f"Malformed path {path!r}; expected secret://<area>/<name>")
-
-        rem = path[len(prefix) :]
-        parts = rem.split("#")[0].split("/")
-        if len(parts) != 2 or not parts[0] or not parts[1]:
-            raise SecretsUnavailableError(f"Malformed path {path!r}; expected secret://<area>/<name>")
-
-        area, name = parts[0], parts[1]
+        area, name = self._split_path(path)
         url = f"{self.settings.address.rstrip('/')}/v1/{self.settings.mount_point}/data/{area}/{name}"
 
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -131,6 +123,32 @@ class OpenBaoSecretsProvider(SecretsProvider):
                 if isinstance(exc, SecretsUnavailableError):
                     raise
                 raise SecretsUnavailableError(f"OpenBao KV read error: {exc}") from exc
+
+    @staticmethod
+    def _split_path(path: str) -> tuple[str, str]:
+        """``secret://<area>/<name>``; ``name`` may hold more segments, none empty or dot-only."""
+        prefix = "secret://"
+        if not path.startswith(prefix):
+            raise SecretsUnavailableError(f"Malformed path {path!r}; expected secret://<area>/<name>")
+        parts = path[len(prefix) :].split("#", maxsplit=1)[0].split("/")
+        if len(parts) < 2 or any(not p or p in {".", ".."} for p in parts):
+            raise SecretsUnavailableError(f"Malformed path {path!r}; expected secret://<area>/<name>")
+        return parts[0], "/".join(parts[1:])
+
+    async def put(self, path: str, values: Mapping[str, str]) -> None:
+        """Write a KV v2 secret, replacing all its keys (the api role has write-only access)."""
+        area, name = self._split_path(path)
+        if not values:
+            raise SecretsUnavailableError("A secret needs at least one key.")
+        url = f"{self.settings.address.rstrip('/')}/v1/{self.settings.mount_point}/data/{area}/{name}"
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            token = await self._ensure_token(client)
+            try:
+                res = await client.post(url, headers={"X-Vault-Token": token}, json={"data": dict(values)})
+            except httpx.HTTPError as exc:
+                raise SecretsUnavailableError("OpenBao KV write error.") from exc
+            if res.status_code not in (200, 204):
+                raise SecretsUnavailableError("OpenBao refused the secret write.")
 
     async def encrypt(self, context: str, plaintext: str) -> str:
         """Encrypt `plaintext` bound to `context` using transit engine."""

@@ -9,6 +9,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 - **Date:** 2026-09-23
 - **Deciders:** Lead Architect, Security Team
 - **Revisions / Supersedes:**
+  - Revised 2026-10-04 (P6-06a, refines §B11.4's "read-only on `secret/assetflow/*`"): the api role gets one write-only path, `secret/assetflow/orgs/+/channels/*` (`create`, `update`, `delete`; no `read`, no `list`), so an admin can save or remove a notification channel credential but never read one back; only the worker's channel runtime reads it. `SecretsProvider` gains an optional `put` (interface 1.1).
   - Revised 2026-09-29 (Decision 51): All server-side credentials and secrets live in OpenBao in production; file/env secrets used only for local development and CI; the browser and mobile clients hold zero credentials.
   - Revised 2026-09-29 (Decision 52): Multi-organization identity in Zitadel. One Zitadel organization per AssetFlow organization, sharing the AssetFlow project through project grants; active organization context is extracted from `urn:zitadel:iam:user:resourceowner:id`; Zitadel and OpenBao configured as code (OpenTofu) prior to provider boot.
   - Revised 2026-09-29 (user-approved change to Decision 52): OpenTofu replaced by an idempotent bootstrap script calling Zitadel's official APIs (`scripts/bootstrap_zitadel.py`, `make zitadel-apply`); development writes `.env.local`, production writes OpenBao only (`docs/operations/zitadel.md`).

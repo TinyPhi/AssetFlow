@@ -15,9 +15,16 @@ path "secret/data/assetflow/smtp" {
   capabilities = ["read"]
 }
 
-# Read organization and channel secrets
-path "secret/data/assetflow/orgs/*" {
-  capabilities = ["read"]
+# Channel credentials are write-only for the api (§B6.3 rule 1): the admin form can save or remove
+# one, but nothing can read it back. There is deliberately no broader `orgs/*` stanza with `read`
+# next to this one: when two paths both match, OpenBao's priority rules could let the broader read
+# win, so the channel path is the only per-organization path the api touches, and only to write.
+path "secret/data/assetflow/orgs/+/channels/*" {
+  capabilities = ["create", "update", "delete"]
+}
+
+path "secret/metadata/assetflow/orgs/+/channels/*" {
+  capabilities = ["delete"]
 }
 
 # Explicit deny on the migrator credentials (deny wins over any other grant)

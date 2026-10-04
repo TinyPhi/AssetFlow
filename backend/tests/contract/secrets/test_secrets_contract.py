@@ -64,7 +64,7 @@ def harness(request: pytest.FixtureRequest, tmp_path: Path) -> Harness:
 
 async def test_interface_version(harness: Harness) -> None:
     assert isinstance(harness.provider, SecretsProvider)
-    assert harness.provider.INTERFACE_VERSION == "1.0"
+    assert harness.provider.INTERFACE_VERSION == "1.1"
 
 
 async def test_get_seeded_secret(harness: Harness) -> None:
@@ -111,6 +111,57 @@ async def test_missing_map_raises(harness: Harness) -> None:
 async def test_malformed_or_traversing_refs_raise(harness: Harness, ref: str) -> None:
     with pytest.raises(SecretsUnavailableError):
         await harness.provider.get(ref)
+
+
+async def test_put_then_get_map_round_trips(harness: Harness) -> None:
+    values = {"token": pysecrets.token_hex(12), "signing_key": pysecrets.token_hex(12)}
+    await harness.provider.put("secret://assetflow/orgs/org-a/channels/chan-1", values)
+    assert await harness.provider.get_map("secret://assetflow/orgs/org-a/channels/chan-1") == values
+    assert (
+        await harness.provider.get("secret://assetflow/orgs/org-a/channels/chan-1#token") == values["token"]
+    )
+
+
+async def test_put_replaces_every_key(harness: Harness) -> None:
+    path = "secret://assetflow/orgs/org-a/channels/chan-2"
+    await harness.provider.put(path, {"old": "1", "kept": "2"})
+    await harness.provider.put(path, {"kept": "3"})
+    assert await harness.provider.get_map(path) == {"kept": "3"}
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["database/api", "secret://database", "secret://../outside/x", "secret://area/../../x", "secret://area/"],
+)
+async def test_put_refuses_malformed_or_traversing_paths(harness: Harness, path: str) -> None:
+    with pytest.raises(SecretsUnavailableError):
+        await harness.provider.put(path, {"key": "value"})
+
+
+async def test_put_refuses_an_empty_secret(harness: Harness) -> None:
+    with pytest.raises(SecretsUnavailableError):
+        await harness.provider.put("secret://area/name", {})
+
+
+async def test_a_provider_without_put_says_so() -> None:
+    class ReadOnly(SecretsProvider):
+        async def get(self, ref: str) -> str:
+            return ""
+
+        async def get_map(self, path: str) -> dict[str, str]:
+            return {}
+
+        async def encrypt(self, context: str, plaintext: str) -> str:
+            return ""
+
+        async def decrypt(self, context: str, ciphertext: str) -> str:
+            return ""
+
+        async def health(self) -> dict[str, object]:
+            return {}
+
+    with pytest.raises(NotImplementedError):
+        await ReadOnly().put("secret://a/b", {"k": "v"})
 
 
 async def test_encrypt_round_trip(harness: Harness) -> None:
@@ -249,3 +300,8 @@ def test_file_rejects_unknown_settings(tmp_path: Path) -> None:
     with pytest.raises(ConfigError) as exc:
         FileSecretsProvider.from_settings({"secrets_dir": "x"}, ctx(tmp_path))
     assert exc.value.errors[0][0] == "providers.secrets.settings.secrets_dir"
+
+
+async def test_file_put_is_refused_in_production(tmp_path: Path) -> None:
+    with pytest.raises(ConfigError):
+        FileSecretsProvider(ctx(tmp_path, env="production"), tmp_path)

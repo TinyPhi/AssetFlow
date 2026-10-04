@@ -118,13 +118,15 @@ holders, use it, and revoke it.
 
 | Role (policy) | May read | Transit `assetflow-fields` |
 | --- | --- | --- |
-| `assetflow-api` | `secret/assetflow/{database,idp,smtp}`, `secret/assetflow/orgs/*` | encrypt, decrypt |
+| `assetflow-api` | `secret/assetflow/{database,idp,smtp}` (plus write-only `secret/assetflow/orgs/+/channels/*`, below) | encrypt, decrypt |
 | `assetflow-worker` | `secret/assetflow/{database,smtp}`, `secret/assetflow/orgs/*` | encrypt, decrypt |
 | `assetflow-migrator` | `secret/assetflow/{migrator,database}` | none |
 | `assetflow-postgres` | `secret/assetflow/postgres` | none |
 | `zitadel` | `secret/assetflow/zitadel/{masterkey,database,admin}` | none |
 
-All application policies are read-only; `secret/assetflow/migrator` is explicitly denied to
+All application policies are read-only except one path: the api role may `create`, `update` and `delete`
+(never `read` or `list`) `secret/assetflow/orgs/+/channels/*`, so an admin can save or remove a channel
+credential but nothing can read one back; only the worker's channel runtime reads it. `secret/assetflow/migrator` is explicitly denied to
 the api and worker. Secret layout (KV v2 under `secret/`):
 
 | Path | Keys | Written by |
@@ -134,7 +136,7 @@ the api and worker. Secret layout (KV v2 under `secret/`):
 | `assetflow/postgres` | `superuser_password` | `openbao-apply --generate-missing` |
 | `assetflow/smtp` | SMTP relay credentials | operator |
 | `assetflow/idp` | `url`, `issuer`, `project_id`, `web_client_id`, `client_id`, `client_secret`, `introspection_client_id`, `introspection_client_secret` | Zitadel bootstrap (`make zitadel-apply`) |
-| `assetflow/orgs/<organization_id>/channels/<channel_id>` | channel credentials | runtime (§B6.3) |
+| `assetflow/orgs/<organization_id>/channels/<channel_id>` | channel credentials | api (write-only); read by the worker's channel runtime (§B6.3) |
 | `assetflow/zitadel/masterkey` | `value` (32 characters, never changes) | `openbao-apply --generate-missing` |
 | `assetflow/zitadel/database` | `admin_password`, `user_password` | `openbao-apply --generate-missing` |
 | `assetflow/zitadel/admin` | `initial_password` (change on first sign-in) | `openbao-apply --generate-missing` |

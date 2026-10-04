@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 TinyPhi
 # SPDX-License-Identifier: AGPL-3.0-only
-"""SecretsProvider interface (§B6.1, §B6.2), INTERFACE_VERSION 1.0.
+"""SecretsProvider interface (§B6.1, §B6.2), INTERFACE_VERSION 1.1.
 
 References use ``secret://<area>/<name>#<key>`` (§C1.6). A missing or unreadable secret raises
 ``app.core.problems.SecretsUnavailableError``; an implementation never returns a default value.
@@ -10,13 +10,14 @@ Implementations pass the shared suite in ``tests/contract/secrets/``.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from typing import Any
 
 
 class SecretsProvider(ABC):
     """Secrets provider: key/value reads plus transit-style encryption."""
 
-    INTERFACE_VERSION: str = "1.0"
+    INTERFACE_VERSION: str = "1.1"
 
     @property
     def name(self) -> str:
@@ -30,6 +31,13 @@ class SecretsProvider(ABC):
     @abstractmethod
     async def get_map(self, path: str) -> dict[str, str]:
         """Return every key of ``secret://<area>/<name>`` as a mapping."""
+
+    async def put(self, path: str, values: Mapping[str, str]) -> None:
+        """Replace every key of ``secret://<area>/<name>`` with ``values`` (added in 1.1).
+
+        Optional: a provider written against 1.0 keeps working and simply cannot store secrets.
+        """
+        raise NotImplementedError(f"{self.name} does not support writing secrets.")
 
     @abstractmethod
     async def encrypt(self, context: str, plaintext: str) -> str:
