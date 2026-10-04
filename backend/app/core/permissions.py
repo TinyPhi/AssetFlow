@@ -156,6 +156,7 @@ DEFAULT_PERMISSIONS: frozenset[str] = frozenset(
         "notification_channel.read",
         "notification_channel.manage",
         "notification_delivery.read",
+        "notification_preference.manage",
     }
 )
 
@@ -219,6 +220,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "work_request.create",
             "work_request.read",
             "notification.read",
+            "notification_preference.manage",
         }
     ),
 }

@@ -318,7 +318,8 @@ CREATE TABLE public.notification_preferences (
     channel_key text NOT NULL,
     enabled boolean DEFAULT true NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    version integer DEFAULT 1 NOT NULL
 );
 
 ALTER TABLE ONLY public.notification_preferences FORCE ROW LEVEL SECURITY;

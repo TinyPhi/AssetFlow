@@ -7,6 +7,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Protocol
 from uuid import UUID
 
 from app.engines.automation.conditions import evaluate
@@ -14,7 +15,7 @@ from app.engines.automation.models import AutomationRule
 from app.engines.automation.recipients import Directory, resolve
 from app.engines.automation.registry import EventFieldRegistry
 
-__all__ = ["NotificationIntent", "filter_by_preferences", "plan"]
+__all__ = ["NotificationIntent", "Preferences", "filter_by_preferences", "plan"]
 
 
 @dataclass(frozen=True)
@@ -37,12 +38,21 @@ class NotificationIntent:
     entity_type: str | None = None
     entity_id: UUID | None = None
     occurred_at: datetime | None = None
+    mandatory: bool = False  # the rule says this notice must reach the member's inbox (§B6.3 rule 7)
 
 
 def _idempotency_key(event_id: UUID, member_id: UUID, channel_key: str) -> str:
     # §B6.3 rule 8: one idempotency key per (event, recipient, channel).
     raw = f"{event_id}|{member_id}|{channel_key}".encode()
     return hashlib.sha256(raw).hexdigest()
+
+
+class Preferences(Protocol):
+    """Reads which (member, event type, channel) a member switched off; everything else is on."""
+
+    async def disabled(self, member_ids: set[UUID], event_types: set[str]) -> set[tuple[UUID, str, str]]:
+        """The switched-off `(member_id, event_type, channel_key)` triples among these members and events."""
+        ...
 
 
 async def plan(
@@ -57,6 +67,7 @@ async def plan(
     entity_type: str | None = None,
     entity_id: UUID | None = None,
     occurred_at: datetime | None = None,
+    preferences: Preferences | None = None,
 ) -> list[NotificationIntent]:
     """Every notification intent `rules` produce for one event; `rules` not matching are skipped."""
     spec = registry.get(event_type)
@@ -83,11 +94,24 @@ async def plan(
                         entity_type=entity_type,
                         entity_id=entity_id,
                         occurred_at=occurred_at,
+                        mandatory=rule.then.mandatory,
                     )
                 )
-    return filter_by_preferences(intents)
+    return await filter_by_preferences(intents, preferences)
 
 
-def filter_by_preferences(intents: list[NotificationIntent]) -> list[NotificationIntent]:
-    """Hook for P6-07's member preferences; identity until then."""
-    return intents
+async def filter_by_preferences(
+    intents: list[NotificationIntent], preferences: Preferences | None
+) -> list[NotificationIntent]:
+    """Drop what a member switched off (§B6.3 rule 7); in-app is never dropped for a mandatory rule.
+
+    Default is on: only a stored `enabled = false` turns a (member, event type, channel) off.
+    """
+    if preferences is None or not intents:
+        return list(intents)
+    off = await preferences.disabled({i.member_id for i in intents}, {i.event_type for i in intents})
+    return [
+        i
+        for i in intents
+        if (i.member_id, i.event_type, i.channel_key) not in off or (i.mandatory and i.channel_key == "inapp")
+    ]

@@ -6,12 +6,14 @@ from __future__ import annotations
 
 from typing import ClassVar
 
-from app.core.problems import ConflictError
+from app.core.problems import ConflictError, ProblemError
 
 __all__ = [
     "ChannelAlreadyInstalledError",
     "ChannelVersionConflictError",
     "DeliveryNotDeadLetteredError",
+    "PreferenceLockedError",
+    "PreferenceVersionConflictError",
 ]
 
 
@@ -37,3 +39,22 @@ class DeliveryNotDeadLetteredError(ConflictError):
     title: ClassVar[str] = "Delivery is not dead-lettered"
     default_detail: ClassVar[str] = "Only a dead-lettered delivery can be re-queued."
     description: ClassVar[str] = "Re-queue applies to deliveries whose status is `dead_lettered`."
+
+
+class PreferenceLockedError(ProblemError):
+    status_code = 422
+    code: ClassVar[str] = "notification.preference_locked"
+    title: ClassVar[str] = "Preference is locked"
+    default_detail: ClassVar[str] = "The in-app notice cannot be switched off for this event."
+    description: ClassVar[str] = (
+        "An automation rule marks this event's notice mandatory (§B6.3 rule 7), so the in-app channel "
+        "stays on for it."
+    )
+
+
+class PreferenceVersionConflictError(ConflictError):
+    status_code = 409
+    code: ClassVar[str] = "notification_preference.version_conflict"
+    title: ClassVar[str] = "Preference version conflict"
+    default_detail: ClassVar[str] = "The preference was changed elsewhere; reload and try again."
+    description: ClassVar[str] = "The provided version does not match the stored preference's version."

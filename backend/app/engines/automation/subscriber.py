@@ -18,6 +18,7 @@ from app.core.db import Connection
 from app.core.domain_template import DomainTemplateError, load_domain_template
 from app.engines.automation.directory_pg import PgDirectory
 from app.engines.automation.planner import plan
+from app.engines.automation.preferences_pg import PgPreferences
 from app.engines.automation.registry import EventFieldRegistry, default_registry
 from app.modules.notifications.dispatch import enqueue
 
@@ -26,12 +27,27 @@ if TYPE_CHECKING:
     # type at runtime would make workers.subscribers and app.engines.automation import each other.
     from workers.subscribers import OutboxEvent, SubscriberRegistry
 
-__all__ = ["CONSUMER", "handle", "register"]
+__all__ = ["CONSUMER", "handle", "mandatory_inapp_events", "register"]
 
 CONSUMER = "automation"
 
 #: `config/domains/` relative to the repository root (this file: backend/app/engines/automation/).
 DOMAINS_DIR = Path(__file__).resolve().parents[4] / "config" / "domains"
+
+
+def mandatory_inapp_events(domain_key: str) -> set[str]:
+    """Event types for which this domain template's rules make the in-app notice mandatory.
+
+    A member cannot switch in-app off for these (§B6.3 rule 7); an unreadable template means none.
+    """
+    template_path = DOMAINS_DIR / f"{domain_key}.yaml"
+    if not template_path.exists():
+        return set()
+    try:
+        template = load_domain_template(template_path)
+    except DomainTemplateError:
+        return set()
+    return {r.when for r in template.automations if r.then.mandatory and "inapp" in r.then.channels}
 
 
 async def handle(conn: Connection, event: OutboxEvent, *, registry: EventFieldRegistry | None = None) -> None:
@@ -58,6 +74,7 @@ async def handle(conn: Connection, event: OutboxEvent, *, registry: EventFieldRe
         entity_type=event.aggregate_type,
         entity_id=event.aggregate_id,
         occurred_at=event.occurred_at,
+        preferences=PgPreferences(conn),
     )
     await enqueue(conn, intents)
 
