@@ -6,9 +6,17 @@ CREATE SCHEMA platform;
 
 ALTER SCHEMA platform OWNER TO assetflow_migrator;
 
+CREATE EXTENSION IF NOT EXISTS btree_gist WITH SCHEMA public;
+
+COMMENT ON EXTENSION btree_gist IS 'support for indexing common datatypes in GiST';
+
 CREATE EXTENSION IF NOT EXISTS ltree WITH SCHEMA public;
 
 COMMENT ON EXTENSION ltree IS 'data type for hierarchical tree-like structures';
+
+CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;
+
+COMMENT ON EXTENSION pg_trgm IS 'text similarity measurement and index searching based on trigrams';
 
 CREATE FUNCTION platform.audit_partition_health(base_date timestamp with time zone DEFAULT clock_timestamp()) RETURNS TABLE(healthy boolean, default_rows bigint, next_partition_exists boolean, next_partition_name text, alert boolean)
     LANGUAGE plpgsql SECURITY DEFINER
@@ -145,6 +153,28 @@ $$;
 
 ALTER FUNCTION platform.resolve_organization(p_idp_organization_id text) OWNER TO assetflow_resolver;
 
+CREATE TABLE public.asset_categories (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    parent_id uuid,
+    path public.ltree NOT NULL,
+    code text NOT NULL,
+    name text NOT NULL,
+    tag_prefix text,
+    default_criticality text,
+    responsible_team_id uuid,
+    status text DEFAULT 'active'::text NOT NULL,
+    version integer DEFAULT 1 NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_asset_categories__status CHECK ((status = ANY (ARRAY['active'::text, 'archived'::text]))),
+    CONSTRAINT ck_asset_categories__version CHECK ((version >= 1))
+);
+
+ALTER TABLE ONLY public.asset_categories FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.asset_categories OWNER TO assetflow_migrator;
+
 CREATE TABLE public.audit_events (
     id uuid NOT NULL,
     organization_id uuid NOT NULL,
@@ -201,6 +231,33 @@ ALTER TABLE ONLY public.audit_personal_values FORCE ROW LEVEL SECURITY;
 
 ALTER TABLE public.audit_personal_values OWNER TO assetflow_migrator;
 
+CREATE TABLE public.custom_field_definitions (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    category_id uuid NOT NULL,
+    key text NOT NULL,
+    label text NOT NULL,
+    field_type text NOT NULL,
+    is_required boolean DEFAULT false NOT NULL,
+    rules jsonb DEFAULT '{}'::jsonb NOT NULL,
+    is_unique boolean DEFAULT false NOT NULL,
+    is_encrypted boolean DEFAULT false NOT NULL,
+    "position" integer DEFAULT 0 NOT NULL,
+    status text DEFAULT 'active'::text NOT NULL,
+    version integer DEFAULT 1 NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_custom_field_definitions__field_type CHECK ((field_type = ANY (ARRAY['text'::text, 'number'::text, 'date'::text, 'boolean'::text, 'select'::text, 'multi_select'::text, 'json'::text]))),
+    CONSTRAINT ck_custom_field_definitions__key_format CHECK ((key ~ '^[a-z][a-z0-9_]*$'::text)),
+    CONSTRAINT ck_custom_field_definitions__rules_object CHECK ((jsonb_typeof(rules) = 'object'::text)),
+    CONSTRAINT ck_custom_field_definitions__status CHECK ((status = ANY (ARRAY['active'::text, 'archived'::text]))),
+    CONSTRAINT ck_custom_field_definitions__version CHECK ((version >= 1))
+);
+
+ALTER TABLE ONLY public.custom_field_definitions FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.custom_field_definitions OWNER TO assetflow_migrator;
+
 CREATE TABLE public.locations (
     id uuid NOT NULL,
     organization_id uuid NOT NULL,
@@ -220,6 +277,26 @@ CREATE TABLE public.locations (
 ALTER TABLE ONLY public.locations FORCE ROW LEVEL SECURITY;
 
 ALTER TABLE public.locations OWNER TO assetflow_migrator;
+
+CREATE TABLE public.manufacturers (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    code text,
+    name text NOT NULL,
+    contact jsonb DEFAULT '{}'::jsonb NOT NULL,
+    notes text,
+    status text DEFAULT 'active'::text NOT NULL,
+    version integer DEFAULT 1 NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_manufacturers__contact_object CHECK ((jsonb_typeof(contact) = 'object'::text)),
+    CONSTRAINT ck_manufacturers__status CHECK ((status = ANY (ARRAY['active'::text, 'archived'::text]))),
+    CONSTRAINT ck_manufacturers__version CHECK ((version >= 1))
+);
+
+ALTER TABLE ONLY public.manufacturers FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.manufacturers OWNER TO assetflow_migrator;
 
 CREATE TABLE public.member_org_units (
     id uuid NOT NULL,
@@ -464,6 +541,26 @@ ALTER TABLE ONLY public.role_grants FORCE ROW LEVEL SECURITY;
 
 ALTER TABLE public.role_grants OWNER TO assetflow_migrator;
 
+CREATE TABLE public.suppliers (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    code text,
+    name text NOT NULL,
+    contact jsonb DEFAULT '{}'::jsonb NOT NULL,
+    notes text,
+    status text DEFAULT 'active'::text NOT NULL,
+    version integer DEFAULT 1 NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_suppliers__contact_object CHECK ((jsonb_typeof(contact) = 'object'::text)),
+    CONSTRAINT ck_suppliers__status CHECK ((status = ANY (ARRAY['active'::text, 'archived'::text]))),
+    CONSTRAINT ck_suppliers__version CHECK ((version >= 1))
+);
+
+ALTER TABLE ONLY public.suppliers FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.suppliers OWNER TO assetflow_migrator;
+
 CREATE TABLE public.team_members (
     id uuid NOT NULL,
     organization_id uuid NOT NULL,
@@ -523,6 +620,9 @@ ALTER TABLE public.working_calendars OWNER TO assetflow_migrator;
 
 ALTER TABLE ONLY public.audit_events ATTACH PARTITION public.audit_events_default DEFAULT;
 
+ALTER TABLE ONLY public.asset_categories
+    ADD CONSTRAINT asset_categories_pkey PRIMARY KEY (id);
+
 ALTER TABLE ONLY public.audit_events
     ADD CONSTRAINT uq_audit_events__org_id_id UNIQUE (organization_id, id, created_at);
 
@@ -538,8 +638,14 @@ ALTER TABLE ONLY public.audit_events_default
 ALTER TABLE ONLY public.audit_personal_values
     ADD CONSTRAINT audit_personal_values_pkey PRIMARY KEY (id);
 
+ALTER TABLE ONLY public.custom_field_definitions
+    ADD CONSTRAINT custom_field_definitions_pkey PRIMARY KEY (id);
+
 ALTER TABLE ONLY public.locations
     ADD CONSTRAINT locations_pkey PRIMARY KEY (id);
+
+ALTER TABLE ONLY public.manufacturers
+    ADD CONSTRAINT manufacturers_pkey PRIMARY KEY (id);
 
 ALTER TABLE ONLY public.member_org_units
     ADD CONSTRAINT member_org_units_pkey PRIMARY KEY (id);
@@ -583,20 +689,41 @@ ALTER TABLE ONLY public.processed_events
 ALTER TABLE ONLY public.role_grants
     ADD CONSTRAINT role_grants_pkey PRIMARY KEY (id);
 
+ALTER TABLE ONLY public.suppliers
+    ADD CONSTRAINT suppliers_pkey PRIMARY KEY (id);
+
 ALTER TABLE ONLY public.team_members
     ADD CONSTRAINT team_members_pkey PRIMARY KEY (id);
 
 ALTER TABLE ONLY public.teams
     ADD CONSTRAINT teams_pkey PRIMARY KEY (id);
 
+ALTER TABLE ONLY public.asset_categories
+    ADD CONSTRAINT uq_asset_categories__organization_id_code UNIQUE (organization_id, code);
+
+ALTER TABLE ONLY public.asset_categories
+    ADD CONSTRAINT uq_asset_categories__organization_id_id UNIQUE (organization_id, id);
+
 ALTER TABLE ONLY public.audit_personal_values
     ADD CONSTRAINT uq_audit_personal_values__org_id UNIQUE (organization_id, id);
+
+ALTER TABLE ONLY public.custom_field_definitions
+    ADD CONSTRAINT uq_custom_field_definitions__organization_id_category_id_key UNIQUE (organization_id, category_id, key);
+
+ALTER TABLE ONLY public.custom_field_definitions
+    ADD CONSTRAINT uq_custom_field_definitions__organization_id_id UNIQUE (organization_id, id);
 
 ALTER TABLE ONLY public.locations
     ADD CONSTRAINT uq_locations__org_id_code UNIQUE (organization_id, code);
 
 ALTER TABLE ONLY public.locations
     ADD CONSTRAINT uq_locations__org_id_id UNIQUE (organization_id, id);
+
+ALTER TABLE ONLY public.manufacturers
+    ADD CONSTRAINT uq_manufacturers__organization_id_id UNIQUE (organization_id, id);
+
+ALTER TABLE ONLY public.manufacturers
+    ADD CONSTRAINT uq_manufacturers__organization_id_name UNIQUE (organization_id, name);
 
 ALTER TABLE ONLY public.member_org_units
     ADD CONSTRAINT uq_member_org_units__org_id_id UNIQUE (organization_id, id);
@@ -661,6 +788,12 @@ ALTER TABLE ONLY public.processed_events
 ALTER TABLE ONLY public.role_grants
     ADD CONSTRAINT uq_role_grants__org_id_id UNIQUE (organization_id, id);
 
+ALTER TABLE ONLY public.suppliers
+    ADD CONSTRAINT uq_suppliers__organization_id_id UNIQUE (organization_id, id);
+
+ALTER TABLE ONLY public.suppliers
+    ADD CONSTRAINT uq_suppliers__organization_id_name UNIQUE (organization_id, name);
+
 ALTER TABLE ONLY public.team_members
     ADD CONSTRAINT uq_team_members__org_id_id UNIQUE (organization_id, id);
 
@@ -694,15 +827,25 @@ CREATE INDEX ix_audit_events__organization_id ON ONLY public.audit_events USING 
 
 CREATE INDEX audit_events_default_organization_id_idx ON public.audit_events_default USING btree (organization_id);
 
+CREATE INDEX ix_asset_categories__organization_id_parent_id ON public.asset_categories USING btree (organization_id, parent_id);
+
+CREATE INDEX ix_asset_categories__organization_id_path ON public.asset_categories USING gist (organization_id, path);
+
 CREATE INDEX ix_audit_personal_values__org_event ON public.audit_personal_values USING btree (organization_id, audit_event_id);
 
 CREATE INDEX ix_audit_personal_values__organization_id ON public.audit_personal_values USING btree (organization_id);
+
+CREATE INDEX ix_custom_field_definitions__organization_id_category_id ON public.custom_field_definitions USING btree (organization_id, category_id);
 
 CREATE INDEX ix_locations__organization_id ON public.locations USING btree (organization_id);
 
 CREATE INDEX ix_locations__organization_id_parent ON public.locations USING btree (organization_id, parent_id);
 
 CREATE INDEX ix_locations__path_gist ON public.locations USING gist (path);
+
+CREATE INDEX ix_manufacturers__name_trgm ON public.manufacturers USING gin (name public.gin_trgm_ops);
+
+CREATE INDEX ix_manufacturers__organization_id ON public.manufacturers USING btree (organization_id);
 
 CREATE INDEX ix_member_org_units__organization_id ON public.member_org_units USING btree (organization_id);
 
@@ -754,6 +897,10 @@ CREATE INDEX ix_role_grants__organization_id_role_key ON public.role_grants USIN
 
 CREATE INDEX ix_role_grants__organization_id_team ON public.role_grants USING btree (organization_id, team_id);
 
+CREATE INDEX ix_suppliers__name_trgm ON public.suppliers USING gin (name public.gin_trgm_ops);
+
+CREATE INDEX ix_suppliers__organization_id ON public.suppliers USING btree (organization_id);
+
 CREATE INDEX ix_team_members__organization_id ON public.team_members USING btree (organization_id);
 
 CREATE INDEX ix_team_members__organization_id_member ON public.team_members USING btree (organization_id, member_id);
@@ -776,17 +923,35 @@ ALTER INDEX public.ix_audit_events__organization_id ATTACH PARTITION public.audi
 
 ALTER INDEX public.audit_events_pkey ATTACH PARTITION public.audit_events_default_pkey;
 
+ALTER TABLE ONLY public.asset_categories
+    ADD CONSTRAINT fk_asset_categories__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
+
+ALTER TABLE ONLY public.asset_categories
+    ADD CONSTRAINT fk_asset_categories__parent_id__asset_categories FOREIGN KEY (organization_id, parent_id) REFERENCES public.asset_categories(organization_id, id) ON DELETE RESTRICT;
+
+ALTER TABLE ONLY public.asset_categories
+    ADD CONSTRAINT fk_asset_categories__responsible_team_id__teams FOREIGN KEY (organization_id, responsible_team_id) REFERENCES public.teams(organization_id, id) ON DELETE SET NULL;
+
 ALTER TABLE public.audit_events
     ADD CONSTRAINT fk_audit_events__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
 
 ALTER TABLE ONLY public.audit_personal_values
     ADD CONSTRAINT fk_audit_personal_values__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
 
+ALTER TABLE ONLY public.custom_field_definitions
+    ADD CONSTRAINT fk_custom_field_definitions__category_id__asset_categories FOREIGN KEY (organization_id, category_id) REFERENCES public.asset_categories(organization_id, id) ON DELETE CASCADE;
+
+ALTER TABLE ONLY public.custom_field_definitions
+    ADD CONSTRAINT fk_custom_field_definitions__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
+
 ALTER TABLE ONLY public.locations
     ADD CONSTRAINT fk_locations__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
 
 ALTER TABLE ONLY public.locations
     ADD CONSTRAINT fk_locations__parent_id__locations FOREIGN KEY (organization_id, parent_id) REFERENCES public.locations(organization_id, id) ON DELETE RESTRICT;
+
+ALTER TABLE ONLY public.manufacturers
+    ADD CONSTRAINT fk_manufacturers__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
 
 ALTER TABLE ONLY public.member_org_units
     ADD CONSTRAINT fk_member_org_units__member_id__members FOREIGN KEY (organization_id, member_id) REFERENCES public.members(organization_id, id) ON DELETE CASCADE;
@@ -860,6 +1025,9 @@ ALTER TABLE ONLY public.role_grants
 ALTER TABLE ONLY public.role_grants
     ADD CONSTRAINT fk_role_grants__team_id__teams FOREIGN KEY (organization_id, team_id) REFERENCES public.teams(organization_id, id) ON DELETE CASCADE;
 
+ALTER TABLE ONLY public.suppliers
+    ADD CONSTRAINT fk_suppliers__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
+
 ALTER TABLE ONLY public.team_members
     ADD CONSTRAINT fk_team_members__member_id__members FOREIGN KEY (organization_id, member_id) REFERENCES public.members(organization_id, id) ON DELETE CASCADE;
 
@@ -880,6 +1048,8 @@ ALTER TABLE ONLY public.teams
 
 ALTER TABLE ONLY public.working_calendars
     ADD CONSTRAINT fk_working_calendars__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
+
+ALTER TABLE public.asset_categories ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE public.audit_events ENABLE ROW LEVEL SECURITY;
 
@@ -903,6 +1073,8 @@ CREATE POLICY audit_personal_values_select ON public.audit_personal_values FOR S
 
 CREATE POLICY audit_personal_values_update ON public.audit_personal_values FOR UPDATE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
 
+ALTER TABLE public.custom_field_definitions ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE public.locations ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY locations_delete ON public.locations FOR DELETE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
@@ -912,6 +1084,8 @@ CREATE POLICY locations_insert ON public.locations FOR INSERT WITH CHECK ((organ
 CREATE POLICY locations_select ON public.locations FOR SELECT USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
 
 CREATE POLICY locations_update ON public.locations FOR UPDATE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+ALTER TABLE public.manufacturers ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE public.member_org_units ENABLE ROW LEVEL SECURITY;
 
@@ -1029,6 +1203,38 @@ CREATE POLICY processed_events_select ON public.processed_events FOR SELECT USIN
 
 CREATE POLICY processed_events_update ON public.processed_events FOR UPDATE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
 
+CREATE POLICY rls_asset_categories_delete ON public.asset_categories FOR DELETE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_asset_categories_insert ON public.asset_categories FOR INSERT WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_asset_categories_select ON public.asset_categories FOR SELECT USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_asset_categories_update ON public.asset_categories FOR UPDATE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_custom_field_definitions_delete ON public.custom_field_definitions FOR DELETE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_custom_field_definitions_insert ON public.custom_field_definitions FOR INSERT WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_custom_field_definitions_select ON public.custom_field_definitions FOR SELECT USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_custom_field_definitions_update ON public.custom_field_definitions FOR UPDATE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_manufacturers_delete ON public.manufacturers FOR DELETE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_manufacturers_insert ON public.manufacturers FOR INSERT WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_manufacturers_select ON public.manufacturers FOR SELECT USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_manufacturers_update ON public.manufacturers FOR UPDATE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_suppliers_delete ON public.suppliers FOR DELETE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_suppliers_insert ON public.suppliers FOR INSERT WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_suppliers_select ON public.suppliers FOR SELECT USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_suppliers_update ON public.suppliers FOR UPDATE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
 ALTER TABLE public.role_grants ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY role_grants_delete ON public.role_grants FOR DELETE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
@@ -1038,6 +1244,8 @@ CREATE POLICY role_grants_insert ON public.role_grants FOR INSERT WITH CHECK ((o
 CREATE POLICY role_grants_select ON public.role_grants FOR SELECT USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
 
 CREATE POLICY role_grants_update ON public.role_grants FOR UPDATE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+ALTER TABLE public.suppliers ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE public.team_members ENABLE ROW LEVEL SECURITY;
 
@@ -1098,6 +1306,10 @@ GRANT ALL ON FUNCTION platform.maintain_audit_partitions(base_date timestamp wit
 REVOKE ALL ON FUNCTION platform.resolve_organization(p_idp_organization_id text) FROM PUBLIC;
 GRANT ALL ON FUNCTION platform.resolve_organization(p_idp_organization_id text) TO assetflow_api;
 
+GRANT SELECT,INSERT,UPDATE ON TABLE public.asset_categories TO assetflow_api;
+GRANT SELECT ON TABLE public.asset_categories TO assetflow_worker;
+GRANT SELECT ON TABLE public.asset_categories TO assetflow_readonly;
+
 GRANT SELECT,INSERT ON TABLE public.audit_events TO assetflow_api;
 GRANT SELECT,INSERT ON TABLE public.audit_events TO assetflow_worker;
 GRANT SELECT ON TABLE public.audit_events TO assetflow_readonly;
@@ -1106,9 +1318,17 @@ GRANT SELECT,INSERT,DELETE ON TABLE public.audit_personal_values TO assetflow_ap
 GRANT SELECT,DELETE ON TABLE public.audit_personal_values TO assetflow_worker;
 GRANT SELECT ON TABLE public.audit_personal_values TO assetflow_readonly;
 
+GRANT SELECT,INSERT,UPDATE ON TABLE public.custom_field_definitions TO assetflow_api;
+GRANT SELECT ON TABLE public.custom_field_definitions TO assetflow_worker;
+GRANT SELECT ON TABLE public.custom_field_definitions TO assetflow_readonly;
+
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.locations TO assetflow_api;
 GRANT SELECT ON TABLE public.locations TO assetflow_worker;
 GRANT SELECT ON TABLE public.locations TO assetflow_readonly;
+
+GRANT SELECT,INSERT,UPDATE ON TABLE public.manufacturers TO assetflow_api;
+GRANT SELECT ON TABLE public.manufacturers TO assetflow_worker;
+GRANT SELECT ON TABLE public.manufacturers TO assetflow_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.member_org_units TO assetflow_api;
 GRANT SELECT ON TABLE public.member_org_units TO assetflow_worker;
@@ -1179,6 +1399,10 @@ GRANT SELECT ON TABLE public.processed_events TO assetflow_readonly;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.role_grants TO assetflow_api;
 GRANT SELECT ON TABLE public.role_grants TO assetflow_worker;
 GRANT SELECT ON TABLE public.role_grants TO assetflow_readonly;
+
+GRANT SELECT,INSERT,UPDATE ON TABLE public.suppliers TO assetflow_api;
+GRANT SELECT ON TABLE public.suppliers TO assetflow_worker;
+GRANT SELECT ON TABLE public.suppliers TO assetflow_readonly;
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.team_members TO assetflow_api;
 GRANT SELECT ON TABLE public.team_members TO assetflow_worker;
