@@ -248,6 +248,7 @@ CREATE TABLE public.assets (
     version integer DEFAULT 1 NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    idempotency_key text,
     CONSTRAINT ck_assets__custom_fields_object CHECK ((jsonb_typeof(custom_fields) = 'object'::text)),
     CONSTRAINT ck_assets__encrypted_fields_object CHECK ((jsonb_typeof(encrypted_fields) = 'object'::text)),
     CONSTRAINT ck_assets__one_holder CHECK ((num_nonnulls(holder_member_id, holder_team_id, holder_location_id) <= 1)),
@@ -1170,6 +1171,8 @@ CREATE INDEX ix_teams__organization_id_owning_org_unit ON public.teams USING btr
 CREATE INDEX ix_working_calendars__organization_id ON public.working_calendars USING btree (organization_id);
 
 CREATE UNIQUE INDEX uq_asset_components__organization_id_child_asset_id ON public.asset_components USING btree (organization_id, child_asset_id) WHERE (detached_at IS NULL);
+
+CREATE UNIQUE INDEX uq_assets__organization_id_idempotency_key ON public.assets USING btree (organization_id, idempotency_key) WHERE (idempotency_key IS NOT NULL);
 
 ALTER INDEX public.ix_audit_events__organization_id_created ATTACH PARTITION public.audit_events_default_organization_id_created_at_idx;
 

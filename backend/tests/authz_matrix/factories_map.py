@@ -22,6 +22,7 @@ PATH_PARAM_DEFAULTS: dict[str, str] = {
     "field_id": DEFAULT_UUID,
     "manufacturer_id": DEFAULT_UUID,
     "supplier_id": DEFAULT_UUID,
+    "asset_id": DEFAULT_UUID,
 }
 
 REQUIRED_QUERY_PARAMS: dict[str, dict[str, Any]] = {
@@ -86,6 +87,11 @@ DEFAULT_PAYLOADS: dict[tuple[str, str], dict[str, Any]] = {
         "version": 1,
     },
     ("POST", "/api/v1/asset-categories/{category_id}/custom-fields/{field_id}/archive"): {"version": 1},
+    ("POST", "/api/v1/assets"): {
+        "name": "Test Asset",
+        "category_id": DEFAULT_UUID,
+        "owner_org_unit_id": DEFAULT_UUID,
+    },
     ("POST", "/api/v1/manufacturers"): {"name": "Test Manufacturer"},
     ("PATCH", "/api/v1/manufacturers/{manufacturer_id}"): {"name": "Updated Manufacturer", "version": 1},
     ("POST", "/api/v1/manufacturers/{manufacturer_id}/archive"): {"version": 1},

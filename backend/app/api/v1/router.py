@@ -24,10 +24,12 @@ from app.api.v1.role_grants import router as role_grants_router
 from app.api.v1.teams import router as teams_router
 from app.core.envelope import success_response
 from app.modules.assets.catalog.router import router as asset_catalog_router
+from app.modules.assets.router import router as assets_router
 
 router = APIRouter()
 router.include_router(audit_router)
 router.include_router(asset_catalog_router)
+router.include_router(assets_router)
 router.include_router(org_units_router)
 router.include_router(locations_router)
 router.include_router(teams_router)
