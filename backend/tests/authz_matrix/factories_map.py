@@ -92,6 +92,7 @@ DEFAULT_PAYLOADS: dict[tuple[str, str], dict[str, Any]] = {
         "category_id": DEFAULT_UUID,
         "owner_org_unit_id": DEFAULT_UUID,
     },
+    ("PATCH", "/api/v1/assets/{asset_id}"): {"name": "Updated Asset", "version": 1},
     ("POST", "/api/v1/manufacturers"): {"name": "Test Manufacturer"},
     ("PATCH", "/api/v1/manufacturers/{manufacturer_id}"): {"name": "Updated Manufacturer", "version": 1},
     ("POST", "/api/v1/manufacturers/{manufacturer_id}/archive"): {"version": 1},

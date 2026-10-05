@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 TinyPhi
 # SPDX-License-Identifier: AGPL-3.0-only
-"""Asset API: create (§B8.1, M2.1-T5, P8-07). Later parts add edit/detail/list/saved-views here.
+"""Asset API: create, edit, detail (§B8.1, M2.1-T5, P8-07). Later parts add list/saved-views here.
 Every route needs the `assets` module installed."""
 
 from __future__ import annotations
@@ -8,7 +8,8 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
+from fastapi.responses import JSONResponse
 
 from app.api.deps import permission_extra, require_module
 from app.core.envelope import success_response
@@ -16,8 +17,8 @@ from app.core.permissions import ScopeType
 from app.core.problems import UnauthorizedError
 from app.core.scope import MemberContext, RoleGrant
 from app.modules.assets import service
-from app.modules.assets.permissions import CREATE_PERMISSION
-from app.modules.assets.schemas import AssetCreate
+from app.modules.assets.permissions import CREATE_PERMISSION, READ_PERMISSION, UPDATE_PERMISSION
+from app.modules.assets.schemas import AssetCreate, AssetUpdate
 
 router = APIRouter(prefix="/assets", tags=["assets"], dependencies=[Depends(require_module("assets"))])
 
@@ -88,3 +89,37 @@ async def create_asset_route(request: Request, body: AssetCreate) -> dict[str, A
     return success_response(
         data=asset.model_dump(mode="json"), request_id=_request_id(request), status_code=201
     )
+
+
+@router.patch("/{asset_id}", summary="Edit an asset", openapi_extra=permission_extra(UPDATE_PERMISSION))
+async def update_asset_route(request: Request, asset_id: UUID, body: AssetUpdate) -> dict[str, Any]:
+    member = _resolve_member(request)
+    pool = request.app.state.pool
+    asset = await service.update_asset(
+        pool,
+        organization_id=UUID(member.organization_id),
+        caller=member,
+        secrets_provider=_secrets_provider(request),
+        asset_id=asset_id,
+        data=body,
+        request_id=_request_id(request),
+    )
+    return success_response(data=asset.model_dump(mode="json"), request_id=_request_id(request))
+
+
+@router.get("/{asset_id}", summary="Get an asset", openapi_extra=permission_extra(READ_PERMISSION))
+async def get_asset_route(request: Request, asset_id: UUID) -> Response:
+    member = _resolve_member(request)
+    pool = request.app.state.pool
+    asset = await service.get_asset(
+        pool,
+        organization_id=UUID(member.organization_id),
+        caller=member,
+        secrets_provider=_secrets_provider(request),
+        asset_id=asset_id,
+    )
+    etag = f'"{asset.version}"'
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers={"ETag": etag})
+    body = success_response(data=asset.model_dump(mode="json"), request_id=_request_id(request))
+    return JSONResponse(body, headers={"ETag": etag})
