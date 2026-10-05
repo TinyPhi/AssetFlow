@@ -262,3 +262,124 @@ describe("AssetsPage cursor pages", () => {
   });
 });
 
+describe("AssetsPage saved views", () => {
+  const view = {
+    id: "v1",
+    name: "My repairs",
+    query: { status: ["repair"], criticality: ["high"] },
+    sort: "name",
+    columns: ["tag", "name"],
+    version: 1,
+  };
+
+  it("applying a view rewrites the URL and the request", async () => {
+    listHandler(() => ({ items: [asset(1)], next_cursor: null, total: null }));
+    server.use(http.get("/api/v1/asset-saved-views", () => HttpResponse.json(envelope({ items: [view] }))));
+    renderPage();
+    await screen.findByRole("link", { name: "Asset 1" });
+    await userEvent.click(screen.getByRole("button", { name: t("assets.views.menu") }));
+    await userEvent.click(await screen.findByRole("button", { name: "My repairs" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("url")).toHaveTextContent("?status=repair&criticality=high&sort=name");
+    });
+    await waitFor(() => {
+      const last = requests[requests.length - 1];
+      expect(last?.searchParams.getAll("status")).toEqual(["repair"]);
+    });
+    // the view's columns replace the table's
+    expect(screen.queryByRole("columnheader", { name: t("assets.columns.status") })).not.toBeInTheDocument();
+  });
+
+  it("saves the current view with its filters, sort and columns", async () => {
+    listHandler(() => ({ items: [asset(1)], next_cursor: null, total: null }));
+    let body: unknown = null;
+    server.use(
+      http.post("/api/v1/asset-saved-views", async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json(envelope({ ...view, id: "v2" }), { status: 201 });
+      }),
+    );
+    renderPage("/assets?status=repair&sort=-name");
+    await screen.findByRole("link", { name: "Asset 1" });
+    await userEvent.click(screen.getByRole("button", { name: t("assets.views.menu") }));
+    await userEvent.type(screen.getByRole("textbox", { name: t("assets.views.name_label") }), "Mine");
+    await userEvent.click(screen.getByRole("button", { name: t("assets.views.save_current") }));
+    await waitFor(() => {
+      expect(body).toEqual({
+        name: "Mine",
+        query: { status: ["repair"] },
+        sort: "-name",
+        columns: ["tag", "name", "status", "category_name", "holder", "owner_org_unit_name"],
+      });
+    });
+  });
+
+  it("renames and deletes a view (delete asks to confirm)", async () => {
+    listHandler(() => ({ items: [asset(1)], next_cursor: null, total: null }));
+    let patched: unknown = null;
+    let deleted = false;
+    server.use(
+      http.get("/api/v1/asset-saved-views", () => HttpResponse.json(envelope({ items: [view] }))),
+      http.patch("/api/v1/asset-saved-views/v1", async ({ request }) => {
+        patched = await request.json();
+        return HttpResponse.json(envelope({ ...view, name: "Renamed", version: 2 }));
+      }),
+      http.delete("/api/v1/asset-saved-views/v1", () => {
+        deleted = true;
+        return HttpResponse.json(envelope({ id: "v1" }));
+      }),
+    );
+    renderPage();
+    await screen.findByRole("link", { name: "Asset 1" });
+    await userEvent.click(screen.getByRole("button", { name: t("assets.views.menu") }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: t("assets.views.rename_named", { name: "My repairs" }) }),
+    );
+    const input = screen.getByRole("textbox", { name: t("assets.views.rename_label") });
+    await userEvent.clear(input);
+    await userEvent.type(input, "Renamed");
+    await userEvent.click(screen.getByRole("button", { name: t("assets.views.rename_save") }));
+    await waitFor(() => {
+      expect(patched).toEqual({ version: 1, name: "Renamed" });
+    });
+    await userEvent.click(
+      await screen.findByRole("button", { name: t("assets.views.delete_named", { name: "My repairs" }) }),
+    );
+    expect(deleted).toBe(false);
+    await userEvent.click(
+      screen.getByRole("button", { name: t("assets.views.delete_confirm", { name: "My repairs" }) }),
+    );
+    await waitFor(() => {
+      expect(deleted).toBe(true);
+    });
+  });
+});
+
+describe("AssetsPage layout", () => {
+  it("shows cards, not a table, on a narrow viewport", async () => {
+    setViewport(false);
+    listHandler(() => ({
+      items: [asset(1, { holder: { type: "member", id: "m1", display_name: "Ada Lovelace" } })],
+      next_cursor: null,
+      total: null,
+    }));
+    renderPage();
+    const list = await screen.findByRole("list", { name: t("assets.list.cards_label") });
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    const card = within(list).getByRole("listitem");
+    expect(within(card).getByText("AST-0001")).toBeInTheDocument();
+    expect(within(card).getByRole("link", { name: "Asset 1" })).toBeInTheDocument();
+    expect(within(card).getByText("In service")).toBeInTheDocument();
+    expect(within(card).getByText(/Ada Lovelace/)).toBeInTheDocument();
+    expect(within(card).getByText("Plant A")).toBeInTheDocument();
+    // narrow screens sort through a select instead of column headings
+    expect(screen.getByRole("combobox", { name: t("assets.sort.label") })).toBeInTheDocument();
+  });
+
+  it("shows the table with the member's columns on a wide viewport", async () => {
+    listHandler(() => ({ items: [asset(1)], next_cursor: null, total: null }));
+    renderPage();
+    await screen.findByRole("table");
+    expect(screen.getAllByRole("columnheader")).toHaveLength(6);
+  });
+});

@@ -80,7 +80,7 @@ describe("RequireModule", () => {
 
   it("shows the screen when the module is installed and the permission held", async () => {
     renderApp("/assets", { me: { permissions: [ASSET_READ], installed_modules: ["assets"] } });
-    expect(await screen.findByRole("heading", { name: t("nav.items.assets") })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: t("assets.list.title") })).toBeInTheDocument();
   });
 
   it("checks the module before the permission it wraps, so neither alone is enough", async () => {

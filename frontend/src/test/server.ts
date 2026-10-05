@@ -57,4 +57,9 @@ export const server = setupServer(
   http.get("/api/v1/locations", () => HttpResponse.json(envelope([]))),
   http.get("/api/v1/members", () => HttpResponse.json([])),
   http.get("/api/v1/modules", () => HttpResponse.json([])),
+  http.get("/api/v1/assets", () =>
+    HttpResponse.json(envelope({ items: [], next_cursor: null, total: null })),
+  ),
+  http.get("/api/v1/asset-saved-views", () => HttpResponse.json(envelope({ items: [] }))),
+  http.get("/api/v1/asset-categories", () => HttpResponse.json(envelope({ items: [], next_cursor: null }))),
 );
