@@ -6,6 +6,7 @@ import type React from "react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { DataTable, EmptyState, ErrorState, Skeleton, type Column } from "@/components/ui";
+import { apiFetch } from "@/lib/api";
 import { t } from "@/lib/i18n";
 import { can, useMe } from "@/lib/permissions";
 
@@ -30,12 +31,8 @@ export const MembersPage: React.FC = () => {
     setLoading(true);
     setError(null);
     const query = search ? `?search=${encodeURIComponent(search)}` : "";
-    fetch(`/api/v1/members${query}`)
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to load members");
-        return res.json();
-      })
-      .then((data: MemberItem[]) => {
+    apiFetch<MemberItem[]>(`/members${query}`)
+      .then((data) => {
         setMembers(data.length > 0 ? data : [
           { id: "member-1", display_name: "Ada Lovelace", email: "ada.lovelace@example.org", status: "active" },
           { id: "member-2", display_name: "Alan Turing", email: "alan.turing@example.org", status: "active" },

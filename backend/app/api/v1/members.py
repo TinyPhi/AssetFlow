@@ -7,10 +7,12 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from app.api.deps import get_db, permission_extra, require_member
+from app.api.v1.caller import request_id
+from app.core.envelope import success_response
 from app.core.problems import NotFoundError, ProblemError
 from app.core.scope import MemberContext, default_scope_resolver
 from app.modules.organization.profile import effective_permissions
@@ -55,8 +57,9 @@ class MemberAccessResponse(BaseModel):
     permissions: list[dict[str, Any]]
 
 
-@router.get("", response_model=list[MemberSummary], openapi_extra=permission_extra("member.read"))
+@router.get("", openapi_extra=permission_extra("member.read"))
 async def list_members(
+    request: Request,
     cursor: str | None = None,
     limit: int = Query(50, ge=1, le=100),
     search: str | None = None,
@@ -65,10 +68,10 @@ async def list_members(
     status: str | None = None,
     member_ctx: MemberContext = Depends(require_member("member.read")),
     conn: Any = Depends(get_db),
-) -> list[MemberSummary]:
+) -> dict[str, Any]:
     scope_filter = default_scope_resolver.resolve_scope_filter(member_ctx, "member.read")
     if scope_filter.is_empty:
-        return []
+        return success_response(data=[], request_id=request_id(request))
 
     clauses = ["m.organization_id = $1"]
     args: list[Any] = [UUID(member_ctx.organization_id)]
@@ -91,24 +94,24 @@ async def list_members(
 
     args.append(limit)
     sql = f"""
-        SELECT m.id, m.display_name, m.email, m.phone, m.status, m.is_suspended
+        SELECT m.id, m.display_name, m.email, m.status
         FROM public.members m
         WHERE {' AND '.join(clauses)}
         ORDER BY m.display_name ASC
         LIMIT ${len(args)}
     """
     rows = await conn.fetch(sql, *args)
-    return [
+    members = [
         MemberSummary(
             id=str(r["id"]),
             display_name=r["display_name"],
             email=r["email"],
-            phone=r["phone"],
             status=r["status"],
-            is_suspended=r["is_suspended"],
+            is_suspended=r["status"] == "suspended",
         )
         for r in rows
     ]
+    return success_response(data=[m.model_dump(mode="json") for m in members], request_id=request_id(request))
 
 
 @router.get("/{member_id}", response_model=MemberProfileResponse, openapi_extra=permission_extra("member.read"))

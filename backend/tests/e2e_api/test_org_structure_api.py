@@ -354,3 +354,23 @@ async def test_teams_and_membership_lifecycle(client: httpx.AsyncClient, make_po
     assert res.status_code == 200
     archived_team = res.json()["data"]
     assert archived_team["status"] == "archived"
+
+
+# ==============================================================================
+# Members list
+# ==============================================================================
+
+
+async def test_member_list_answers_with_the_success_envelope(
+    client: httpx.AsyncClient, make_pool: PoolFactory
+) -> None:
+    pool = await make_pool("api")
+    org_id, admin_id, _ = await _create_org(pool)
+
+    res = await client.get("/api/v1/members?search=Admin", headers=_admin_headers(org_id, admin_id))
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "success"
+    assert [m["display_name"] for m in body["data"]] == ["Admin User"]
+    assert body["data"][0]["id"] == str(admin_id)
