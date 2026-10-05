@@ -8,11 +8,13 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from app.core.problems import FieldError
+from app.core.problems import FieldError, ValidationFailedError
 from app.modules.assets.custom_fields import (
     MAX_JSON_BYTES,
     MAX_TEXT_LENGTH,
+    CleanValues,
     CustomFieldDefinition,
+    refuse_encrypted_field_filter,
     validate_custom_fields,
 )
 from app.modules.assets.errors import CustomFieldValidationError
@@ -318,3 +320,22 @@ def test_text_valid_output_always_revalidates(value: str) -> None:
 
 
 # --------------------------------------------------------------------------- encrypted filtering
+
+
+def test_refuse_encrypted_field_filter_raises_on_a_match() -> None:
+    with pytest.raises(ValidationFailedError) as exc:
+        refuse_encrypted_field_filter("ssn", encrypted_keys={"ssn", "other"}, where="query.filter.ssn")
+    assert exc.value.errors is not None
+    assert exc.value.errors[0].field == "query.filter.ssn"
+    assert exc.value.code == "validation.invalid_field"
+
+
+def test_refuse_encrypted_field_filter_passes_a_non_encrypted_key() -> None:
+    refuse_encrypted_field_filter("model", encrypted_keys={"ssn"}, where="query.filter.model")
+
+
+def test_clean_values_defaults_are_independent_between_instances() -> None:
+    # A dataclass field(default_factory=dict) must not share state between instances.
+    a, b = CleanValues(), CleanValues()
+    a.plain["x"] = 1
+    assert "x" not in b.plain
