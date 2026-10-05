@@ -175,21 +175,25 @@ V4.1.1:
   status: met
   test: backend/tests/authz_matrix/test_matrix.py
 V4.1.2:
-  code: backend/app/core/scope.py
+  code: backend/app/core/scope.py, backend/app/modules/assets/access.py
   control: "\xA7C4.9: Negative authorization matrix asserting 403/404 on permission\
     \ denial"
   status: met
-  test: backend/tests/authz_matrix/test_matrix.py::test_authorization_matrix_all_roles
+  test: backend/tests/authz_matrix/test_matrix.py::test_authorization_matrix_all_roles,
+    backend/tests/scope/test_assets_scope.py
 V4.2.1:
   code: backend/app/core/db.py
   control: "\xA7B5.1, \xA7C4.8: Tenant isolation enforced in SQL via RLS and tenant_transaction"
   status: met
   test: backend/tests/isolation/test_organizations_isolation.py
 V4.2.2:
-  code: backend/app/core/problems.py
-  control: "\xA7C5.4 rule 5: Out-of-scope reads return 404 to prevent resource enumeration"
+  code: backend/app/core/problems.py, backend/app/modules/assets/service.py, backend/app/modules/assets/access.py
+  control: "\xA7C5.4 rule 5, \xA7C4.5: Out-of-scope reads return 404 to prevent resource\
+    \ enumeration; out-of-scope writes answer 403 scope.denied (asset detail, edit,\
+    \ change-status, components checked on the loaded record)"
   status: met
-  test: backend/tests/authz_matrix/test_matrix.py
+  test: backend/tests/scope/test_assets_scope.py, backend/tests/integration/test_asset_status_change.py,
+    backend/tests/e2e_api/test_m21_catalog_acceptance.py
 V4.3.1:
   code: backend/app/api/deps.py
   control: "\xA7C5.4 rule 6: Platform separation: org admin cannot access platform\
@@ -202,11 +206,14 @@ V5.1.1:
   status: met
   test: backend/tests/unit/
 V5.1.2:
-  code: backend/app/modules/*/schemas.py
-  control: "\xA7C4.4: Pydantic models with min/max length, regex constraints, and\
-    \ extra='forbid'"
+  code: backend/app/modules/*/schemas.py, backend/app/modules/assets/custom_fields.py
+  control: "\xA7C4.4, \xA7B8.1: Pydantic models with min/max length, regex constraints\
+    \ and extra='forbid'; custom field values validated against their definition (7\
+    \ types; required, min, max, regex, options, size, unknown key refused) before\
+    \ any write"
   status: met
-  test: backend/tests/unit/test_schemas.py
+  test: backend/tests/unit/test_schemas.py, backend/tests/unit/test_custom_fields.py,
+    backend/tests/e2e_api/test_m21_catalog_acceptance.py
 V5.2.1:
   code: deploy/nginx/default.conf, frontend/src/
   control: "\xA7C7.1: React automated contextual output escaping and CSP headers"
@@ -215,14 +222,19 @@ V5.2.1:
 V5.3.1:
   code: backend/app/modules/*/service.py
   control: "\xA7C4.7: AsyncPG parameterized queries ($1, $2) exclusively, zero string\
-    \ formatting in SQL"
+    \ formatting in SQL; custom field list filters bind the field key as a parameter"
   status: met
-  test: make test-backend
+  test: make test-backend, backend/tests/integration/test_assets_list.py (injection
+    attempt refused)
 V6.1.1:
-  code: backend/app/providers/secrets/openbao.py, backend/app/providers/secrets/file.py
-  control: "\xA7B6.2: Field-level encryption using AEAD ciphers"
+  code: backend/app/providers/secrets/openbao.py, backend/app/providers/secrets/file.py,
+    backend/app/modules/assets/sensitive.py
+  control: "\xA7B6.2, \xA7B8.1: Field-level encryption using AEAD ciphers; asset encrypted\
+    \ custom fields encrypted in one provider call per write, absent from lists and\
+    \ views, decrypted only for asset.read_sensitive"
   status: met
-  test: backend/tests/contract/secrets/test_secrets_contract.py
+  test: backend/tests/contract/secrets/test_secrets_contract.py, backend/tests/integration/test_asset_sensitive_fields.py,
+    backend/tests/e2e_api/test_m21_catalog_acceptance.py
 V6.2.1:
   code: deploy/openbao/, deploy/compose.full.yml
   control: "\xA7B11.4: OpenBao Vault for dynamic secret and transit key management"
