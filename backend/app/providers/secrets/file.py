@@ -105,7 +105,7 @@ class FileSecretsProvider(SecretsProvider):
         if value is None and self._allow_env:
             value = os.environ.get(env_var_name(area, name, key))
         if value is None:
-            logger.warning("secrets.file.missing", extra={"secret_ref": ref})
+            logger.warning("secrets.file.missing", extra={"area": area, "name": name})
             raise SecretsUnavailableError("A required secret is not available.")
         return value
 
@@ -116,7 +116,10 @@ class FileSecretsProvider(SecretsProvider):
             raise SecretsUnavailableError("A secret reference is malformed.")
         values = await asyncio.to_thread(self._read_map, match.group("area"), match.group("name"))
         if not values:
-            logger.warning("secrets.file.missing", extra={"secret_ref": path})
+            logger.warning(
+                "secrets.file.missing",
+                extra={"area": match.group("area"), "name": match.group("name")},
+            )
             raise SecretsUnavailableError("A required secret is not available.")
         return values
 

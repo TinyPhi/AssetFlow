@@ -8,6 +8,7 @@ rotation, and secure logout.
 
 from __future__ import annotations
 
+import html
 from typing import Any
 from uuid import UUID
 
@@ -197,6 +198,8 @@ async def mock_authorize(
     code_challenge: str = "",
 ) -> HTMLResponse:
     """Development mock login selection page."""
+    safe_redirect_uri = html.escape(redirect_uri, quote=True)
+    safe_state = html.escape(state, quote=True)
     html_content = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -248,11 +251,11 @@ async def mock_authorize(
         <p style="color: #94a3b8; font-size: 0.85rem;">
             Select a mock identity to sign into the development web shell:
         </p>
-        <a class="user-btn" href="{redirect_uri}?code=demo-admin&state={state}">
+        <a class="user-btn" href="{safe_redirect_uri}?code=demo-admin&state={safe_state}">
             <div class="name">Ada Lovelace (Org Admin)</div>
             <div class="email">ada.lovelace@example.org</div>
         </a>
-        <a class="user-btn" href="{redirect_uri}?code=demo-member&state={state}">
+        <a class="user-btn" href="{safe_redirect_uri}?code=demo-member&state={safe_state}">
             <div class="name">Alan Turing (Member)</div>
             <div class="email">alan.turing@example.org</div>
         </a>
