@@ -4,7 +4,10 @@
 import type { RouteObject } from "react-router";
 import { RequireModule, RequirePermission } from "@/app/guards";
 
-/** `/assets`: the asset list, behind `asset.read` and the installed `assets` module; its code loads on first visit. */
+/**
+ * The asset screens, each behind its permission and the installed `assets` module; their code loads on first
+ * visit. `assets/new` is declared before `assets/:id` (React Router ranks it first either way).
+ */
 export const assetRoutes: RouteObject[] = [
   {
     path: "assets",
@@ -15,6 +18,21 @@ export const assetRoutes: RouteObject[] = [
           <RequirePermission permission="asset.read">
             <RequireModule module="assets">
               <AssetsPage />
+            </RequireModule>
+          </RequirePermission>
+        ),
+      };
+    },
+  },
+  {
+    path: "assets/new",
+    lazy: async () => {
+      const { NewAssetPage } = await import("./pages/NewAssetPage");
+      return {
+        element: (
+          <RequirePermission permission="asset.create">
+            <RequireModule module="assets">
+              <NewAssetPage />
             </RequireModule>
           </RequirePermission>
         ),

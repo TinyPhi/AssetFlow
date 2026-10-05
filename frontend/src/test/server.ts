@@ -60,6 +60,9 @@ export const server = setupServer(
   http.get("/api/v1/assets", () =>
     HttpResponse.json(envelope({ items: [], next_cursor: null, total: null })),
   ),
+  http.get("/api/v1/assets/vocabulary", () =>
+    HttpResponse.json(envelope({ statuses: [], criticality: ["low", "medium", "high", "critical"] })),
+  ),
   http.get("/api/v1/asset-saved-views", () => HttpResponse.json(envelope({ items: [] }))),
   http.get("/api/v1/asset-categories", () => HttpResponse.json(envelope({ items: [], next_cursor: null }))),
 );
