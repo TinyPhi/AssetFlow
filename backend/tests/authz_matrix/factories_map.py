@@ -18,6 +18,10 @@ PATH_PARAM_DEFAULTS: dict[str, str] = {
     "delivery_id": DEFAULT_UUID,
     "notification_id": DEFAULT_UUID,
     "grant_id": DEFAULT_UUID,
+    "category_id": DEFAULT_UUID,
+    "field_id": DEFAULT_UUID,
+    "manufacturer_id": DEFAULT_UUID,
+    "supplier_id": DEFAULT_UUID,
 }
 
 REQUIRED_QUERY_PARAMS: dict[str, dict[str, Any]] = {
@@ -65,6 +69,29 @@ DEFAULT_PAYLOADS: dict[tuple[str, str], dict[str, Any]] = {
         "code": "demo-admin",
         "redirect_uri": "http://localhost:5173/auth/callback",
     },
+    ("POST", "/api/v1/asset-categories"): {"code": "cat-1", "name": "Test Category"},
+    ("PATCH", "/api/v1/asset-categories/{category_id}"): {"name": "Updated Category", "version": 1},
+    ("POST", "/api/v1/asset-categories/{category_id}/move"): {
+        "new_parent_id": TARGET_MEMBER_UUID,
+        "version": 1,
+    },
+    ("POST", "/api/v1/asset-categories/{category_id}/archive"): {"version": 1},
+    ("POST", "/api/v1/asset-categories/{category_id}/custom-fields"): {
+        "key": "test_field",
+        "label": "Test Field",
+        "field_type": "text",
+    },
+    ("PATCH", "/api/v1/asset-categories/{category_id}/custom-fields/{field_id}"): {
+        "label": "Updated Field",
+        "version": 1,
+    },
+    ("POST", "/api/v1/asset-categories/{category_id}/custom-fields/{field_id}/archive"): {"version": 1},
+    ("POST", "/api/v1/manufacturers"): {"name": "Test Manufacturer"},
+    ("PATCH", "/api/v1/manufacturers/{manufacturer_id}"): {"name": "Updated Manufacturer", "version": 1},
+    ("POST", "/api/v1/manufacturers/{manufacturer_id}/archive"): {"version": 1},
+    ("POST", "/api/v1/suppliers"): {"name": "Test Supplier"},
+    ("PATCH", "/api/v1/suppliers/{supplier_id}"): {"name": "Updated Supplier", "version": 1},
+    ("POST", "/api/v1/suppliers/{supplier_id}/archive"): {"version": 1},
 }
 
 

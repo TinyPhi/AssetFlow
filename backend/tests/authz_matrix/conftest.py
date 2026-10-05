@@ -117,6 +117,20 @@ class DoubleConn:
                     "allowed_hosts": [],
                     "allow_personal_data": False,
                     "read_at": None,
+                    "tag_prefix": None,
+                    "default_criticality": None,
+                    "responsible_team_id": None,
+                    "category_id": UUID(TEST_MEMBER_ID),
+                    "key": "test_field",
+                    "label": "Test Field",
+                    "field_type": "text",
+                    "is_required": False,
+                    "rules": {},
+                    "is_unique": False,
+                    "is_encrypted": False,
+                    "position": 0,
+                    "contact": {},
+                    "notes": None,
                 }
             )
         ]
@@ -178,6 +192,20 @@ class DoubleConn:
                 "valid_to": None,
                 "created_at": now,
                 "updated_at": now,
+                "tag_prefix": None,
+                "default_criticality": None,
+                "responsible_team_id": None,
+                "category_id": UUID(TEST_MEMBER_ID),
+                "key": "test_field",
+                "label": "Test Field",
+                "field_type": "text",
+                "is_required": False,
+                "rules": {},
+                "is_unique": False,
+                "is_encrypted": False,
+                "position": 0,
+                "contact": {},
+                "notes": None,
             }
         )
 
@@ -187,6 +215,10 @@ class DoubleConn:
             return UUID(TEST_ORG_ID)
         if "settings" in q_lower:
             return "{}"
+        if "organization_modules" in q_lower:
+            # `is_module_installed`'s own query selects `status`, not a boolean; the real check is
+            # `status == "installed"` (app.modules.organization.modules.is_module_installed).
+            return "installed"
         if "is_module_installed" in q_lower or "installed" in q_lower:
             return True
         return 1

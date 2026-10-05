@@ -6,6 +6,7 @@ audit+outbox, isolation and seed idempotency, all against a real disposable Post
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 from uuid import UUID, uuid4
 
@@ -259,6 +260,101 @@ async def test_custom_field_definition_create_validation_and_lifecycle(
         f"/api/v1/asset-categories/{category_id}/custom-fields/{field['id']}/archive",
         json={"version": 2},
         headers=headers,
+    )
+    assert archive_res.status_code == 200
+    assert archive_res.json()["data"]["status"] == "archived"
+
+
+async def test_custom_field_type_change_refused_once_asset_has_value(
+    client: httpx.AsyncClient, make_pool: PoolFactory
+) -> None:
+    pool = await make_pool("api")
+    org_id = await _create_org(pool)
+    headers = _headers(org_id)
+    category_res = await client.post(
+        "/api/v1/asset-categories", json={"code": "computer", "name": "Computers"}, headers=headers
+    )
+    category_id = category_res.json()["data"]["id"]
+    field_res = await client.post(
+        f"/api/v1/asset-categories/{category_id}/custom-fields",
+        json={"key": "serial", "label": "Serial", "field_type": "text"},
+        headers=headers,
+    )
+    field_id = field_res.json()["data"]["id"]
+
+    # Simulate an asset already storing a value for this field key.
+    async with tenant_transaction(pool, org_id) as conn:
+        org_unit_id = await conn.fetchval(
+            "SELECT id FROM public.org_units WHERE organization_id = $1 LIMIT 1", org_id
+        )
+        if org_unit_id is None:
+            org_unit_id = uuid4()
+            await conn.execute(
+                "INSERT INTO public.org_units"
+                " (id, organization_id, parent_id, path, type, code, name, status, version) "
+                "VALUES ($1, $2, NULL, 'root'::ltree, 'root', 'root', 'Root', 'active', 1)",
+                org_unit_id,
+                org_id,
+            )
+        await conn.execute(
+            "INSERT INTO public.assets "
+            "(id, organization_id, tag, name, category_id, owner_org_unit_id, owner_org_unit_path, "
+            "status, custom_fields, version) "
+            "VALUES ($1, $2, 'AST-0001', 'Laptop 1', $3, $4, 'root'::ltree, 'active', $5::jsonb, 1)",
+            uuid4(),
+            org_id,
+            UUID(category_id),
+            org_unit_id,
+            json.dumps({"serial": "abc123"}),
+        )
+
+    blocked_res = await client.patch(
+        f"/api/v1/asset-categories/{category_id}/custom-fields/{field_id}",
+        json={"field_type": "number", "version": 1},
+        headers=headers,
+    )
+    assert blocked_res.status_code == 409
+    assert blocked_res.json()["code"] == "custom_field_definition.type_change_blocked"
+
+    # Changing something other than the type still works.
+    label_res = await client.patch(
+        f"/api/v1/asset-categories/{category_id}/custom-fields/{field_id}",
+        json={"label": "Serial number", "version": 1},
+        headers=headers,
+    )
+    assert label_res.status_code == 200
+
+
+# ==============================================================================
+# Manufacturers and suppliers
+# ==============================================================================
+
+
+async def test_manufacturer_lifecycle(client: httpx.AsyncClient, make_pool: PoolFactory) -> None:
+    pool = await make_pool("api")
+    org_id = await _create_org(pool)
+    headers = _headers(org_id)
+
+    create_res = await client.post(
+        "/api/v1/manufacturers",
+        json={"name": "Acme Corp", "contact": {"email": "sales@acme.test"}},
+        headers=headers,
+    )
+    assert create_res.status_code == 201
+    manufacturer_id = create_res.json()["data"]["id"]
+
+    dup_res = await client.post("/api/v1/manufacturers", json={"name": "Acme Corp"}, headers=headers)
+    assert dup_res.status_code == 409
+
+    update_res = await client.patch(
+        f"/api/v1/manufacturers/{manufacturer_id}",
+        json={"notes": "preferred vendor", "version": 1},
+        headers=headers,
+    )
+    assert update_res.status_code == 200
+
+    archive_res = await client.post(
+        f"/api/v1/manufacturers/{manufacturer_id}/archive", json={"version": 2}, headers=headers
     )
     assert archive_res.status_code == 200
     assert archive_res.json()["data"]["status"] == "archived"
