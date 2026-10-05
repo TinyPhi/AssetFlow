@@ -39,4 +39,19 @@ export const assetRoutes: RouteObject[] = [
       };
     },
   },
+  {
+    path: "assets/:id",
+    lazy: async () => {
+      const { AssetDetailPage } = await import("./pages/AssetDetailPage");
+      return {
+        element: (
+          <RequirePermission permission="asset.read">
+            <RequireModule module="assets">
+              <AssetDetailPage />
+            </RequireModule>
+          </RequirePermission>
+        ),
+      };
+    },
+  },
 ];

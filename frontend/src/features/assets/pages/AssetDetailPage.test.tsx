@@ -180,3 +180,166 @@ describe("status menu", () => {
   });
 });
 
+describe("edit with version handling", () => {
+  it("prefills the form, keeps encrypted values blank and sends only what changed", async () => {
+    server.use(
+      http.patch("/api/v1/assets/ast-1", async ({ request }) => {
+        patches.push((await request.json()) as Record<string, unknown>);
+        return HttpResponse.json(envelope(assetDetail({ name: "Pump renamed", version: 5 })));
+      }),
+    );
+    renderPage();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: t("assets.detail.edit") }));
+    const name = await screen.findByLabelText(new RegExp(`^${t("assets.form.name")}`));
+    expect(name).toHaveValue("Pump one");
+    expect(await screen.findByLabelText("Hostname")).toHaveValue("pump-01");
+    expect(screen.getByLabelText("Secret")).toHaveValue("");
+    expect(screen.getByText(t("assets.form.encrypted_set"))).toBeInTheDocument();
+
+    await user.clear(name);
+    await user.type(name, "Pump renamed");
+    await user.click(screen.getByRole("button", { name: t("assets.form.save_changes") }));
+    await waitFor(() => {
+      expect(patches).toEqual([{ version: 4, name: "Pump renamed" }]);
+    });
+    expect(patches[0]).not.toHaveProperty("custom_fields");
+    expect(await screen.findByText(t("assets.form.saved"))).toBeInTheDocument();
+  });
+
+  it("sends an encrypted field only after something is typed into it", async () => {
+    server.use(
+      http.patch("/api/v1/assets/ast-1", async ({ request }) => {
+        patches.push((await request.json()) as Record<string, unknown>);
+        return HttpResponse.json(envelope(assetDetail({ version: 5 })));
+      }),
+    );
+    renderPage();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: t("assets.detail.edit") }));
+    await user.type(await screen.findByLabelText("Secret"), "rotated");
+    await user.click(screen.getByRole("button", { name: t("assets.form.save_changes") }));
+    await waitFor(() => {
+      expect(patches).toEqual([{ version: 4, custom_fields: { secret: "rotated" } }]);
+    });
+  });
+
+  it("offers a reload when the asset changed meanwhile (409), and shows the latest version", async () => {
+    server.use(
+      http.patch("/api/v1/assets/ast-1", () =>
+        HttpResponse.json({ code: "asset.version_conflict", detail: "stale" }, { status: 409 }),
+      ),
+    );
+    renderPage();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: t("assets.detail.edit") }));
+    const name = await screen.findByLabelText(new RegExp(`^${t("assets.form.name")}`));
+    await user.clear(name);
+    await user.type(name, "Mine");
+    asset = assetDetail({ name: "Theirs", version: 6 });
+    mockAsset();
+    await user.click(screen.getByRole("button", { name: t("assets.form.save_changes") }));
+
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).getByText(t("assets.detail.conflict_body"))).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: t("assets.detail.conflict_reload") }));
+    expect(await screen.findByRole("heading", { name: "Theirs" })).toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("asks whether to move components when the owner or location changes", async () => {
+    asset = assetDetail({ component_count: 2 });
+    mockAsset();
+    server.use(
+      http.get("/api/v1/locations", () =>
+        HttpResponse.json(envelope([{ id: "loc-1", name: "Hall", parent_id: null, path: "hall" }])),
+      ),
+      http.patch("/api/v1/assets/ast-1", async ({ request }) => {
+        patches.push((await request.json()) as Record<string, unknown>);
+        return HttpResponse.json(envelope(assetDetail({ version: 5 })));
+      }),
+    );
+    renderPage();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: t("assets.detail.edit") }));
+    expect(screen.queryByLabelText(t("assets.form.move_components"))).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("option", { name: "Hall" })).toBeInTheDocument();
+    });
+    await user.selectOptions(screen.getByLabelText(t("assets.form.location")), "loc-1");
+    await user.click(screen.getByLabelText(t("assets.form.move_components")));
+    await user.click(screen.getByRole("button", { name: t("assets.form.save_changes") }));
+    await waitFor(() => {
+      expect(patches).toEqual([{ version: 4, location_id: "loc-1", move_components: true }]);
+    });
+  });
+});
+
+describe("components tab", () => {
+  const child = {
+    component_id: "cmp-1",
+    child_asset_id: "ast-2",
+    tag: "AST-0002",
+    name: "Seal kit",
+    status: "in_use",
+    attached_at: "2026-09-03T00:00:00Z",
+    detached_at: null,
+  };
+
+  it("lists components, attaches a found asset and detaches after a confirmation", async () => {
+    let components = [child];
+    const attached: Record<string, unknown>[] = [];
+    const detached: Record<string, unknown>[] = [];
+    server.use(
+      http.get("/api/v1/assets/ast-1/components", () => HttpResponse.json(envelope({ items: components }))),
+      http.get("/api/v1/assets", ({ request }) => {
+        const q = new URL(request.url).searchParams.get("q");
+        const found = q === "gasket" ? [assetDetail({ id: "ast-3", tag: "AST-0003", name: "Gasket" })] : [];
+        return HttpResponse.json(envelope({ items: found, next_cursor: null, total: null }));
+      }),
+      http.post("/api/v1/assets/ast-1/components", async ({ request }) => {
+        attached.push((await request.json()) as Record<string, unknown>);
+        return HttpResponse.json(envelope({}), { status: 201 });
+      }),
+      http.post("/api/v1/assets/ast-1/components/ast-2/detach", async ({ request }) => {
+        detached.push((await request.json()) as Record<string, unknown>);
+        components = [];
+        return HttpResponse.json(envelope({}));
+      }),
+    );
+    renderPage();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: t("assets.detail.tab_components") }));
+    expect(await screen.findByRole("link", { name: "Seal kit" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: t("assets.detail.attach") }));
+    await user.type(screen.getByLabelText(t("assets.detail.attach_search")), "gasket");
+    await user.click(await screen.findByRole("button", { name: /Gasket/ }));
+    await waitFor(() => {
+      expect(attached).toEqual([{ child_asset_id: "ast-3", version: 4 }]);
+    });
+
+    await user.click(
+      await screen.findByRole("button", { name: t("assets.detail.detach_named", { name: "Seal kit" }) }),
+    );
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: t("assets.detail.detach_confirm") }));
+    await waitFor(() => {
+      expect(detached).toEqual([{ version: 4 }]);
+    });
+    expect(await screen.findByText(t("assets.detail.no_components"))).toBeInTheDocument();
+  });
+
+  it("offers no attach or detach to a member who may not update", async () => {
+    server.use(
+      http.get("/api/v1/assets/ast-1/components", () => HttpResponse.json(envelope({ items: [child] }))),
+    );
+    renderPage([READ]);
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("tab", { name: t("assets.detail.tab_components") }));
+    await screen.findByRole("link", { name: "Seal kit" });
+    expect(screen.queryByRole("button", { name: t("assets.detail.attach") })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Detach/ })).not.toBeInTheDocument();
+  });
+});
