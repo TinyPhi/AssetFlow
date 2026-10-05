@@ -36,7 +36,9 @@ async def _create_org(pool: Pool) -> UUID:
 def _fake_request(pool: Pool, *, organization_id: str | None = None) -> SimpleNamespace:
     member = MemberContext(member_id="m1", organization_id=organization_id) if organization_id else None
     return SimpleNamespace(
-        state=SimpleNamespace(member=member), app=SimpleNamespace(state=SimpleNamespace(pool=pool))
+        state=SimpleNamespace(member=member),
+        headers={},
+        app=SimpleNamespace(state=SimpleNamespace(pool=pool)),
     )
 
 
