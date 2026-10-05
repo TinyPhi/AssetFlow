@@ -35,6 +35,7 @@ __all__ = [
     "ProblemError",
     "RateLimitedError",
     "RouteNotFoundError",
+    "ScopeDeniedError",
     "SecretsUnavailableError",
     "ServiceUnavailableError",
     "UnauthorizedError",
@@ -136,6 +137,24 @@ class PermissionDeniedError(ProblemError):
     title = "Permission denied"
     default_detail = "You do not have permission for this action."
     description = "The caller is signed in but lacks the required permission."
+
+
+class ScopeDeniedError(PermissionDeniedError):
+    """The caller holds the permission, but the record or target is outside its scope (§C4.5).
+
+    403 for writes; reads of an out-of-scope record answer 404 instead (never reveal existence)."""
+
+    status_code = 403
+    code = "scope.denied"
+    title = "Outside your scope"
+    default_detail = "The action covers records outside your scope."
+    description = (
+        "The caller holds the permission, but not for this record or target: the record is outside "
+        "the scope of every grant that carries it. A write answers 403; a read answers 404."
+    )
+
+    def __init__(self, detail: str | None = None) -> None:
+        super().__init__(detail)
 
 
 class NotFoundError(ProblemError):
@@ -272,6 +291,7 @@ ERROR_REGISTRY: tuple[type[ProblemError], ...] = (
     ValidationFailedError,
     UnauthorizedError,
     PermissionDeniedError,
+    ScopeDeniedError,
     NotFoundError,
     RouteNotFoundError,
     MethodNotAllowedError,

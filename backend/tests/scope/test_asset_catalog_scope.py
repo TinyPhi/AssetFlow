@@ -124,7 +124,7 @@ async def test_org_unit_scoped_grant_cannot_write_organization_wide_reference_da
         headers=_org_unit_scoped_asset_manager_headers(org_id),
     )
     assert res.status_code == 403
-    assert res.json()["code"] == "auth.permission_denied"
+    assert res.json()["code"] == "scope.denied"  # held, but not at organization scope (§C4.5)
 
 
 async def test_organization_scoped_grant_can_write(client: httpx.AsyncClient, make_pool: PoolFactory) -> None:

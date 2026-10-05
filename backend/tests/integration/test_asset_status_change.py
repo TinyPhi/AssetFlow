@@ -325,6 +325,7 @@ async def test_caller_outside_scope_gets_404_on_read_and_403_on_the_action(
     assert read.status_code == 404
     act = await client.post(f"{BASE}/{asset_id}/change-status", json=_change("in_service"), headers=headers)
     assert act.status_code == 403
+    assert act.json()["code"] == "scope.denied"  # permission held, record outside scope (§C4.5)
     listing = await client.get(f"{BASE}/{asset_id}/transitions", headers=headers)
     assert listing.status_code == 404
 

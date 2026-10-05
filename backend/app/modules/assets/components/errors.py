@@ -6,7 +6,8 @@ from __future__ import annotations
 
 from typing import ClassVar
 
-from app.core.problems import ConflictError, NotFoundError, PermissionDeniedError
+from app.core.problems import ConflictError, NotFoundError
+from app.core.problems import ScopeDeniedError as CoreScopeDeniedError
 
 __all__ = [
     "ComponentAlreadyAttachedError",
@@ -57,19 +58,11 @@ class ComponentNotAttachedError(NotFoundError):
     description: ClassVar[str] = "There is no current attachment between the two assets."
 
 
-class ScopeDeniedError(PermissionDeniedError):
+class ScopeDeniedError(CoreScopeDeniedError):
     """A write refused because part of it falls outside the caller's scope (§C4.5, §C5.4 rule 5).
 
-    Names the count of out-of-scope records, never their ids."""
-
-    status_code = 403
-    code: ClassVar[str] = "scope.denied"
-    title: ClassVar[str] = "Outside your scope"
-    default_detail: ClassVar[str] = "The action covers records outside your scope."
-    description: ClassVar[str] = (
-        "A write needs permission on every record it touches; at least one record is outside the "
-        "caller's scope, so nothing was changed."
-    )
+    Same `scope.denied` code as the core error; names the count of out-of-scope records, never
+    their ids."""
 
     def __init__(self, count: int | None = None) -> None:
         detail = None if count is None else f"{count} record(s) are outside your scope; nothing was changed."

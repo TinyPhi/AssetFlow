@@ -31,10 +31,11 @@ from app.core.config import resolve_config_path
 from app.core.db import Pool, tenant_transaction
 from app.core.ids import uuid7
 from app.core.permissions import ScopeFilter
-from app.core.problems import FieldError, PermissionDeniedError, ValidationFailedError
+from app.core.problems import FieldError, PermissionDeniedError, ScopeDeniedError, ValidationFailedError
 from app.core.scope import MemberContext, default_scope_resolver
 from app.engines.automation.domain_template import DomainTemplateError, load_domain_template
 from app.modules.assets import repository as repo
+from app.modules.assets.access import require_in_scope
 from app.modules.assets.catalog import repository as catalog_repo
 from app.modules.assets.components import cascade
 from app.modules.assets.components.repository import ComponentRepository
@@ -426,7 +427,7 @@ async def create_asset(
         if not default_scope_resolver.check_access(
             caller, CREATE_PERMISSION, {"owner_org_unit_path": owner_path}
         ):
-            raise PermissionDeniedError(f"Permission {CREATE_PERMISSION!r} denied for this org unit.")
+            raise ScopeDeniedError(f"Permission {CREATE_PERMISSION!r} does not cover this org unit.")
 
         await _validate_references(
             conn,
@@ -602,7 +603,7 @@ async def _check_owner_unit_move(
     )
     new_ok = default_scope_resolver.check_access(caller, UPDATE_PERMISSION, {"owner_org_unit_path": new_path})
     if not (old_ok and new_ok):
-        raise PermissionDeniedError(
+        raise ScopeDeniedError(
             f"Permission {UPDATE_PERMISSION!r} is needed on both the current and the new org unit."
         )
 
@@ -689,8 +690,7 @@ async def update_asset(
         if current is None:
             raise AssetNotFoundError()
 
-        if not default_scope_resolver.check_access(caller, UPDATE_PERMISSION, _current_resource(current)):
-            raise PermissionDeniedError(f"Permission {UPDATE_PERMISSION!r} denied for this asset.")
+        require_in_scope(caller, UPDATE_PERMISSION, _current_resource(current))
 
         new_category_id = data.category_id if data.category_id is not None else current["category_id"]
         await _check_owner_unit_move(
@@ -1025,7 +1025,7 @@ async def change_status(
         )
         # Permission and scope on the loaded record come before any answer about the transition,
         # so a caller outside scope learns nothing about the asset's status (§C4.3, §C4.5).
-        default_scope_resolver.require(caller, permission, _current_resource(current))
+        require_in_scope(caller, permission, _current_resource(current))
         if template is None:
             raise AssetInvalidTransitionError(current["status"], to_status, "not_allowed")
         check_transition(template, snapshot, to_status, reason=reason)

@@ -40,6 +40,7 @@ Every error response is RFC 9457 Problem Details (`application/problem+json`, §
 | [`rate_limit.exceeded`](#rate_limit.exceeded) | 429 | Too many requests |
 | [`resource.conflict`](#resource.conflict) | 409 | Resource conflict |
 | [`resource.not_found`](#resource.not_found) | 404 | Resource not found |
+| [`scope.denied`](#scope.denied) | 403 | Outside your scope |
 | [`validation.invalid_field`](#validation.invalid_field) | 422 | Validation failed |
 
 ## Codes
@@ -235,6 +236,18 @@ Generic conflict; modules raise `<entity>.version_conflict` subclasses where pos
 - **Type URI:** `https://github.com/tinyphi/assetflow/blob/main/docs/reference/error-codes.md#resource.not_found`
 
 Generic not-found; modules raise `<entity>.not_found` subclasses instead where possible.
+
+<a id="scope.denied"></a>
+
+### `scope.denied`
+
+- **Status:** 403
+- **Title:** Outside your scope
+- **Default detail:** The action covers records outside your scope.
+- **Error class:** `ScopeDeniedError`
+- **Type URI:** `https://github.com/tinyphi/assetflow/blob/main/docs/reference/error-codes.md#scope.denied`
+
+The caller holds the permission, but not for this record or target: the record is outside the scope of every grant that carries it. A write answers 403; a read answers 404.
 
 <a id="validation.invalid_field"></a>
 

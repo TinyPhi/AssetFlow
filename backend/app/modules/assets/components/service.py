@@ -15,7 +15,7 @@ from typing import Any
 from uuid import UUID
 
 from app.core.db import Pool, tenant_transaction
-from app.core.problems import FieldError, PermissionDeniedError, ValidationFailedError
+from app.core.problems import FieldError, PermissionDeniedError, ScopeDeniedError, ValidationFailedError
 from app.core.scope import MemberContext, default_scope_resolver
 from app.modules.assets import service as asset_service
 from app.modules.assets.components.cascade import actor_id, asset_resource, write_outbox
@@ -58,14 +58,14 @@ def _require_parent(caller: MemberContext, parent: Any) -> None:
     if parent is None or not _can(caller, READ_PERMISSION, parent):
         raise AssetNotFoundError()
     if not _can(caller, UPDATE_PERMISSION, parent):
-        raise PermissionDeniedError(f"Permission {UPDATE_PERMISSION!r} denied for this asset.")
+        raise ScopeDeniedError(f"Permission {UPDATE_PERMISSION!r} does not cover this asset.")
 
 
 def _require_child(caller: MemberContext, child: Any) -> None:
     if child is None or not _can(caller, READ_PERMISSION, child):
         raise ValidationFailedError(errors=[FieldError(field="child_asset_id", message="not found")])
     if not _can(caller, UPDATE_PERMISSION, child):
-        raise PermissionDeniedError(f"Permission {UPDATE_PERMISSION!r} denied for the child asset.")
+        raise ScopeDeniedError(f"Permission {UPDATE_PERMISSION!r} does not cover the child asset.")
 
 
 async def _bump(conn: DbConn, organization_id: UUID, row: Any, *, expected_version: int) -> int:
@@ -207,7 +207,7 @@ async def detach_component(
         if child is None or not _can(caller, READ_PERMISSION, child):
             raise ComponentNotAttachedError()
         if not _can(caller, UPDATE_PERMISSION, child):
-            raise PermissionDeniedError(f"Permission {UPDATE_PERMISSION!r} denied for the child asset.")
+            raise ScopeDeniedError(f"Permission {UPDATE_PERMISSION!r} does not cover the child asset.")
         current = await _repo.get_current_link(
             conn,
             organization_id=organization_id,

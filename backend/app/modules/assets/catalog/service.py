@@ -29,7 +29,7 @@ from app.core.config import resolve_config_path
 from app.core.db import Pool, tenant_transaction
 from app.core.ids import uuid7
 from app.core.permissions import ScopeFilter
-from app.core.problems import PermissionDeniedError, ValidationFailedError
+from app.core.problems import PermissionDeniedError, ScopeDeniedError, ValidationFailedError
 from app.core.scope import MemberContext, default_scope_resolver
 from app.engines.automation.domain_template import DomainTemplateError, load_domain_template
 from app.modules.assets.catalog import repository as repo
@@ -138,8 +138,11 @@ class CursorPage:
 def _require_write(caller: MemberContext) -> None:
     """Writes need `asset.update` at organization scope (this data is organization-wide)."""
     scope_filter = default_scope_resolver.resolve_scope_filter(caller, WRITE_PERMISSION)
-    if not scope_filter.organization:
-        raise PermissionDeniedError(f"Permission {WRITE_PERMISSION!r} is required at organization scope.")
+    if scope_filter.organization:
+        return
+    if not default_scope_resolver.has_permission(caller, WRITE_PERMISSION):
+        raise PermissionDeniedError(f"Permission {WRITE_PERMISSION!r} denied.")
+    raise ScopeDeniedError(f"Permission {WRITE_PERMISSION!r} is required at organization scope.")
 
 
 def _require_read(caller: MemberContext) -> None:
