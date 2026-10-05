@@ -137,6 +137,7 @@ DEFAULT_PERMISSIONS: frozenset[str] = frozenset(
         "asset.assign",
         "asset.return",
         "asset.acknowledge",
+        "asset.read_sensitive",
         "qr.generate",
         "qr.read",
         # Maintenance
