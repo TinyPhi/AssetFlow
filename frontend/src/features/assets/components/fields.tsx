@@ -34,6 +34,8 @@ interface HierarchySelectProps {
   value: string;
   onChange: (id: string) => void;
   /** The "include sub-…" switch shown once something is chosen. */
+  /** The empty option's text; defaults to "Any" (a filter). A form passes its own prompt. */
+  emptyLabel?: string;
   includeLabel?: string;
   includeChecked?: boolean;
   onIncludeChange?: (checked: boolean) => void;
@@ -45,6 +47,7 @@ export const HierarchySelect: React.FC<HierarchySelectProps> = ({
   nodes,
   value,
   onChange,
+  emptyLabel,
   includeLabel,
   includeChecked = false,
   onIncludeChange,
@@ -60,7 +63,7 @@ export const HierarchySelect: React.FC<HierarchySelectProps> = ({
           }}
           className={CONTROL_CLASS}
         >
-          <option value="">{t("assets.filters.any")}</option>
+          <option value="">{emptyLabel ?? t("assets.filters.any")}</option>
           {treeOrder(nodes).map(({ node, depth }) => (
             <option key={node.id} value={node.id}>
               {NBSP.repeat(depth * 3)}
