@@ -358,3 +358,22 @@ async def test_manufacturer_lifecycle(client: httpx.AsyncClient, make_pool: Pool
     )
     assert archive_res.status_code == 200
     assert archive_res.json()["data"]["status"] == "archived"
+
+
+async def test_supplier_lifecycle(client: httpx.AsyncClient, make_pool: PoolFactory) -> None:
+    pool = await make_pool("api")
+    org_id = await _create_org(pool)
+    headers = _headers(org_id)
+
+    create_res = await client.post("/api/v1/suppliers", json={"name": "Global Supply Co"}, headers=headers)
+    assert create_res.status_code == 201
+    supplier_id = create_res.json()["data"]["id"]
+
+    list_res = await client.get("/api/v1/suppliers", headers=headers)
+    assert list_res.status_code == 200
+    assert any(s["id"] == supplier_id for s in list_res.json()["data"]["items"])
+
+
+# ==============================================================================
+# Isolation: cross-organization access answers 404
+# ==============================================================================

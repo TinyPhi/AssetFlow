@@ -19,16 +19,19 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any
+from pathlib import Path
+from typing import Any, cast
 from uuid import UUID
 
 from pydantic import ValidationError
 
+from app.core.config import resolve_config_path
 from app.core.db import Pool, tenant_transaction
 from app.core.ids import uuid7
 from app.core.permissions import ScopeFilter
 from app.core.problems import PermissionDeniedError, ValidationFailedError
 from app.core.scope import MemberContext, default_scope_resolver
+from app.engines.automation.domain_template import DomainTemplateError, load_domain_template
 from app.modules.assets.catalog import repository as repo
 from app.modules.assets.catalog.errors import (
     CategoryArchiveBlockedError,
@@ -38,6 +41,14 @@ from app.modules.assets.catalog.errors import (
     CategoryVersionConflictError,
     CustomFieldDefinitionConflictError,
     CustomFieldDefinitionNotFoundError,
+    CustomFieldDefinitionVersionConflictError,
+    CustomFieldTypeChangeBlockedError,
+    ManufacturerConflictError,
+    ManufacturerNotFoundError,
+    ManufacturerVersionConflictError,
+    SupplierConflictError,
+    SupplierNotFoundError,
+    SupplierVersionConflictError,
 )
 from app.modules.assets.catalog.schemas import (
     CategoryArchive,
@@ -45,31 +56,62 @@ from app.modules.assets.catalog.schemas import (
     CategoryMove,
     CategoryRead,
     CategoryUpdate,
+    CustomFieldDefinitionArchive,
     CustomFieldDefinitionCreate,
     CustomFieldDefinitionRead,
+    CustomFieldDefinitionUpdate,
+    ManufacturerArchive,
+    ManufacturerCreate,
+    ManufacturerRead,
+    ManufacturerUpdate,
+    SupplierArchive,
+    SupplierCreate,
+    SupplierRead,
+    SupplierUpdate,
 )
 from app.modules.assets.config import CustomField as TemplateCustomField
+from app.modules.assets.config import parse_assets_section
 from app.modules.assets.custom_fields import MAX_REGEX_PATTERN_LENGTH, compile_field_regex
 from app.modules.assets.events import (
     ASSET_CATEGORY_ARCHIVED,
     ASSET_CATEGORY_CREATED,
     ASSET_CATEGORY_MOVED,
     ASSET_CATEGORY_UPDATED,
+    CUSTOM_FIELD_DEFINITION_ARCHIVED,
     CUSTOM_FIELD_DEFINITION_CREATED,
+    CUSTOM_FIELD_DEFINITION_UPDATED,
+    MANUFACTURER_ARCHIVED,
+    MANUFACTURER_CREATED,
+    MANUFACTURER_UPDATED,
+    SUPPLIER_ARCHIVED,
+    SUPPLIER_CREATED,
+    SUPPLIER_UPDATED,
 )
 from app.modules.audit.service import record_audit_event
 
 __all__ = [
     "CursorPage",
     "archive_category",
+    "archive_custom_field_definition",
+    "archive_manufacturer",
+    "archive_supplier",
     "create_category",
     "create_custom_field_definition",
+    "create_manufacturer",
+    "create_supplier",
     "get_category",
     "get_custom_field_definition",
+    "get_manufacturer",
+    "get_supplier",
     "list_categories",
     "list_custom_field_definitions",
+    "list_manufacturers",
+    "list_suppliers",
     "move_category",
     "update_category",
+    "update_custom_field_definition",
+    "update_manufacturer",
+    "update_supplier",
 ]
 
 READ_PERMISSION = "asset.read"
@@ -623,3 +665,719 @@ async def create_custom_field_definition(
             },
         )
     return CustomFieldDefinitionRead.model_validate(_field_dict(row))
+
+
+async def update_custom_field_definition(
+    pool: Pool,
+    *,
+    organization_id: UUID,
+    caller: MemberContext,
+    field_id: UUID,
+    data: CustomFieldDefinitionUpdate,
+    request_id: str | None = None,
+) -> CustomFieldDefinitionRead:
+    _require_write(caller)
+    async with tenant_transaction(pool, organization_id) as conn:
+        current = await _field_repo.get_by_id(
+            conn, organization_id=organization_id, field_id=field_id, for_update=True
+        )
+        if current is None:
+            raise CustomFieldDefinitionNotFoundError()
+
+        current_rules = (
+            json.loads(current["rules"]) if isinstance(current["rules"], str) else dict(current["rules"])
+        )
+        new_min = current_rules.get("min") if data.min is None and not data.clear_min else data.min
+        new_max = current_rules.get("max") if data.max is None and not data.clear_max else data.max
+        new_regex = current_rules.get("regex") if data.regex is None and not data.clear_regex else data.regex
+        new_options = data.options if data.options is not None else (current_rules.get("options") or [])
+        new_field_type = data.field_type or current["field_type"]
+        new_is_unique = data.is_unique if data.is_unique is not None else current["is_unique"]
+        new_label = data.label or current["label"]
+
+        type_or_rules_changed = new_field_type != current["field_type"]
+        if type_or_rules_changed:
+            usage = await _field_repo.count_assets_with_value(
+                conn, organization_id=organization_id, key=current["key"]
+            )
+            if usage > 0:
+                raise CustomFieldTypeChangeBlockedError()
+
+        _validate_definition_shape(
+            key=current["key"],
+            label=new_label,
+            field_type=new_field_type,
+            is_required=data.is_required if data.is_required is not None else current["is_required"],
+            min_=new_min,
+            max_=new_max,
+            regex=new_regex,
+            options=new_options,
+            is_unique=new_is_unique,
+            is_encrypted=current["is_encrypted"],  # immutable
+        )
+
+        row = await _field_repo.update(
+            conn,
+            organization_id=organization_id,
+            field_id=field_id,
+            version=data.version,
+            label=data.label,
+            field_type=data.field_type,
+            is_required=data.is_required,
+            rules=_build_rules(new_min, new_max, new_regex, new_options),
+            is_unique=data.is_unique,
+            position=data.position,
+        )
+        if row is None:
+            raise CustomFieldDefinitionVersionConflictError()
+
+        await record_audit_event(
+            conn,
+            organization_id=organization_id,
+            actor_member_id=_actor_id(caller),
+            action="custom_field_definition.update",
+            entity_type="custom_field_definition",
+            entity_id=field_id,
+            request_id=request_id,
+            before_state=_field_dict(current),
+            after_state=_field_dict(row),
+        )
+        await _outbox(
+            conn,
+            organization_id=organization_id,
+            event_type=CUSTOM_FIELD_DEFINITION_UPDATED,
+            aggregate_type="custom_field_definition",
+            aggregate_id=field_id,
+            payload={"id": str(field_id), "category_id": str(row["category_id"]), "key": row["key"]},
+        )
+    return CustomFieldDefinitionRead.model_validate(_field_dict(row))
+
+
+async def archive_custom_field_definition(
+    pool: Pool,
+    *,
+    organization_id: UUID,
+    caller: MemberContext,
+    field_id: UUID,
+    data: CustomFieldDefinitionArchive,
+    request_id: str | None = None,
+) -> CustomFieldDefinitionRead:
+    """Archived fields stay readable on old assets but are not required or accepted on new writes
+    (enforced by P8-04's `validate_custom_fields`, which is given only active definitions)."""
+    _require_write(caller)
+    async with tenant_transaction(pool, organization_id) as conn:
+        current = await _field_repo.get_by_id(
+            conn, organization_id=organization_id, field_id=field_id, for_update=True
+        )
+        if current is None:
+            raise CustomFieldDefinitionNotFoundError()
+
+        row = await _field_repo.archive(
+            conn, organization_id=organization_id, field_id=field_id, version=data.version
+        )
+        if row is None:
+            raise CustomFieldDefinitionVersionConflictError()
+
+        await record_audit_event(
+            conn,
+            organization_id=organization_id,
+            actor_member_id=_actor_id(caller),
+            action="custom_field_definition.archive",
+            entity_type="custom_field_definition",
+            entity_id=field_id,
+            request_id=request_id,
+            before_state=_field_dict(current),
+            after_state=_field_dict(row),
+        )
+        await _outbox(
+            conn,
+            organization_id=organization_id,
+            event_type=CUSTOM_FIELD_DEFINITION_ARCHIVED,
+            aggregate_type="custom_field_definition",
+            aggregate_id=field_id,
+            payload={"id": str(field_id), "category_id": str(row["category_id"]), "key": row["key"]},
+        )
+    return CustomFieldDefinitionRead.model_validate(_field_dict(row))
+
+
+# ==============================================================================
+# Manufacturers and suppliers (identical behavior, distinct tables/errors/events)
+# ==============================================================================
+
+
+async def _list_reference(
+    pool: Pool,
+    *,
+    organization_id: UUID,
+    caller: MemberContext,
+    data_repo: repo.ReferenceDataRepository,
+    read_cls: type[ManufacturerRead] | type[SupplierRead],
+    status: str | None,
+    after: str | None,
+    limit: int,
+) -> CursorPage:
+    _require_read(caller)
+    scope_filter = _list_scope_filter()
+    cursor = repo.decode_cursor(after) if after else None
+    async with tenant_transaction(pool, organization_id) as conn:
+        rows = await data_repo.list_page(
+            conn,
+            organization_id=organization_id,
+            scope_filter=scope_filter,
+            status=status,
+            after=cursor,
+            limit=limit,
+        )
+    items = [read_cls.model_validate(_reference_dict(row)).model_dump(mode="json") for row in rows]
+    next_cursor = repo.encode_cursor(rows[-1]["name"], rows[-1]["id"]) if len(rows) == limit else None
+    return CursorPage(items=items, next_cursor=next_cursor)
+
+
+def _reference_dict(row: Any) -> dict[str, Any]:
+    out = dict(row)
+    if isinstance(out.get("contact"), str):
+        out["contact"] = json.loads(out["contact"])
+    return out
+
+
+async def _get_reference(
+    pool: Pool,
+    *,
+    organization_id: UUID,
+    caller: MemberContext,
+    data_repo: repo.ReferenceDataRepository,
+    read_cls: type[ManufacturerRead] | type[SupplierRead],
+    record_id: UUID,
+    not_found_cls: type[ManufacturerNotFoundError] | type[SupplierNotFoundError],
+) -> ManufacturerRead | SupplierRead:
+    _require_read(caller)
+    async with tenant_transaction(pool, organization_id) as conn:
+        row = await data_repo.get_by_id(conn, organization_id=organization_id, record_id=record_id)
+    if row is None:
+        raise not_found_cls()
+    return read_cls.model_validate(_reference_dict(row))
+
+
+async def _create_reference(
+    pool: Pool,
+    *,
+    organization_id: UUID,
+    caller: MemberContext,
+    data_repo: repo.ReferenceDataRepository,
+    read_cls: type[ManufacturerRead] | type[SupplierRead],
+    data: ManufacturerCreate | SupplierCreate,
+    conflict_cls: type[ManufacturerConflictError] | type[SupplierConflictError],
+    entity_type: str,
+    created_event: str,
+    request_id: str | None,
+) -> ManufacturerRead | SupplierRead:
+    _require_write(caller)
+    async with tenant_transaction(pool, organization_id) as conn:
+        existing = await data_repo.get_by_name(conn, organization_id=organization_id, name=data.name)
+        if existing is not None:
+            raise conflict_cls(f"{entity_type.capitalize()} {data.name!r} already exists")
+
+        record_id = uuid7()
+        row = await data_repo.create(
+            conn,
+            record_id=record_id,
+            organization_id=organization_id,
+            code=data.code,
+            name=data.name,
+            contact=data.contact,
+            notes=data.notes,
+        )
+        await record_audit_event(
+            conn,
+            organization_id=organization_id,
+            actor_member_id=_actor_id(caller),
+            action=f"{entity_type}.create",
+            entity_type=entity_type,
+            entity_id=record_id,
+            request_id=request_id,
+            after_state=_reference_dict(row),
+        )
+        await _outbox(
+            conn,
+            organization_id=organization_id,
+            event_type=created_event,
+            aggregate_type=entity_type,
+            aggregate_id=record_id,
+            payload={"id": str(record_id), "name": data.name},
+        )
+    return read_cls.model_validate(_reference_dict(row))
+
+
+async def _update_reference(
+    pool: Pool,
+    *,
+    organization_id: UUID,
+    caller: MemberContext,
+    data_repo: repo.ReferenceDataRepository,
+    read_cls: type[ManufacturerRead] | type[SupplierRead],
+    record_id: UUID,
+    data: ManufacturerUpdate | SupplierUpdate,
+    not_found_cls: type[ManufacturerNotFoundError] | type[SupplierNotFoundError],
+    version_conflict_cls: type[ManufacturerVersionConflictError] | type[SupplierVersionConflictError],
+    entity_type: str,
+    updated_event: str,
+    request_id: str | None,
+) -> ManufacturerRead | SupplierRead:
+    _require_write(caller)
+    async with tenant_transaction(pool, organization_id) as conn:
+        current = await data_repo.get_by_id(
+            conn, organization_id=organization_id, record_id=record_id, for_update=True
+        )
+        if current is None:
+            raise not_found_cls()
+
+        row = await data_repo.update(
+            conn,
+            organization_id=organization_id,
+            record_id=record_id,
+            version=data.version,
+            name=data.name,
+            contact=data.contact,
+            notes=data.notes,
+            clear_notes=data.clear_notes,
+        )
+        if row is None:
+            raise version_conflict_cls()
+
+        await record_audit_event(
+            conn,
+            organization_id=organization_id,
+            actor_member_id=_actor_id(caller),
+            action=f"{entity_type}.update",
+            entity_type=entity_type,
+            entity_id=record_id,
+            request_id=request_id,
+            before_state=_reference_dict(current),
+            after_state=_reference_dict(row),
+        )
+        await _outbox(
+            conn,
+            organization_id=organization_id,
+            event_type=updated_event,
+            aggregate_type=entity_type,
+            aggregate_id=record_id,
+            payload={"id": str(record_id), "name": row["name"]},
+        )
+    return read_cls.model_validate(_reference_dict(row))
+
+
+async def _archive_reference(
+    pool: Pool,
+    *,
+    organization_id: UUID,
+    caller: MemberContext,
+    data_repo: repo.ReferenceDataRepository,
+    read_cls: type[ManufacturerRead] | type[SupplierRead],
+    record_id: UUID,
+    version: int,
+    not_found_cls: type[ManufacturerNotFoundError] | type[SupplierNotFoundError],
+    version_conflict_cls: type[ManufacturerVersionConflictError] | type[SupplierVersionConflictError],
+    entity_type: str,
+    archived_event: str,
+    request_id: str | None,
+) -> ManufacturerRead | SupplierRead:
+    _require_write(caller)
+    async with tenant_transaction(pool, organization_id) as conn:
+        current = await data_repo.get_by_id(
+            conn, organization_id=organization_id, record_id=record_id, for_update=True
+        )
+        if current is None:
+            raise not_found_cls()
+
+        row = await data_repo.archive(
+            conn, organization_id=organization_id, record_id=record_id, version=version
+        )
+        if row is None:
+            raise version_conflict_cls()
+
+        await record_audit_event(
+            conn,
+            organization_id=organization_id,
+            actor_member_id=_actor_id(caller),
+            action=f"{entity_type}.archive",
+            entity_type=entity_type,
+            entity_id=record_id,
+            request_id=request_id,
+            before_state=_reference_dict(current),
+            after_state=_reference_dict(row),
+        )
+        await _outbox(
+            conn,
+            organization_id=organization_id,
+            event_type=archived_event,
+            aggregate_type=entity_type,
+            aggregate_id=record_id,
+            payload={"id": str(record_id), "name": row["name"]},
+        )
+    return read_cls.model_validate(_reference_dict(row))
+
+
+async def list_manufacturers(
+    pool: Pool,
+    *,
+    organization_id: UUID,
+    caller: MemberContext,
+    status: str | None = None,
+    after: str | None = None,
+    limit: int = DEFAULT_PAGE_SIZE,
+) -> CursorPage:
+    return await _list_reference(
+        pool,
+        organization_id=organization_id,
+        caller=caller,
+        data_repo=_manufacturer_repo,
+        read_cls=ManufacturerRead,
+        status=status,
+        after=after,
+        limit=limit,
+    )
+
+
+async def get_manufacturer(
+    pool: Pool, *, organization_id: UUID, caller: MemberContext, manufacturer_id: UUID
+) -> ManufacturerRead:
+    return cast(
+        ManufacturerRead,
+        await _get_reference(
+            pool,
+            organization_id=organization_id,
+            caller=caller,
+            data_repo=_manufacturer_repo,
+            read_cls=ManufacturerRead,
+            record_id=manufacturer_id,
+            not_found_cls=ManufacturerNotFoundError,
+        ),
+    )
+
+
+async def create_manufacturer(
+    pool: Pool,
+    *,
+    organization_id: UUID,
+    caller: MemberContext,
+    data: ManufacturerCreate,
+    request_id: str | None = None,
+) -> ManufacturerRead:
+    return cast(
+        ManufacturerRead,
+        await _create_reference(
+            pool,
+            organization_id=organization_id,
+            caller=caller,
+            data_repo=_manufacturer_repo,
+            read_cls=ManufacturerRead,
+            data=data,
+            conflict_cls=ManufacturerConflictError,
+            entity_type="manufacturer",
+            created_event=MANUFACTURER_CREATED,
+            request_id=request_id,
+        ),
+    )
+
+
+async def update_manufacturer(
+    pool: Pool,
+    *,
+    organization_id: UUID,
+    caller: MemberContext,
+    manufacturer_id: UUID,
+    data: ManufacturerUpdate,
+    request_id: str | None = None,
+) -> ManufacturerRead:
+    return cast(
+        ManufacturerRead,
+        await _update_reference(
+            pool,
+            organization_id=organization_id,
+            caller=caller,
+            data_repo=_manufacturer_repo,
+            read_cls=ManufacturerRead,
+            record_id=manufacturer_id,
+            data=data,
+            not_found_cls=ManufacturerNotFoundError,
+            version_conflict_cls=ManufacturerVersionConflictError,
+            entity_type="manufacturer",
+            updated_event=MANUFACTURER_UPDATED,
+            request_id=request_id,
+        ),
+    )
+
+
+async def archive_manufacturer(
+    pool: Pool,
+    *,
+    organization_id: UUID,
+    caller: MemberContext,
+    manufacturer_id: UUID,
+    data: ManufacturerArchive,
+    request_id: str | None = None,
+) -> ManufacturerRead:
+    return cast(
+        ManufacturerRead,
+        await _archive_reference(
+            pool,
+            organization_id=organization_id,
+            caller=caller,
+            data_repo=_manufacturer_repo,
+            read_cls=ManufacturerRead,
+            record_id=manufacturer_id,
+            version=data.version,
+            not_found_cls=ManufacturerNotFoundError,
+            version_conflict_cls=ManufacturerVersionConflictError,
+            entity_type="manufacturer",
+            archived_event=MANUFACTURER_ARCHIVED,
+            request_id=request_id,
+        ),
+    )
+
+
+async def list_suppliers(
+    pool: Pool,
+    *,
+    organization_id: UUID,
+    caller: MemberContext,
+    status: str | None = None,
+    after: str | None = None,
+    limit: int = DEFAULT_PAGE_SIZE,
+) -> CursorPage:
+    return await _list_reference(
+        pool,
+        organization_id=organization_id,
+        caller=caller,
+        data_repo=_supplier_repo,
+        read_cls=SupplierRead,
+        status=status,
+        after=after,
+        limit=limit,
+    )
+
+
+async def get_supplier(
+    pool: Pool, *, organization_id: UUID, caller: MemberContext, supplier_id: UUID
+) -> SupplierRead:
+    return cast(
+        SupplierRead,
+        await _get_reference(
+            pool,
+            organization_id=organization_id,
+            caller=caller,
+            data_repo=_supplier_repo,
+            read_cls=SupplierRead,
+            record_id=supplier_id,
+            not_found_cls=SupplierNotFoundError,
+        ),
+    )
+
+
+async def create_supplier(
+    pool: Pool,
+    *,
+    organization_id: UUID,
+    caller: MemberContext,
+    data: SupplierCreate,
+    request_id: str | None = None,
+) -> SupplierRead:
+    return cast(
+        SupplierRead,
+        await _create_reference(
+            pool,
+            organization_id=organization_id,
+            caller=caller,
+            data_repo=_supplier_repo,
+            read_cls=SupplierRead,
+            data=data,
+            conflict_cls=SupplierConflictError,
+            entity_type="supplier",
+            created_event=SUPPLIER_CREATED,
+            request_id=request_id,
+        ),
+    )
+
+
+async def update_supplier(
+    pool: Pool,
+    *,
+    organization_id: UUID,
+    caller: MemberContext,
+    supplier_id: UUID,
+    data: SupplierUpdate,
+    request_id: str | None = None,
+) -> SupplierRead:
+    return cast(
+        SupplierRead,
+        await _update_reference(
+            pool,
+            organization_id=organization_id,
+            caller=caller,
+            data_repo=_supplier_repo,
+            read_cls=SupplierRead,
+            record_id=supplier_id,
+            data=data,
+            not_found_cls=SupplierNotFoundError,
+            version_conflict_cls=SupplierVersionConflictError,
+            entity_type="supplier",
+            updated_event=SUPPLIER_UPDATED,
+            request_id=request_id,
+        ),
+    )
+
+
+async def archive_supplier(
+    pool: Pool,
+    *,
+    organization_id: UUID,
+    caller: MemberContext,
+    supplier_id: UUID,
+    data: SupplierArchive,
+    request_id: str | None = None,
+) -> SupplierRead:
+    return cast(
+        SupplierRead,
+        await _archive_reference(
+            pool,
+            organization_id=organization_id,
+            caller=caller,
+            data_repo=_supplier_repo,
+            read_cls=SupplierRead,
+            record_id=supplier_id,
+            version=data.version,
+            not_found_cls=SupplierNotFoundError,
+            version_conflict_cls=SupplierVersionConflictError,
+            entity_type="supplier",
+            archived_event=SUPPLIER_ARCHIVED,
+            request_id=request_id,
+        ),
+    )
+
+
+# ==============================================================================
+# Template seed on module install (§B5.9, §B7.1, §B7.3 vs §B8.2 - see the plan's open point)
+# ==============================================================================
+
+
+@dataclass(frozen=True)
+class SeedResult:
+    domain_key: str
+    categories_created: int
+    custom_fields_created: int
+
+
+def _domains_dir(config_base_dir: Path | None) -> Path:
+    base = config_base_dir if config_base_dir is not None else resolve_config_path().parent
+    return base / "domains"
+
+
+def _load_template_categories(template_file: Path) -> list[Any]:
+    """Every `assets.categories` entry of `template_file`, or `[]` for anything that keeps module
+    install from working: a missing file, a broken template, or a malformed `assets` section (all
+    caught by `config validate` / CI separately, never here)."""
+    if not template_file.is_file():
+        return []
+    try:
+        template = load_domain_template(template_file)
+    except DomainTemplateError:
+        return []
+    extra = template.model_extra or {}
+    assets_raw = extra.get("assets")
+    if not isinstance(assets_raw, dict) or "categories" not in assets_raw:
+        return []
+    try:
+        return list(parse_assets_section(assets_raw).categories)
+    except Exception:  # noqa: BLE001 - malformed template never blocks module install
+        return []
+
+
+def _category_ready(category: Any, by_code: dict[str, Any], seeded_ids: dict[str, UUID]) -> bool:
+    return (
+        category.parent_code is None
+        or category.parent_code in seeded_ids
+        or category.parent_code not in by_code
+    )
+
+
+async def _seed_one_category(
+    conn: Any,
+    *,
+    organization_id: UUID,
+    category: Any,
+    seeded_ids: dict[str, UUID],
+    seeded_paths: dict[str, str],
+) -> tuple[bool, int]:
+    """Create `category`'s row (and its custom field definitions) if missing.
+
+    Returns `(category_created, custom_fields_created)`: an existing category or field, found by
+    `code` / `key`, is never overwritten (§B7.1).
+    """
+    existing = await _category_repo.get_by_code(conn, organization_id=organization_id, code=category.code)
+    created = existing is None
+    if existing is not None:
+        seeded_ids[category.code] = existing["id"]
+        seeded_paths[category.code] = existing["path"]
+    else:
+        parent_path = seeded_paths.get(category.parent_code) if category.parent_code else None
+        parent_id = seeded_ids.get(category.parent_code) if category.parent_code else None
+        label = repo.to_ltree_label(category.code)
+        path = f"{parent_path}.{label}" if parent_path else label
+        team_id = None
+        if category.responsible_team_code:
+            team_id = await conn.fetchval(
+                "SELECT id FROM public.teams WHERE organization_id = $1 AND code = $2",
+                organization_id,
+                category.responsible_team_code,
+            )
+        category_id = uuid7()
+        await _category_repo.create(
+            conn,
+            category_id=category_id,
+            organization_id=organization_id,
+            parent_id=parent_id,
+            path=path,
+            code=category.code,
+            name=category.label,
+            tag_prefix=category.tag_prefix,
+            default_criticality=category.default_criticality,
+            responsible_team_id=team_id,
+        )
+        seeded_ids[category.code] = category_id
+        seeded_paths[category.code] = path
+
+    category_db_id = seeded_ids[category.code]
+    fields_created = 0
+    for field in category.custom_fields:
+        if await _seed_one_custom_field(
+            conn, organization_id=organization_id, category_db_id=category_db_id, field=field
+        ):
+            fields_created += 1
+    return created, fields_created
+
+
+async def _seed_one_custom_field(
+    conn: Any, *, organization_id: UUID, category_db_id: UUID, field: Any
+) -> bool:
+    """Create `field`'s definition row if this category does not already have one with its key."""
+    existing_field = await _field_repo.get_by_key(
+        conn, organization_id=organization_id, category_id=category_db_id, key=field.key
+    )
+    if existing_field is not None:
+        return False
+    rules = _build_rules(field.min, field.max, field.regex, field.options)
+    await _field_repo.create(
+        conn,
+        field_id=uuid7(),
+        organization_id=organization_id,
+        category_id=category_db_id,
+        key=field.key,
+        label=field.label,
+        field_type=field.type,
+        is_required=field.required,
+        rules=rules,
+        is_unique=field.is_unique,
+        is_encrypted=field.is_encrypted,
+        position=0,
+    )
+    return True
