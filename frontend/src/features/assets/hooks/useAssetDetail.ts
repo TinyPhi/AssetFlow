@@ -22,8 +22,8 @@ import {
   type CreateAssetBody,
   type UpdateAssetBody,
 } from "../api/asset-detail";
-import { assetKeys } from "../api/assets";
-import type { AssetDetail, ComponentChild, Transition, Vocabulary } from "../types";
+import { assetKeys, fetchAssetPage } from "../api/assets";
+import type { AssetDetail, AssetListItem, ComponentChild, Transition, Vocabulary } from "../types";
 
 const LOOKUP_STALE_MS = 5 * 60_000;
 
@@ -114,5 +114,18 @@ export function useDetachComponent(
   return useMutation({
     mutationFn: ({ childId, version }) => detachComponent(id, childId, version),
     onSuccess: after,
+  });
+}
+
+/** A small search over assets by name or tag, for the attach dialog's picker. */
+export function useAssetSearch(text: string): UseQueryResult<AssetListItem[]> {
+  const q = text.trim();
+  return useQuery({
+    queryKey: [...assetKeys.lists(), "search", q],
+    queryFn: async ({ signal }) => {
+      const params = new URLSearchParams({ q, limit: "10" });
+      return (await fetchAssetPage(params.toString(), signal)).items;
+    },
+    enabled: q.length >= 2,
   });
 }

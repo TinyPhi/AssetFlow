@@ -6,13 +6,15 @@ import { Link } from "react-router";
 import { t, useFormat } from "@/lib/i18n";
 import type { ColumnId } from "../lib/asset-columns";
 import { humanizeKey } from "../lib/asset-filter-params";
+import { useVocabulary } from "../hooks/useAssetDetail";
 import { holderTypeLabelKey } from "../lib/asset-options";
+import { statusLabel } from "../lib/status-label";
 import type { AssetHolder, AssetListItem } from "../types";
 
-/** The status as a pill. The label is the status key made readable: the API serves no label yet. */
-export const StatusPill: React.FC<{ status: string }> = ({ status }) => (
+/** The status as a pill: the template's label when given, otherwise the status key made readable. */
+export const StatusPill: React.FC<{ status: string; label?: string }> = ({ status, label }) => (
   <span className="inline-flex max-w-full items-center rounded-full border border-border bg-background px-2.5 py-0.5 text-xs font-medium text-foreground">
-    <span className="truncate">{humanizeKey(status)}</span>
+    <span className="truncate">{label ?? humanizeKey(status)}</span>
   </span>
 );
 
@@ -31,6 +33,7 @@ export const HolderCell: React.FC<{ holder: AssetHolder | null }> = ({ holder })
 /** One cell's content, shared by the table and the cards so both show the same thing. */
 export const AssetCell: React.FC<{ column: ColumnId; item: AssetListItem }> = ({ column, item }) => {
   const { formatDate, formatDateTime } = useFormat();
+  const vocabulary = useVocabulary();
   const text = (value: string | null): React.ReactNode =>
     value === null || value === "" ? (
       <span className="text-muted">{t("assets.list.empty_value")}</span>
@@ -50,7 +53,7 @@ export const AssetCell: React.FC<{ column: ColumnId; item: AssetListItem }> = ({
         </Link>
       );
     case "status":
-      return <StatusPill status={item.status} />;
+      return <StatusPill status={item.status} label={statusLabel(vocabulary.data, item.status)} />;
     case "category_name":
       return <>{text(item.category_name)}</>;
     case "holder":
