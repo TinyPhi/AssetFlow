@@ -14,7 +14,10 @@ __all__ = [
     "ASSET_CATEGORY_MOVED",
     "ASSET_CATEGORY_SEEDED",
     "ASSET_CATEGORY_UPDATED",
+    "ASSET_COMPONENT_ATTACHED",
+    "ASSET_COMPONENT_DETACHED",
     "ASSET_CREATED",
+    "ASSET_MOVED_WITH_PARENT",
     "ASSET_SAVED_VIEW_CREATED",
     "ASSET_SAVED_VIEW_DELETED",
     "ASSET_SAVED_VIEW_UPDATED",
@@ -34,7 +37,10 @@ __all__ = [
     "AssetCategoryMovedEvent",
     "AssetCategorySeededEvent",
     "AssetCategoryUpdatedEvent",
+    "AssetComponentAttachedEvent",
+    "AssetComponentDetachedEvent",
     "AssetCreatedEvent",
+    "AssetMovedWithParentEvent",
     "AssetSavedViewCreatedEvent",
     "AssetSavedViewDeletedEvent",
     "AssetSavedViewUpdatedEvent",
@@ -54,6 +60,9 @@ __all__ = [
 ASSET_CREATED = "asset.created"
 ASSET_UPDATED = "asset.updated"
 ASSET_STATUS_CHANGED = "asset.status_changed"
+ASSET_COMPONENT_ATTACHED = "asset.component_attached"
+ASSET_COMPONENT_DETACHED = "asset.component_detached"
+ASSET_MOVED_WITH_PARENT = "asset.moved_with_parent"
 ASSET_SAVED_VIEW_CREATED = "asset_saved_view.created"
 ASSET_SAVED_VIEW_UPDATED = "asset_saved_view.updated"
 ASSET_SAVED_VIEW_DELETED = "asset_saved_view.deleted"
@@ -95,6 +104,22 @@ class AssetStatusChangedEvent(BaseModel):
     to_status: str = Field(description="Status after the change")
     reason: str | None = Field(description="Reason given for the change, if any")
     version: int = Field(description="New record version")
+
+
+class AssetComponentAttachedEvent(BaseModel):
+    parent_asset_id: UUID = Field(description="Parent asset ID")
+    child_asset_id: UUID = Field(description="Child asset ID")
+
+
+class AssetComponentDetachedEvent(BaseModel):
+    parent_asset_id: UUID = Field(description="Former parent asset ID")
+    child_asset_id: UUID = Field(description="Detached child asset ID")
+
+
+class AssetMovedWithParentEvent(BaseModel):
+    id: UUID = Field(description="Moved child asset ID")
+    version: int = Field(description="New record version")
+    parent_asset_id: UUID = Field(description="Parent asset whose move carried this asset")
 
 
 class AssetSavedViewCreatedEvent(BaseModel):

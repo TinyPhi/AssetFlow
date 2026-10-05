@@ -23,6 +23,7 @@ PATH_PARAM_DEFAULTS: dict[str, str] = {
     "manufacturer_id": DEFAULT_UUID,
     "supplier_id": DEFAULT_UUID,
     "asset_id": DEFAULT_UUID,
+    "child_asset_id": DEFAULT_UUID,
     "view_id": DEFAULT_UUID,
 }
 
@@ -95,6 +96,8 @@ DEFAULT_PAYLOADS: dict[tuple[str, str], dict[str, Any]] = {
     },
     ("PATCH", "/api/v1/assets/{asset_id}"): {"name": "Updated Asset", "version": 1},
     ("POST", "/api/v1/assets/{asset_id}/change-status"): {"to_status": "in_use", "version": 1},
+    ("POST", "/api/v1/assets/{asset_id}/components"): {"child_asset_id": TARGET_MEMBER_UUID, "version": 1},
+    ("POST", "/api/v1/assets/{asset_id}/components/{child_asset_id}/detach"): {"version": 1},
     ("POST", "/api/v1/asset-saved-views"): {"name": "My view"},
     ("PATCH", "/api/v1/asset-saved-views/{view_id}"): {"name": "Renamed view", "version": 1},
     ("POST", "/api/v1/manufacturers"): {"name": "Test Manufacturer"},

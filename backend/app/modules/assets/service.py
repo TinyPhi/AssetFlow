@@ -36,6 +36,8 @@ from app.core.scope import MemberContext, default_scope_resolver
 from app.engines.automation.domain_template import DomainTemplateError, load_domain_template
 from app.modules.assets import repository as repo
 from app.modules.assets.catalog import repository as catalog_repo
+from app.modules.assets.components import cascade
+from app.modules.assets.components.repository import ComponentRepository
 from app.modules.assets.config import STATUS_CATEGORIES, AssetsConfig, parse_assets_section
 from app.modules.assets.custom_fields import (
     CleanValues,
@@ -62,7 +64,14 @@ from app.modules.assets.permissions import (
     RETIRE_PERMISSION,
     UPDATE_PERMISSION,
 )
-from app.modules.assets.schemas import AssetCreate, AssetRead, AssetUpdate, HolderRead, TransitionRead
+from app.modules.assets.schemas import (
+    AssetCreate,
+    AssetRead,
+    AssetUpdate,
+    HolderRead,
+    ParentRead,
+    TransitionRead,
+)
 from app.modules.assets.sensitive import (
     decrypt_custom_fields,
     encrypt_custom_fields,
@@ -78,6 +87,7 @@ __all__ = [
     "AssetListResult",
     "change_status",
     "create_asset",
+    "ended_statuses",
     "get_asset",
     "list_assets",
     "list_transitions",
@@ -89,6 +99,7 @@ READ_SENSITIVE_PERMISSION = "asset.read_sensitive"
 _category_repo = catalog_repo.CategoryRepository()
 _field_repo = catalog_repo.CustomFieldDefinitionRepository()
 _asset_repo = repo.AssetRepository()
+_component_repo = ComponentRepository()
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -299,6 +310,10 @@ async def _to_asset_read(
         )
         _apply_departed_marker(data, departed)
 
+    parent, component_count = await _component_view(
+        conn, organization_id=organization_id, caller=caller, asset_id=data["id"]
+    )
+
     return AssetRead(
         id=data["id"],
         organization_id=data["organization_id"],
@@ -326,10 +341,38 @@ async def _to_asset_read(
         custom_fields=custom_fields,
         encrypted_fields=encrypted_view,
         notes=data["notes"],
+        parent=parent,
+        component_count=component_count,
         version=data["version"],
         created_at=data["created_at"],
         updated_at=data["updated_at"],
     )
+
+
+async def _component_view(
+    conn: Any, *, organization_id: UUID, caller: MemberContext, asset_id: UUID
+) -> tuple[ParentRead | None, int]:
+    """The current parent (only when the caller may read it, §C4.5) and the child count."""
+    parent_row = await _component_repo.get_parent_summary(
+        conn, organization_id=organization_id, child_asset_id=asset_id
+    )
+    parent: ParentRead | None = None
+    if parent_row is not None and default_scope_resolver.check_access(
+        caller,
+        READ_PERMISSION,
+        {
+            "owner_org_unit_path": parent_row["owner_org_unit_path"],
+            "team_id": str(parent_row["holder_team_id"]) if parent_row["holder_team_id"] else None,
+            "holder_member_id": str(parent_row["holder_member_id"])
+            if parent_row["holder_member_id"]
+            else None,
+        },
+    ):
+        parent = ParentRead(id=parent_row["id"], tag=parent_row["tag"], name=parent_row["name"])
+    count = await _component_repo.count_children(
+        conn, organization_id=organization_id, parent_asset_id=asset_id
+    )
+    return parent, count
 
 
 # ==============================================================================
@@ -680,6 +723,13 @@ async def update_asset(
             sets=sets,
         )
 
+        owner_changes = (
+            data.owner_org_unit_id is not None and data.owner_org_unit_id != current["owner_org_unit_id"]
+        )
+        location_changes = (data.location_id is not None and data.location_id != current["location_id"]) or (
+            data.clear_location and current["location_id"] is not None
+        )
+
         before_state, after_state = _update_audit_states(current, sets)
         row = await _asset_repo.update(
             conn, organization_id=organization_id, asset_id=asset_id, version=data.version, sets=sets
@@ -706,6 +756,18 @@ async def update_asset(
             aggregate_id=asset_id,
             payload={"id": str(asset_id), "version": row["version"]},
         )
+
+        if data.move_components and (owner_changes or location_changes):
+            await cascade.move_descendants(
+                conn,
+                organization_id=organization_id,
+                caller=caller,
+                parent_asset_id=asset_id,
+                new_owner_org_unit_id=data.owner_org_unit_id if owner_changes else None,
+                set_location=location_changes,
+                new_location_id=None if data.clear_location else data.location_id,
+                request_id=request_id,
+            )
 
         detail = await _asset_repo.get_detail(conn, organization_id=organization_id, asset_id=asset_id)
         assert detail is not None  # noqa: S101
@@ -760,6 +822,11 @@ async def _statuses_of_category(conn: Any, organization_id: UUID, category: str)
     if config is None:
         return ()
     return tuple(st.key for st in config.statuses if st.category == category)
+
+
+async def ended_statuses(conn: Any, organization_id: UUID) -> tuple[str, ...]:
+    """Status keys of the `ended` category in the organization's domain template (none without one)."""
+    return await _statuses_of_category(conn, organization_id, "ended")
 
 
 async def _resolve_custom_field_filters(

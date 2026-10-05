@@ -275,3 +275,57 @@ async def test_ended_child_is_refused(client: httpx.AsyncClient, make_pool: Pool
     res = await _attach(client, org_id, parent["id"], child["id"], parent["version"])
     assert res.status_code == 409
     assert res.json()["code"] == "asset_component.child_ended"
+
+
+async def test_attach_does_not_change_status_or_holder(
+    client: httpx.AsyncClient, make_pool: PoolFactory
+) -> None:
+    pool = await make_pool("api")
+    org_id, _unit, _cat, parent, child = await _pair(client, pool)
+    await _attach(client, org_id, parent["id"], child["id"], parent["version"])
+    after = await _detail(client, org_id, child["id"])
+    assert after["status"] == child["status"]
+    assert after["holder"] == child["holder"]
+
+
+async def test_stale_parent_version_conflicts(client: httpx.AsyncClient, make_pool: PoolFactory) -> None:
+    pool = await make_pool("api")
+    org_id, _unit, _cat, parent, child = await _pair(client, pool)
+    res = await _attach(client, org_id, parent["id"], child["id"], parent["version"] + 5)
+    assert res.status_code == 409
+    assert res.json()["code"] == "asset.version_conflict"
+
+    ok = (await _attach(client, org_id, parent["id"], child["id"], parent["version"])).json()["data"]
+    stale = await client.post(
+        f"{BASE}/{parent['id']}/components/{child['id']}/detach",
+        json={"version": parent["version"]},
+        headers=_headers(org_id),
+    )
+    assert stale.status_code == 409
+    assert stale.json()["code"] == "asset.version_conflict"
+    assert ok["parent_version"] == parent["version"] + 1
+
+
+async def test_unknown_child_is_422_and_unknown_parent_is_404(
+    client: httpx.AsyncClient, make_pool: PoolFactory
+) -> None:
+    pool = await make_pool("api")
+    org_id, _unit, _cat, parent, _child = await _pair(client, pool)
+    missing_child = await _attach(client, org_id, parent["id"], str(uuid4()), parent["version"])
+    assert missing_child.status_code == 422
+    missing_parent = await _attach(client, org_id, str(uuid4()), parent["id"], 1)
+    assert missing_parent.status_code == 404
+
+
+async def test_member_without_update_permission_is_refused(
+    client: httpx.AsyncClient, make_pool: PoolFactory
+) -> None:
+    pool = await make_pool("api")
+    org_id, _unit, _cat, parent, child = await _pair(client, pool)
+    headers = {**_headers(org_id), "x-role": "member"}
+    res = await client.post(
+        f"{BASE}/{parent['id']}/components",
+        json={"child_asset_id": child["id"], "version": parent["version"]},
+        headers=headers,
+    )
+    assert res.status_code == 403

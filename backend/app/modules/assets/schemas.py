@@ -25,6 +25,7 @@ __all__ = [
     "AssetStatusChange",
     "AssetUpdate",
     "HolderRead",
+    "ParentRead",
     "TransitionRead",
 ]
 
@@ -84,6 +85,13 @@ class AssetUpdate(BaseModel):
     )
     notes: str | None = None
     clear_notes: bool = False
+    move_components: bool = Field(
+        default=False,
+        description=(
+            "With a changed owner org unit or location: move every current component (children, "
+            "grandchildren) to the same owner and location in the same transaction (§B8.1)"
+        ),
+    )
     version: int = Field(ge=1, description="Current record version for optimistic concurrency control")
 
 
@@ -93,6 +101,14 @@ class HolderRead(BaseModel):
     type: HolderType
     id: UUID
     display_name: str
+
+
+class ParentRead(BaseModel):
+    """The asset this one is currently a component of."""
+
+    id: UUID
+    tag: str
+    name: str
 
 
 class AssetRead(BaseModel):
@@ -128,6 +144,10 @@ class AssetRead(BaseModel):
     custom_fields: dict[str, object]
     encrypted_fields: dict[str, object]
     notes: str | None
+    parent: ParentRead | None = Field(
+        default=None, description="Current parent; omitted when none or when the caller may not see it"
+    )
+    component_count: int = Field(default=0, description="Number of current direct components")
     version: int
     created_at: datetime
     updated_at: datetime
