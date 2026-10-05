@@ -12,8 +12,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import JSONResponse
 
-from app.api.deps import permission_extra, require_module
 from app.core.envelope import success_response
+from app.core.openapi_meta import permission_extra
 from app.core.permissions import ScopeType
 from app.core.problems import FieldError, UnauthorizedError, ValidationFailedError
 from app.core.scope import MemberContext, RoleGrant
@@ -21,6 +21,7 @@ from app.modules.assets import repository as repo
 from app.modules.assets import service
 from app.modules.assets.permissions import CREATE_PERMISSION, READ_PERMISSION, UPDATE_PERMISSION
 from app.modules.assets.schemas import AssetCreate, AssetListItem, AssetStatusChange, AssetUpdate
+from app.modules.organization.modules import require_module
 
 _CUSTOM_FIELD_OPS = ("gte", "lte")
 

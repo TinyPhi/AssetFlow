@@ -12,13 +12,17 @@ do not exist.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import Literal
 from uuid import UUID
 
 import asyncpg
+from fastapi import Request
 
+from app.core.db import tenant_transaction
 from app.core.ids import uuid7
-from app.core.problems import ModuleDependencyError
+from app.core.problems import ModuleDependencyError, ModuleNotInstalledError
+from app.core.request_member import resolve_member
 from app.modules.audit.service import record_audit_event
 
 type DbConn = asyncpg.Connection[asyncpg.Record] | asyncpg.pool.PoolConnectionProxy[asyncpg.Record]
@@ -145,3 +149,19 @@ async def uninstall_module(
         f'{{"module_key": "{module_key}"}}',
     )
     return True
+
+
+def require_module(module_key: ModuleKey) -> Callable[[Request], Awaitable[None]]:
+    """A route dependency that answers `module.not_installed` before the handler runs (M1.4-T6)."""
+
+    async def _guard(request: Request) -> None:
+        member = resolve_member(request)
+        pool = getattr(request.app.state, "pool", None)
+        if pool is None:
+            raise ModuleNotInstalledError()
+        async with tenant_transaction(pool, UUID(member.organization_id)) as conn:
+            installed = await is_module_installed(conn, UUID(member.organization_id), module_key)
+        if not installed:
+            raise ModuleNotInstalledError()
+
+    return _guard

@@ -20,10 +20,10 @@ import asyncpg
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.api.deps import permission_extra, require_module
 from app.core.db import Pool, tenant_transaction
 from app.core.envelope import success_response
 from app.core.ids import uuid7
+from app.core.openapi_meta import permission_extra
 from app.core.problems import FieldError, ValidationFailedError
 from app.core.scope import MemberContext, default_scope_resolver
 from app.modules.assets.errors import (
@@ -41,6 +41,7 @@ from app.modules.assets.repository import SORT_COLUMNS, DbConn
 from app.modules.assets.router import _request_id, _resolve_member
 from app.modules.assets.schemas import AssetListItem
 from app.modules.audit.service import record_audit_event
+from app.modules.organization.modules import require_module
 
 __all__ = [
     "SavedViewCreate",

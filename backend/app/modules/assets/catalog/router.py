@@ -11,8 +11,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
 
-from app.api.deps import permission_extra, require_module
 from app.core.envelope import success_response
+from app.core.openapi_meta import permission_extra
 from app.core.permissions import ScopeType
 from app.core.problems import UnauthorizedError
 from app.core.scope import MemberContext, RoleGrant
@@ -32,6 +32,7 @@ from app.modules.assets.catalog.schemas import (
     SupplierCreate,
     SupplierUpdate,
 )
+from app.modules.organization.modules import require_module
 
 READ_PERMISSION = service.READ_PERMISSION
 WRITE_PERMISSION = service.WRITE_PERMISSION

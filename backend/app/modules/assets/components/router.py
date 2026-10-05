@@ -9,8 +9,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
 
-from app.api.deps import permission_extra, require_module
 from app.core.envelope import success_response
+from app.core.openapi_meta import permission_extra
 from app.modules.assets.components import service
 from app.modules.assets.components.schemas import (
     ComponentAttach,
@@ -20,6 +20,7 @@ from app.modules.assets.components.schemas import (
 )
 from app.modules.assets.permissions import READ_PERMISSION, UPDATE_PERMISSION
 from app.modules.assets.router import _request_id, _resolve_member
+from app.modules.organization.modules import require_module
 
 router = APIRouter(
     prefix="/assets/{asset_id}/components",
