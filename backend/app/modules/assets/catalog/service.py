@@ -76,6 +76,7 @@ from app.modules.assets.events import (
     ASSET_CATEGORY_ARCHIVED,
     ASSET_CATEGORY_CREATED,
     ASSET_CATEGORY_MOVED,
+    ASSET_CATEGORY_SEEDED,
     ASSET_CATEGORY_UPDATED,
     CUSTOM_FIELD_DEFINITION_ARCHIVED,
     CUSTOM_FIELD_DEFINITION_CREATED,
@@ -108,6 +109,7 @@ __all__ = [
     "list_manufacturers",
     "list_suppliers",
     "move_category",
+    "seed_assets_catalog",
     "update_category",
     "update_custom_field_definition",
     "update_manufacturer",
@@ -1381,3 +1383,122 @@ async def _seed_one_custom_field(
         position=0,
     )
     return True
+
+
+async def _seed_categories_parent_first(
+    conn: Any, *, organization_id: UUID, categories: list[Any]
+) -> tuple[int, int]:
+    """Seed every category, parents before children, so a child's path can extend its parent's.
+
+    An orphaned `parent_code` (already flagged by `config validate`, never expected here) just
+    stops the loop early rather than seeding the rest in the wrong order.
+    """
+    by_code = {c.code: c for c in categories}
+    seeded_ids: dict[str, UUID] = {}
+    seeded_paths: dict[str, str] = {}
+    categories_created = 0
+    custom_fields_created = 0
+
+    remaining = list(categories)
+    while remaining:
+        progressed = False
+        for category in list(remaining):
+            if category.code in seeded_ids:
+                remaining.remove(category)
+                continue
+            if not _category_ready(category, by_code, seeded_ids):
+                continue
+            remaining.remove(category)
+            progressed = True
+
+            category_created, fields_created = await _seed_one_category(
+                conn,
+                organization_id=organization_id,
+                category=category,
+                seeded_ids=seeded_ids,
+                seeded_paths=seeded_paths,
+            )
+            if category_created:
+                categories_created += 1
+            custom_fields_created += fields_created
+        if not progressed:
+            break
+    return categories_created, custom_fields_created
+
+
+async def seed_assets_catalog(
+    conn: Any,
+    *,
+    organization_id: UUID,
+    domain_key: str,
+    config_base_dir: Path | None = None,
+    actor_member_id: UUID | None = None,
+    request_id: str | None = None,
+) -> SeedResult:
+    """Copy the domain template's `assets.categories` (and their custom fields) into the
+    organization's tables, idempotent by `code` / `key` (§B7.1 "definitions live in files,
+    assignments live in the database"; §B5.9 module installation).
+
+    A second call (re-install, or installing again after an admin has already edited categories)
+    only adds rows that are still missing; it never overwrites an existing row, so an admin's own
+    edit to a seeded category or field is never undone. Must run inside the caller's own write
+    transaction (the module-install transaction), so the seed and the `module.install` audit event
+    commit or roll back together.
+    """
+    template_file = _domains_dir(config_base_dir) / f"{domain_key}.yaml"
+    categories = _load_template_categories(template_file)
+    categories_created, custom_fields_created = await _seed_categories_parent_first(
+        conn, organization_id=organization_id, categories=categories
+    )
+    await _record_seed_event(
+        conn,
+        organization_id=organization_id,
+        domain_key=domain_key,
+        categories_created=categories_created,
+        custom_fields_created=custom_fields_created,
+        actor_member_id=actor_member_id,
+        request_id=request_id,
+    )
+    return SeedResult(
+        domain_key=domain_key,
+        categories_created=categories_created,
+        custom_fields_created=custom_fields_created,
+    )
+
+
+async def _record_seed_event(
+    conn: Any,
+    *,
+    organization_id: UUID,
+    domain_key: str,
+    categories_created: int,
+    custom_fields_created: int,
+    actor_member_id: UUID | None,
+    request_id: str | None,
+) -> None:
+    await record_audit_event(
+        conn,
+        organization_id=organization_id,
+        actor_member_id=actor_member_id,
+        action="asset_category.seeded",
+        entity_type="organization_module",
+        entity_id=organization_id,
+        request_id=request_id,
+        after_state={
+            "domain_key": domain_key,
+            "categories_created": categories_created,
+            "custom_fields_created": custom_fields_created,
+        },
+    )
+    await _outbox(
+        conn,
+        organization_id=organization_id,
+        event_type=ASSET_CATEGORY_SEEDED,
+        aggregate_type="organization_module",
+        aggregate_id=organization_id,
+        payload={
+            "domain_key": domain_key,
+            "categories_created": categories_created,
+            "custom_fields_created": custom_fields_created,
+        },
+    )

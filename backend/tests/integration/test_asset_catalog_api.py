@@ -16,6 +16,7 @@ from pg_harness import PoolFactory
 
 from app.core.db import Pool, tenant_transaction
 from app.main import create_app
+from app.modules.assets.catalog.service import seed_assets_catalog
 from app.modules.organization.modules import install_module
 
 
@@ -377,3 +378,139 @@ async def test_supplier_lifecycle(client: httpx.AsyncClient, make_pool: PoolFact
 # ==============================================================================
 # Isolation: cross-organization access answers 404
 # ==============================================================================
+
+
+async def test_category_isolation_cross_organization_is_404(
+    client: httpx.AsyncClient, make_pool: PoolFactory
+) -> None:
+    pool = await make_pool("api")
+    org_a = await _create_org(pool)
+    org_b = await _create_org(pool)
+
+    create_res = await client.post(
+        "/api/v1/asset-categories", json={"code": "computer", "name": "Computers"}, headers=_headers(org_a)
+    )
+    category_id = create_res.json()["data"]["id"]
+
+    res = await client.get(f"/api/v1/asset-categories/{category_id}", headers=_headers(org_b))
+    assert res.status_code == 404
+
+
+async def test_module_not_installed_answers_404(client: httpx.AsyncClient, make_pool: PoolFactory) -> None:
+    pool = await make_pool("api")
+    org_id = uuid4()
+    async with tenant_transaction(pool, org_id) as conn:
+        await conn.execute(
+            "INSERT INTO public.organizations"
+            " (id, slug, name, idp_organization_id, domain_key, settings)"
+            " VALUES ($1, $2, 'No Assets Module Org', $3, 'generic', '{}'::jsonb)",
+            org_id,
+            f"no-assets-{org_id.hex[:12]}",
+            f"idp-no-assets-{uuid4().hex[:12]}",
+        )
+    res = await client.get("/api/v1/asset-categories", headers=_headers(org_id))
+    assert res.status_code == 404
+    assert res.json()["code"] == "module.not_installed"
+
+
+# ==============================================================================
+# Template seed on module install
+# ==============================================================================
+
+
+async def test_seed_runs_on_install_and_is_idempotent(make_pool: PoolFactory) -> None:
+    """Installing the `assets` module seeds `it-assets`' categories and custom fields; a second
+    seed call adds nothing new and never overwrites an admin's edit (§B7.1, §B5.9)."""
+    pool = await make_pool("api")
+    org_id = uuid4()
+    async with tenant_transaction(pool, org_id) as conn:
+        await conn.execute(
+            "INSERT INTO public.organizations"
+            " (id, slug, name, idp_organization_id, domain_key, settings)"
+            " VALUES ($1, $2, 'Seed Test Org', $3, 'it-assets', '{}'::jsonb)",
+            org_id,
+            f"seed-{org_id.hex[:12]}",
+            f"idp-seed-{uuid4().hex[:12]}",
+        )
+
+    async with tenant_transaction(pool, org_id) as conn:
+        result = await seed_assets_catalog(conn, organization_id=org_id, domain_key="it-assets")
+    assert result.categories_created == 5
+    assert result.custom_fields_created == 6  # laptop: 3, server: 2, monitor: 1
+
+    async with tenant_transaction(pool, org_id) as conn:
+        category_count = await conn.fetchval(
+            "SELECT count(*) FROM public.asset_categories WHERE organization_id = $1", org_id
+        )
+        field_count = await conn.fetchval(
+            "SELECT count(*) FROM public.custom_field_definitions WHERE organization_id = $1", org_id
+        )
+        # The owner edits a seeded category's label before the next seed run.
+        await conn.execute(
+            "UPDATE public.asset_categories SET name = 'Admin-edited label', version = version + 1 "
+            "WHERE organization_id = $1 AND code = 'computer'",
+            org_id,
+        )
+    assert category_count == 5
+    assert field_count == 6
+
+    # Re-seed (e.g. a re-install): no duplicates, no drift of the admin's edit.
+    async with tenant_transaction(pool, org_id) as conn:
+        second = await seed_assets_catalog(conn, organization_id=org_id, domain_key="it-assets")
+    assert second.categories_created == 0
+    assert second.custom_fields_created == 0
+
+    async with tenant_transaction(pool, org_id) as conn:
+        category_count_after = await conn.fetchval(
+            "SELECT count(*) FROM public.asset_categories WHERE organization_id = $1", org_id
+        )
+        field_count_after = await conn.fetchval(
+            "SELECT count(*) FROM public.custom_field_definitions WHERE organization_id = $1", org_id
+        )
+        edited_name = await conn.fetchval(
+            "SELECT name FROM public.asset_categories WHERE organization_id = $1 AND code = 'computer'",
+            org_id,
+        )
+    assert category_count_after == 5
+    assert field_count_after == 6
+    assert edited_name == "Admin-edited label"
+
+
+async def test_seed_runs_via_install_route(client: httpx.AsyncClient, make_pool: PoolFactory) -> None:
+    pool = await make_pool("api")
+    org_id = uuid4()
+    admin_member_id = uuid4()
+    async with tenant_transaction(pool, org_id) as conn:
+        await conn.execute(
+            "INSERT INTO public.organizations"
+            " (id, slug, name, idp_organization_id, domain_key, settings)"
+            " VALUES ($1, $2, 'Install Seed Org', $3, 'it-assets', '{}'::jsonb)",
+            org_id,
+            f"install-seed-{org_id.hex[:12]}",
+            f"idp-install-seed-{uuid4().hex[:12]}",
+        )
+        # `install_module` records `installed_by`, an FK to `members`; the member must already exist.
+        await conn.execute(
+            "INSERT INTO public.members (id, organization_id, email, status, idp_subject, display_name) "
+            "VALUES ($1, $2, 'admin@example.test', 'active', $3, 'Admin')",
+            admin_member_id,
+            org_id,
+            f"sub-{admin_member_id}",
+        )
+
+    headers = {"x-member-id": str(admin_member_id), "x-organization-id": str(org_id), "x-role": "admin"}
+    res = await client.post("/api/v1/modules/assets/install", headers=headers)
+    assert res.status_code == 200
+
+    list_res = await client.get("/api/v1/asset-categories", headers=_headers(org_id))
+    assert list_res.status_code == 200
+    codes = {c["code"] for c in list_res.json()["data"]["items"]}
+    assert {"computer", "laptop", "server", "monitor", "network_device"} <= codes
+
+    async with tenant_transaction(pool, org_id) as conn:
+        seeded_action = await conn.fetchval(
+            "SELECT action FROM public.audit_events"
+            " WHERE organization_id = $1 AND action = 'asset_category.seeded'",
+            org_id,
+        )
+    assert seeded_action == "asset_category.seeded"
