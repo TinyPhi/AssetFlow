@@ -189,6 +189,23 @@
       "delete": "Delete",
       "delete_named": "Delete view {name}",
       "delete_confirm": "Confirm delete: {name}"
+    },
+    "form": {
+      "errors": {
+        "required": "This field is required.",
+        "too_long": "Use at most {max} characters.",
+        "min_length": "Use at least {min} characters.",
+        "max_length": "Use at most {max} characters.",
+        "pattern": "This value does not match the expected format.",
+        "number": "Enter a number.",
+        "min_number": "Enter a number of at least {min}.",
+        "max_number": "Enter a number of at most {max}.",
+        "date": "Enter a valid date.",
+        "json": "Enter valid JSON.",
+        "json_too_large": "This JSON is too large.",
+        "option": "Choose one of the listed options.",
+        "cost": "Enter an amount such as 1200 or 1200.50."
+      }
     }
   },
   "ui": {

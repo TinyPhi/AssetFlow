@@ -31,6 +31,14 @@ export const assetKeys = {
   locations: () => ["assets", "lookups", "locations"] as const,
   teams: () => ["assets", "lookups", "teams"] as const,
   customFields: (categoryId: string) => ["assets", "lookups", "custom-fields", categoryId] as const,
+  detail: (id: string) => ["assets", "detail", id] as const,
+  transitions: (id: string) => ["assets", "detail", id, "transitions"] as const,
+  components: (id: string) => ["assets", "detail", id, "components"] as const,
+  vocabulary: () => ["assets", "lookups", "vocabulary"] as const,
+  parties: (kind: string, status: string) => ["assets", "lookups", kind, status] as const,
+  categoryRecords: (status: string) => ["assets", "lookups", "category-records", status] as const,
+  fieldDefinitions: (categoryId: string, status: string) =>
+    ["assets", "lookups", "field-definitions", categoryId, status] as const,
 } as const;
 
 /** One page of the list; `query` is the already serialized parameter string (see `toApiParams`). */

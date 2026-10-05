@@ -10,6 +10,7 @@ import type {
   AssetListItem,
   AssetPage,
   CustomFieldDefinition,
+  CustomFieldRules,
   HierarchyNode,
   HolderType,
   SavedView,
@@ -17,21 +18,21 @@ import type {
   TeamOption,
 } from "../types";
 
-type Rec = Record<string, unknown>;
+export type Rec = Record<string, unknown>;
 
-function isRec(value: unknown): value is Rec {
+export function isRec(value: unknown): value is Rec {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function str(value: unknown): string | null {
+export function str(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
-function strOrNull(value: unknown): string | null {
+export function strOrNull(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
-function invalid(): ProblemError {
+export function invalid(): ProblemError {
   return new ProblemError({ code: "invalid_response", status: 200, detail: "" });
 }
 
@@ -81,7 +82,7 @@ export function parseAssetItem(value: unknown): AssetListItem | null {
   };
 }
 
-function items<T>(value: unknown, parse: (item: unknown) => T | null): T[] {
+export function items<T>(value: unknown, parse: (item: unknown) => T | null): T[] {
   if (!Array.isArray(value)) throw invalid();
   return (value as unknown[]).map(parse).filter((item): item is T => item !== null);
 }
@@ -157,23 +158,41 @@ export function parseTeams(value: unknown): TeamOption[] {
   return items(value, parse);
 }
 
+function num(value: unknown): number | null {
+  return typeof value === "number" ? value : null;
+}
+
+function parseRules(value: unknown): CustomFieldRules {
+  const rec: Rec = isRec(value) ? value : {};
+  const options = Array.isArray(rec["options"])
+    ? (rec["options"] as unknown[]).filter((o): o is string => typeof o === "string")
+    : [];
+  return { min: num(rec["min"]), max: num(rec["max"]), regex: strOrNull(rec["regex"]), options };
+}
+
+export function parseCustomField(item: unknown): CustomFieldDefinition | null {
+  if (!isRec(item)) return null;
+  const id = str(item["id"]);
+  const key = str(item["key"]);
+  const label = str(item["label"]);
+  const type = str(item["field_type"]);
+  if (id === null || key === null || label === null || type === null) return null;
+  return {
+    id,
+    key,
+    label,
+    field_type: type,
+    is_encrypted: item["is_encrypted"] === true,
+    status: str(item["status"]) ?? "active",
+    is_required: item["is_required"] === true,
+    is_unique: item["is_unique"] === true,
+    position: num(item["position"]) ?? 0,
+    version: num(item["version"]) ?? 1,
+    rules: parseRules(item["rules"]),
+  };
+}
+
 export function parseCustomFields(value: unknown): CustomFieldDefinition[] {
   if (!isRec(value)) throw invalid();
-  const parse = (item: unknown): CustomFieldDefinition | null => {
-    if (!isRec(item)) return null;
-    const id = str(item["id"]);
-    const key = str(item["key"]);
-    const label = str(item["label"]);
-    const type = str(item["field_type"]);
-    if (id === null || key === null || label === null || type === null) return null;
-    return {
-      id,
-      key,
-      label,
-      field_type: type,
-      is_encrypted: item["is_encrypted"] === true,
-      status: str(item["status"]) ?? "active",
-    };
-  };
-  return items(value["items"], parse);
+  return items(value["items"], parseCustomField);
 }

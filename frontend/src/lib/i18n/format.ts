@@ -40,11 +40,7 @@ export function formatDateTime(
   return formatter.format(date);
 }
 
-export function formatNumber(
-  value: number,
-  locale = "en",
-  options?: Intl.NumberFormatOptions,
-): string {
+export function formatNumber(value: number, locale = "en", options?: Intl.NumberFormatOptions): string {
   if (typeof value !== "number" || Number.isNaN(value)) return "";
   const formatter = new Intl.NumberFormat(locale, options);
   return formatter.format(value);
