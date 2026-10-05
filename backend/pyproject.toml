@@ -75,6 +75,7 @@ ignore = [
     "PLR2004", # Magic values in comparisons (status codes, counts)
     "TRY300", # Consider moving statement to an else block
     "TRY301", # Abstract raise to an inner function
+    "B008",   # Do not perform function call in argument defaults (FastAPI Depends)
 ]
 
 [tool.ruff.lint.per-file-ignores]

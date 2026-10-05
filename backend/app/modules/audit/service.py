@@ -113,7 +113,8 @@ async def erase_personal_values(
     if field_name is not None:
         args.append(field_name)
         clauses.append(f"field_name = ${len(args)}")
-    res = await conn.execute(f"DELETE FROM public.audit_personal_values WHERE {' AND '.join(clauses)}", *args)  # noqa: S608
+    query = f"DELETE FROM public.audit_personal_values WHERE {' AND '.join(clauses)}"  # nosec B608 # noqa: S608
+    res = await conn.execute(query, *args)
     return int(res.split(" ")[-1]) if res else 0
 
 
@@ -169,8 +170,8 @@ async def list_audit_events(
             args.append(val)
             clauses.append(f"{col} ${len(args)}")
     args.append(limit)
-    sql = (
-        f"SELECT id, organization_id, actor_member_id, action, entity_type, entity_id, "  # noqa: S608
+    sql = (  # nosec B608
+        f"SELECT id, organization_id, actor_member_id, action, entity_type, entity_id, "  # nosec B608 # noqa: S608
         f"role_used, scope_type, scope_id, request_id, client_id, before_state, after_state, created_at "
         f"FROM public.audit_events WHERE {' AND '.join(clauses)} ORDER BY created_at DESC LIMIT ${len(args)}"
     )
