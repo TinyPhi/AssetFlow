@@ -11,6 +11,7 @@ import {
   Network,
   Settings,
   ShieldCheck,
+  Tags,
   UserRound,
   Users,
   Wrench,
@@ -35,6 +36,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { to: "/teams", labelKey: "nav.items.teams", icon: Users, permission: "team.read" },
   { to: "/members", labelKey: "nav.items.members", icon: UserRound, permission: "member.read" },
   { to: "/assets", labelKey: "nav.items.assets", icon: Boxes, permission: "asset.read", module: "assets" },
+  {
+    to: "/admin/asset-categories",
+    labelKey: "nav.items.asset_categories",
+    icon: Tags,
+    permission: "asset.update",
+    module: "assets",
+  },
   {
     to: "/maintenance",
     labelKey: "nav.items.maintenance",

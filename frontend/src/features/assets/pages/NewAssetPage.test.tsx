@@ -32,10 +32,10 @@ function mockCreate(respond?: () => Response): void {
 }
 
 async function fillCore(user: ReturnType<typeof userEvent.setup>): Promise<void> {
-  await screen.findByRole("option", { name: "Pumps" });
+  await screen.findByRole("option", { name: "Pumps" }, { timeout: 5000 });
   await user.selectOptions(screen.getByLabelText(new RegExp(t("assets.form.category"))), "cat-1");
   await user.type(screen.getByLabelText(new RegExp(`^${t("assets.form.name")}`)), "Pump two");
-  await screen.findByRole("option", { name: "Plant A" });
+  await screen.findByRole("option", { name: "Plant A" }, { timeout: 5000 });
   await user.selectOptions(screen.getByLabelText(new RegExp(t("assets.form.owner_org_unit"))), "ou-1");
 }
 

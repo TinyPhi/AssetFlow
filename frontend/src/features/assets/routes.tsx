@@ -54,4 +54,19 @@ export const assetRoutes: RouteObject[] = [
       };
     },
   },
+  {
+    path: "admin/asset-categories",
+    lazy: async () => {
+      const { AssetCategoriesPage } = await import("./pages/AssetCategoriesPage");
+      return {
+        element: (
+          <RequirePermission permission="asset.update">
+            <RequireModule module="assets">
+              <AssetCategoriesPage />
+            </RequireModule>
+          </RequirePermission>
+        ),
+      };
+    },
+  },
 ];
