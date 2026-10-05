@@ -156,6 +156,9 @@ class DoubleConn:
                     "custom_fields": {},
                     "encrypted_fields": {},
                     "idempotency_key": None,
+                    "query": {},
+                    "sort": "-created_at",
+                    "columns": [],
                 }
             )
         ]
@@ -256,6 +259,9 @@ class DoubleConn:
                 "custom_fields": {},
                 "encrypted_fields": {},
                 "idempotency_key": None,
+                "query": {},
+                "sort": "-created_at",
+                "columns": [],
             }
         )
 

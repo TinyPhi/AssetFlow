@@ -221,6 +221,26 @@ ALTER TABLE ONLY public.asset_components FORCE ROW LEVEL SECURITY;
 
 ALTER TABLE public.asset_components OWNER TO assetflow_migrator;
 
+CREATE TABLE public.asset_saved_views (
+    id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+    member_id uuid NOT NULL,
+    name text NOT NULL,
+    query jsonb DEFAULT '{}'::jsonb NOT NULL,
+    sort text DEFAULT '-created_at'::text NOT NULL,
+    columns text[] DEFAULT '{}'::text[] NOT NULL,
+    version integer DEFAULT 1 NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_asset_saved_views__name CHECK (((length(btrim(name)) >= 1) AND (length(btrim(name)) <= 100))),
+    CONSTRAINT ck_asset_saved_views__query_object CHECK ((jsonb_typeof(query) = 'object'::text)),
+    CONSTRAINT ck_asset_saved_views__version CHECK ((version >= 1))
+);
+
+ALTER TABLE ONLY public.asset_saved_views FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE public.asset_saved_views OWNER TO assetflow_migrator;
+
 CREATE TABLE public.assets (
     id uuid NOT NULL,
     organization_id uuid NOT NULL,
@@ -811,6 +831,9 @@ ALTER TABLE ONLY public.asset_categories
 ALTER TABLE ONLY public.asset_components
     ADD CONSTRAINT asset_components_pkey PRIMARY KEY (id);
 
+ALTER TABLE ONLY public.asset_saved_views
+    ADD CONSTRAINT asset_saved_views_pkey PRIMARY KEY (id);
+
 ALTER TABLE ONLY public.assets
     ADD CONSTRAINT assets_pkey PRIMARY KEY (id);
 
@@ -906,6 +929,9 @@ ALTER TABLE ONLY public.asset_categories
 
 ALTER TABLE ONLY public.asset_components
     ADD CONSTRAINT uq_asset_components__organization_id_id UNIQUE (organization_id, id);
+
+ALTER TABLE ONLY public.asset_saved_views
+    ADD CONSTRAINT uq_asset_saved_views__organization_id_member_id_name UNIQUE (organization_id, member_id, name);
 
 ALTER TABLE ONLY public.assets
     ADD CONSTRAINT uq_assets__organization_id_id UNIQUE (organization_id, id);
@@ -1056,6 +1082,8 @@ CREATE INDEX ix_asset_components__organization_id_child_asset_id ON public.asset
 
 CREATE INDEX ix_asset_components__organization_id_parent_asset_id ON public.asset_components USING btree (organization_id, parent_asset_id);
 
+CREATE INDEX ix_asset_saved_views__organization_id_member_id ON public.asset_saved_views USING btree (organization_id, member_id);
+
 CREATE INDEX ix_assets__custom_fields_gin ON public.assets USING gin (custom_fields jsonb_path_ops);
 
 CREATE INDEX ix_assets__model_trgm ON public.assets USING gin (model public.gin_trgm_ops);
@@ -1205,6 +1233,12 @@ ALTER TABLE ONLY public.asset_components
 
 ALTER TABLE ONLY public.asset_components
     ADD CONSTRAINT fk_asset_components__parent_asset_id__assets FOREIGN KEY (organization_id, parent_asset_id) REFERENCES public.assets(organization_id, id) ON DELETE RESTRICT;
+
+ALTER TABLE ONLY public.asset_saved_views
+    ADD CONSTRAINT fk_asset_saved_views__member_id__members FOREIGN KEY (organization_id, member_id) REFERENCES public.members(organization_id, id) ON DELETE RESTRICT;
+
+ALTER TABLE ONLY public.asset_saved_views
+    ADD CONSTRAINT fk_asset_saved_views__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
 
 ALTER TABLE ONLY public.assets
     ADD CONSTRAINT fk_assets__category_id__asset_categories FOREIGN KEY (organization_id, category_id) REFERENCES public.asset_categories(organization_id, id) ON DELETE RESTRICT;
@@ -1371,6 +1405,8 @@ ALTER TABLE ONLY public.working_calendars
 ALTER TABLE public.asset_categories ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE public.asset_components ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE public.asset_saved_views ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE public.assets ENABLE ROW LEVEL SECURITY;
 
@@ -1548,6 +1584,14 @@ CREATE POLICY rls_asset_components_select ON public.asset_components FOR SELECT 
 
 CREATE POLICY rls_asset_components_update ON public.asset_components FOR UPDATE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
 
+CREATE POLICY rls_asset_saved_views_delete ON public.asset_saved_views FOR DELETE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_asset_saved_views_insert ON public.asset_saved_views FOR INSERT WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_asset_saved_views_select ON public.asset_saved_views FOR SELECT USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
+CREATE POLICY rls_asset_saved_views_update ON public.asset_saved_views FOR UPDATE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid)) WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
+
 CREATE POLICY rls_assets_delete ON public.assets FOR DELETE USING ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
 
 CREATE POLICY rls_assets_insert ON public.assets FOR INSERT WITH CHECK ((organization_id = (NULLIF(current_setting('app.organization_id'::text, true), ''::text))::uuid));
@@ -1682,6 +1726,10 @@ GRANT SELECT ON TABLE public.asset_categories TO assetflow_readonly;
 GRANT SELECT,INSERT,UPDATE ON TABLE public.asset_components TO assetflow_api;
 GRANT SELECT ON TABLE public.asset_components TO assetflow_worker;
 GRANT SELECT ON TABLE public.asset_components TO assetflow_readonly;
+
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.asset_saved_views TO assetflow_api;
+GRANT SELECT ON TABLE public.asset_saved_views TO assetflow_worker;
+GRANT SELECT ON TABLE public.asset_saved_views TO assetflow_readonly;
 
 GRANT SELECT,INSERT,UPDATE ON TABLE public.assets TO assetflow_api;
 GRANT SELECT ON TABLE public.assets TO assetflow_worker;

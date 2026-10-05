@@ -25,11 +25,13 @@ from app.api.v1.teams import router as teams_router
 from app.core.envelope import success_response
 from app.modules.assets.catalog.router import router as asset_catalog_router
 from app.modules.assets.router import router as assets_router
+from app.modules.assets.saved_views import router as asset_saved_views_router
 
 router = APIRouter()
 router.include_router(audit_router)
 router.include_router(asset_catalog_router)
 router.include_router(assets_router)
+router.include_router(asset_saved_views_router)
 router.include_router(org_units_router)
 router.include_router(locations_router)
 router.include_router(teams_router)

@@ -10,6 +10,9 @@ from app.core.problems import ConflictError, FieldError, NotFoundError, Validati
 
 __all__ = [
     "AssetNotFoundError",
+    "AssetSavedViewNameConflictError",
+    "AssetSavedViewNotFoundError",
+    "AssetSavedViewVersionConflictError",
     "AssetVersionConflictError",
     "CustomFieldValidationError",
     "TagConflictError",
@@ -89,3 +92,36 @@ class TagConflictError(ConflictError):
 
     def __init__(self, detail: str | None = None) -> None:
         super().__init__(detail)
+
+
+class AssetSavedViewNotFoundError(NotFoundError):
+    """No saved view with this id belongs to the caller (another member's view answers the same)."""
+
+    status_code = 404
+    code: ClassVar[str] = "asset_saved_view.not_found"
+    title: ClassVar[str] = "Saved view not found"
+    default_detail: ClassVar[str] = "The requested saved view does not exist."
+    description: ClassVar[str] = (
+        "The saved view does not exist, or belongs to another member; both answer identically "
+        "because a view is private to the member who created it."
+    )
+
+
+class AssetSavedViewVersionConflictError(ConflictError):
+    """Optimistic concurrency: the submitted `version` no longer matches the stored view."""
+
+    status_code = 409
+    code: ClassVar[str] = "asset_saved_view.version_conflict"
+    title: ClassVar[str] = "Saved view version conflict"
+    default_detail: ClassVar[str] = "The saved view was modified by another request."
+    description: ClassVar[str] = "The provided version does not match the current stored version."
+
+
+class AssetSavedViewNameConflictError(ConflictError):
+    """The member already has a saved view with this name."""
+
+    status_code = 409
+    code: ClassVar[str] = "asset_saved_view.name_conflict"
+    title: ClassVar[str] = "Saved view name already in use"
+    default_detail: ClassVar[str] = "You already have a saved view with this name."
+    description: ClassVar[str] = "View names are unique per member within an organization."

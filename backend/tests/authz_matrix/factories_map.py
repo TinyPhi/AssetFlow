@@ -23,6 +23,7 @@ PATH_PARAM_DEFAULTS: dict[str, str] = {
     "manufacturer_id": DEFAULT_UUID,
     "supplier_id": DEFAULT_UUID,
     "asset_id": DEFAULT_UUID,
+    "view_id": DEFAULT_UUID,
 }
 
 REQUIRED_QUERY_PARAMS: dict[str, dict[str, Any]] = {
@@ -93,6 +94,8 @@ DEFAULT_PAYLOADS: dict[tuple[str, str], dict[str, Any]] = {
         "owner_org_unit_id": DEFAULT_UUID,
     },
     ("PATCH", "/api/v1/assets/{asset_id}"): {"name": "Updated Asset", "version": 1},
+    ("POST", "/api/v1/asset-saved-views"): {"name": "My view"},
+    ("PATCH", "/api/v1/asset-saved-views/{view_id}"): {"name": "Renamed view", "version": 1},
     ("POST", "/api/v1/manufacturers"): {"name": "Test Manufacturer"},
     ("PATCH", "/api/v1/manufacturers/{manufacturer_id}"): {"name": "Updated Manufacturer", "version": 1},
     ("POST", "/api/v1/manufacturers/{manufacturer_id}/archive"): {"version": 1},

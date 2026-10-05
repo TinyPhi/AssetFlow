@@ -15,6 +15,9 @@ __all__ = [
     "ASSET_CATEGORY_SEEDED",
     "ASSET_CATEGORY_UPDATED",
     "ASSET_CREATED",
+    "ASSET_SAVED_VIEW_CREATED",
+    "ASSET_SAVED_VIEW_DELETED",
+    "ASSET_SAVED_VIEW_UPDATED",
     "ASSET_UPDATED",
     "CUSTOM_FIELD_DEFINITION_ARCHIVED",
     "CUSTOM_FIELD_DEFINITION_CREATED",
@@ -31,6 +34,9 @@ __all__ = [
     "AssetCategorySeededEvent",
     "AssetCategoryUpdatedEvent",
     "AssetCreatedEvent",
+    "AssetSavedViewCreatedEvent",
+    "AssetSavedViewDeletedEvent",
+    "AssetSavedViewUpdatedEvent",
     "AssetUpdatedEvent",
     "CustomFieldDefinitionArchivedEvent",
     "CustomFieldDefinitionCreatedEvent",
@@ -45,6 +51,9 @@ __all__ = [
 
 ASSET_CREATED = "asset.created"
 ASSET_UPDATED = "asset.updated"
+ASSET_SAVED_VIEW_CREATED = "asset_saved_view.created"
+ASSET_SAVED_VIEW_UPDATED = "asset_saved_view.updated"
+ASSET_SAVED_VIEW_DELETED = "asset_saved_view.deleted"
 
 ASSET_CATEGORY_CREATED = "asset_category.created"
 ASSET_CATEGORY_UPDATED = "asset_category.updated"
@@ -75,6 +84,19 @@ class AssetCreatedEvent(BaseModel):
 class AssetUpdatedEvent(BaseModel):
     id: UUID = Field(description="Updated asset ID")
     version: int = Field(description="New record version")
+
+
+class AssetSavedViewCreatedEvent(BaseModel):
+    id: UUID = Field(description="Created saved view ID")
+
+
+class AssetSavedViewUpdatedEvent(BaseModel):
+    id: UUID = Field(description="Updated saved view ID")
+    version: int = Field(description="New record version")
+
+
+class AssetSavedViewDeletedEvent(BaseModel):
+    id: UUID = Field(description="Deleted saved view ID")
 
 
 class AssetCategoryCreatedEvent(BaseModel):
