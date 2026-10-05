@@ -70,6 +70,7 @@ select = [
     "TRY",   # tryceratops (exception handling)
 ]
 ignore = [
+    "B008",    # Do not perform function call `Depends` in argument defaults (FastAPI)
     "TRY003", # Avoid specifying long messages outside the exception class
     "PLR0913", # Too many arguments in function definition
     "PLR2004", # Magic values in comparisons (status codes, counts)
