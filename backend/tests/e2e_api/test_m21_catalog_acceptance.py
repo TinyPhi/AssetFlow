@@ -354,9 +354,9 @@ async def test_category_tree_seven_field_types_rules_and_encrypted_fields(
     assert plain.json()["data"]["encrypted_fields"] == {"licence_key": {"is_set": True}}
     revealed = await client.get(f"{BASE}/{asset['id']}", headers=world.admin())
     assert revealed.json()["data"]["encrypted_fields"] == {"licence_key": "SECRET-LICENCE-123"}
-    assert (
-        revealed.json()["data"]["custom_fields"]["f_number"] == "42"
-    )  # numbers are stored exactly (Decimal), served as text
+    served = revealed.json()["data"]["custom_fields"]["f_number"]
+    assert served == 42
+    assert type(served) is int  # a JSON number, not text
 
 
 # ==============================================================================

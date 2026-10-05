@@ -143,14 +143,23 @@ def test_text_regex_pattern_over_definition_cap_is_refused_at_value_time_too() -
 # ---------------------------------------------------------------------------------------- number
 
 
-def test_number_valid_int_and_decimal_string() -> None:
-    assert validate_custom_fields([_def(field_type="number")], {"f": 10}).plain == {"f": "10"}
-    assert validate_custom_fields([_def(field_type="number")], {"f": "10.50"}).plain == {"f": "10.50"}
+def test_number_is_stored_as_a_json_number_from_a_number_or_a_numeric_string() -> None:
+    plain = validate_custom_fields([_def(field_type="number")], {"f": 10}).plain
+    assert plain == {"f": 10}
+    assert type(plain["f"]) is int
+    assert validate_custom_fields([_def(field_type="number")], {"f": "42"}).plain == {"f": 42}
+    assert validate_custom_fields([_def(field_type="number")], {"f": "10.50"}).plain == {"f": 10.5}
 
 
-def test_number_no_float_drift() -> None:
+def test_number_decimal_fraction_is_parsed_from_its_text() -> None:
     clean = validate_custom_fields([_def(field_type="number")], {"f": "0.1"})
-    assert clean.plain["f"] == "0.1"
+    assert clean.plain["f"] == 0.1
+
+
+@pytest.mark.parametrize("value", ["NaN", "Infinity", float("inf")])
+def test_number_refuses_non_finite_values(value: object) -> None:
+    with pytest.raises(CustomFieldValidationError):
+        validate_custom_fields([_def(field_type="number")], {"f": value})
 
 
 @pytest.mark.parametrize("value", ["not-a-number", True, [1], {}, None])
@@ -163,7 +172,7 @@ def test_number_wrong_type(value: object) -> None:
 
 def test_number_min_max() -> None:
     defn = _def(field_type="number", rules={"min": 1, "max": 10})
-    assert validate_custom_fields([defn], {"f": 5}).plain == {"f": "5"}
+    assert validate_custom_fields([defn], {"f": 5}).plain == {"f": 5}
     with pytest.raises(CustomFieldValidationError):
         validate_custom_fields([defn], {"f": 0})
     with pytest.raises(CustomFieldValidationError):

@@ -213,7 +213,7 @@ def _validate_text(raw: object, rules: Mapping[str, object]) -> str:
     return raw
 
 
-def _validate_number(raw: object, rules: Mapping[str, object]) -> str:
+def _validate_number(raw: object, rules: Mapping[str, object]) -> int | float:
     if isinstance(raw, bool) or not isinstance(raw, int | float | Decimal | str):
         raise _FieldError("must be a number")
     try:
@@ -225,7 +225,11 @@ def _validate_number(raw: object, rules: Mapping[str, object]) -> str:
         raise _FieldError(f"must be at least {min_value}")
     if max_value is not None and value > max_value:
         raise _FieldError(f"must be at most {max_value}")
-    return str(value)
+    # A JSON number on the wire and in storage: an integer stays an integer, anything else is a
+    # float. Both a JSON number and a numeric string are accepted on input.
+    if not value.is_finite():
+        raise _FieldError("must be a number")
+    return int(value) if value == value.to_integral_value() else float(value)
 
 
 def _validate_date(raw: object, rules: Mapping[str, object]) -> str:
