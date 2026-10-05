@@ -164,3 +164,101 @@ describe("AssetsPage states", () => {
   });
 });
 
+describe("AssetsPage search, filters and URL", () => {
+  it("writes the debounced search text to the URL and requests it", async () => {
+    listHandler(() => ({ items: [asset(1)], next_cursor: null, total: null }));
+    renderPage();
+    await screen.findByRole("link", { name: "Asset 1" });
+    await userEvent.type(screen.getByRole("searchbox", { name: t("assets.list.search_label") }), "pump");
+    await waitFor(() => {
+      expect(screen.getByTestId("url")).toHaveTextContent("?q=pump");
+    });
+    await waitFor(() => {
+      expect(requests.some((u) => u.searchParams.get("q") === "pump")).toBe(true);
+    });
+  });
+
+  it("restores search and filters from the URL (refresh keeps state)", async () => {
+    listHandler(() => ({ items: [asset(1)], next_cursor: null, total: null }));
+    renderPage("/assets?q=pump&status=in_service&sort=name");
+    expect(await screen.findByRole("searchbox")).toHaveValue("pump");
+    await screen.findByRole("link", { name: "Asset 1" });
+    const last = requests[requests.length - 1];
+    expect(last?.searchParams.get("q")).toBe("pump");
+    expect(last?.searchParams.getAll("status")).toEqual(["in_service"]);
+    expect(last?.searchParams.get("sort")).toBe("name");
+    expect(
+      screen.getByRole("button", {
+        name: t("assets.chips.remove", { filter: t("assets.chips.status", { value: "In service" }) }),
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("deselecting a filter chip removes it from the URL and the request", async () => {
+    listHandler(() => ({ items: [asset(1)], next_cursor: null, total: null }));
+    renderPage("/assets?status=in_service&status=repair");
+    await screen.findByRole("link", { name: "Asset 1" });
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: t("assets.chips.remove", { filter: t("assets.chips.status", { value: "In service" }) }),
+      }),
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("url")).toHaveTextContent("?status=repair");
+    });
+    await userEvent.click(screen.getByRole("button", { name: t("assets.chips.clear_all") }));
+    await waitFor(() => {
+      expect(screen.getByTestId("url")).toHaveTextContent("");
+    });
+  });
+
+  it("filters by a status checkbox from the filter panel", async () => {
+    listHandler(() => ({
+      items: [asset(1), asset(2, { status: "repair" })],
+      next_cursor: null,
+      total: null,
+    }));
+    renderPage();
+    await screen.findByRole("link", { name: "Asset 1" });
+    await userEvent.click(screen.getByRole("button", { name: t("assets.filters.toggle") }));
+    await userEvent.click(await screen.findByRole("checkbox", { name: "Repair" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("url")).toHaveTextContent("?status=repair");
+    });
+  });
+
+  it("sorts by a column heading and shows the direction", async () => {
+    listHandler(() => ({ items: [asset(1)], next_cursor: null, total: null }));
+    renderPage();
+    await screen.findByRole("link", { name: "Asset 1" });
+    await userEvent.click(screen.getByRole("button", { name: t("assets.columns.name") }));
+    await waitFor(() => {
+      expect(screen.getByTestId("url")).toHaveTextContent("?sort=name");
+    });
+    expect(screen.getByRole("columnheader", { name: t("assets.columns.name") })).toHaveAttribute(
+      "aria-sort",
+      "ascending",
+    );
+    await userEvent.click(screen.getByRole("button", { name: t("assets.columns.name") }));
+    await waitFor(() => {
+      expect(screen.getByTestId("url")).toHaveTextContent("?sort=-name");
+    });
+  });
+});
+
+describe("AssetsPage cursor pages", () => {
+  it("loads the next page with the cursor from the Load more button", async () => {
+    listHandler((url) =>
+      url.searchParams.get("after") === "c1"
+        ? { items: [asset(2)], next_cursor: null, total: null }
+        : { items: [asset(1)], next_cursor: "c1", total: null },
+    );
+    renderPage();
+    await screen.findByRole("link", { name: "Asset 1" });
+    await userEvent.click(screen.getByRole("button", { name: t("assets.list.load_more") }));
+    expect(await screen.findByRole("link", { name: "Asset 2" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Asset 1" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: t("assets.list.load_more") })).not.toBeInTheDocument();
+  });
+});
+
