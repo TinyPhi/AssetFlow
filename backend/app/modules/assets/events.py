@@ -14,6 +14,8 @@ __all__ = [
     "ASSET_CATEGORY_MOVED",
     "ASSET_CATEGORY_SEEDED",
     "ASSET_CATEGORY_UPDATED",
+    "ASSET_CREATED",
+    "ASSET_UPDATED",
     "CUSTOM_FIELD_DEFINITION_ARCHIVED",
     "CUSTOM_FIELD_DEFINITION_CREATED",
     "CUSTOM_FIELD_DEFINITION_UPDATED",
@@ -28,6 +30,8 @@ __all__ = [
     "AssetCategoryMovedEvent",
     "AssetCategorySeededEvent",
     "AssetCategoryUpdatedEvent",
+    "AssetCreatedEvent",
+    "AssetUpdatedEvent",
     "CustomFieldDefinitionArchivedEvent",
     "CustomFieldDefinitionCreatedEvent",
     "CustomFieldDefinitionUpdatedEvent",
@@ -38,6 +42,9 @@ __all__ = [
     "SupplierCreatedEvent",
     "SupplierUpdatedEvent",
 ]
+
+ASSET_CREATED = "asset.created"
+ASSET_UPDATED = "asset.updated"
 
 ASSET_CATEGORY_CREATED = "asset_category.created"
 ASSET_CATEGORY_UPDATED = "asset_category.updated"
@@ -56,6 +63,18 @@ MANUFACTURER_ARCHIVED = "manufacturer.archived"
 SUPPLIER_CREATED = "supplier.created"
 SUPPLIER_UPDATED = "supplier.updated"
 SUPPLIER_ARCHIVED = "supplier.archived"
+
+
+class AssetCreatedEvent(BaseModel):
+    id: UUID = Field(description="Created asset ID")
+    tag: str = Field(description="Generated or supplied asset tag")
+    category_id: UUID = Field(description="Asset category ID")
+    owner_org_unit_id: UUID = Field(description="Owning org unit ID")
+
+
+class AssetUpdatedEvent(BaseModel):
+    id: UUID = Field(description="Updated asset ID")
+    version: int = Field(description="New record version")
 
 
 class AssetCategoryCreatedEvent(BaseModel):

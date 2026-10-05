@@ -6,9 +6,15 @@ from __future__ import annotations
 
 from typing import ClassVar
 
-from app.core.problems import ConflictError, FieldError, ValidationFailedError
+from app.core.problems import ConflictError, FieldError, NotFoundError, ValidationFailedError
 
-__all__ = ["CustomFieldValidationError", "TagConflictError", "TagInvalidError"]
+__all__ = [
+    "AssetNotFoundError",
+    "AssetVersionConflictError",
+    "CustomFieldValidationError",
+    "TagConflictError",
+    "TagInvalidError",
+]
 
 
 class CustomFieldValidationError(ValidationFailedError):
@@ -43,6 +49,29 @@ class TagInvalidError(ValidationFailedError):
 
     def __init__(self, detail: str | None = None) -> None:
         super().__init__(detail)
+
+
+class AssetNotFoundError(NotFoundError):
+    """No asset with this id in caller scope (not found or outside scope answer the same, §C4.5)."""
+
+    status_code = 404
+    code: ClassVar[str] = "asset.not_found"
+    title: ClassVar[str] = "Asset not found"
+    default_detail: ClassVar[str] = "The requested asset does not exist."
+    description: ClassVar[str] = (
+        "The requested asset does not exist, or exists but is outside the caller's scope (both "
+        "answer identically, §C4.5)."
+    )
+
+
+class AssetVersionConflictError(ConflictError):
+    """Optimistic concurrency: the submitted `version` no longer matches the stored row."""
+
+    status_code = 409
+    code: ClassVar[str] = "asset.version_conflict"
+    title: ClassVar[str] = "Asset version conflict"
+    default_detail: ClassVar[str] = "The asset was modified by another request."
+    description: ClassVar[str] = "The provided version does not match the current database version."
 
 
 class TagConflictError(ConflictError):
