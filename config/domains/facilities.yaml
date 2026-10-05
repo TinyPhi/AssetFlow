@@ -1,0 +1,98 @@
+# SPDX-FileCopyrightText: 2026 TinyPhi
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# Facilities domain template (§B7.3, M2.1): a second domain with a different tag, status set and
+# category tree, so Gate G2 can show the same screens work for both templates. Asset sections only.
+domain_key: facilities
+
+modules:
+  - assets
+
+assets:
+  tag:
+    prefix: FAC
+    separator: "/"
+    digits: 6
+
+  initial: commissioned
+  statuses:
+    - { key: commissioned, label: Commissioned, category: available }
+    - { key: in_operation, label: In operation, category: in_use }
+    - { key: standby, label: On standby, category: available }
+    - { key: under_maintenance, label: Under maintenance, category: unavailable, set_only_by: maintenance }
+    - { key: out_of_order, label: Out of order, category: unavailable }
+    - { key: decommissioned, label: Decommissioned, category: ended, is_final: true }
+    - { key: scrapped, label: Scrapped, category: ended, is_final: true }
+
+  transitions:
+    - { from: commissioned, to: in_operation, permission: asset.assign }
+    - { from: in_operation, to: standby, permission: asset.update }
+    - { from: standby, to: in_operation, permission: asset.update }
+    - { from: in_operation, to: out_of_order, permission: asset.update }
+    - { from: out_of_order, to: in_operation, permission: asset.update }
+    - from: standby
+      to: decommissioned
+      permission: asset.retire
+      requires_reason: true
+      conditions:
+        - { field: holder, operator: exists, value: false }
+    - from: out_of_order
+      to: scrapped
+      permission: asset.retire
+      requires_reason: true
+      conditions:
+        - { field: holder, operator: exists, value: false }
+
+  criticality: [routine, important, vital]
+
+  categories:
+    - code: hvac
+      label: Heating and cooling
+      default_criticality: important
+      responsible_team_code: facilities_crew
+    - code: chiller
+      label: Chiller
+      parent_code: hvac
+      default_criticality: vital
+      tag_prefix: CHL
+      responsible_team_code: facilities_crew
+      custom_fields:
+        - { key: capacity_kw, label: Capacity (kW), type: number, required: true, min: 1 }
+        - key: refrigerant
+          label: Refrigerant
+          type: select
+          options: [R32, R410A, R134a]
+        - { key: commissioning_report, label: Commissioning report, type: json }
+    - code: air_handler
+      label: Air handling unit
+      parent_code: hvac
+      default_criticality: important
+      custom_fields:
+        - { key: airflow_m3h, label: Airflow (m3/h), type: number, min: 0 }
+        - { key: filter_types, label: Filter types, type: multi_select, options: [G4, F7, H13] }
+    - code: lift
+      label: Lift
+      default_criticality: vital
+      responsible_team_code: facilities_crew
+      custom_fields:
+        - { key: licence_number, label: Licence number, type: text, required: true, is_unique: true }
+        - { key: last_inspection, label: Last inspection, type: date }
+        - { key: door_code, label: Machine room door code, type: text, is_encrypted: true }
+    - code: fire_extinguisher
+      label: Fire extinguisher
+      default_criticality: routine
+      custom_fields:
+        - { key: refill_due, label: Refill due, type: date, required: true }
+        - { key: pressurised, label: Pressurised, type: boolean }
+
+  public_scan_fields: [tag, name, category, status, location, custom.last_inspection]
+  public_report: true
+
+  acknowledgement:
+    required: false
+    remind_after_hours: 48
+    escalate_after_hours: 120
+    auto_close_after_days: 14
+
+  owner_follows_holder: false
+  cascade_on_member_move: "off"

@@ -10,11 +10,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from app.core.permissions import DEFAULT_PERMISSIONS
 from app.engines.automation.domain_template import (
     DomainTemplateError,
     load_domain_template,
     validate_automations,
 )
+from app.modules.assets.config import validate_assets_section
 from app.modules.event_registry import default_event_registry
 
 __all__ = ["domain_template_problems"]
@@ -47,4 +49,8 @@ def domain_template_problems(platform_config_file: str) -> list[str]:
             template, known_channels=set(BUILTIN_CHANNELS), registry=registry, templates_dir=templates_dir
         ):
             problems.append(f"{template_file.name}: {problem}")
+        extra = template.model_extra or {}
+        if "assets" in extra:
+            for problem in validate_assets_section(extra["assets"], known_permissions=DEFAULT_PERMISSIONS):
+                problems.append(f"{template_file.name}: {problem}")
     return problems
