@@ -13,6 +13,7 @@ from uuid import UUID, uuid4
 
 import httpx
 import pytest
+import yaml
 from pg_harness import PoolFactory
 
 from app.core.db import Pool, tenant_transaction
@@ -24,6 +25,7 @@ from app.providers.secrets.file import FileSecretsProvider
 from app.providers.telemetry.noop import NoOpTelemetryProvider
 
 BASE = "/api/v1/assets"
+DOMAINS = Path(__file__).resolve().parents[3] / "config" / "domains"
 
 _INSERT_ORG_UNIT = (
     "INSERT INTO public.org_units (id, organization_id, parent_id, path, type, code, name) "
@@ -288,3 +290,129 @@ async def test_detail_etag_matches_version_and_supports_if_none_match(
 
     cached = await client.get(f"{BASE}/{asset_id}", headers={**_headers(org_id), "if-none-match": etag})
     assert cached.status_code == 304
+
+
+# ==============================================================================
+# Scope refusals on writes (§C4.5: permission absent -> auth.permission_denied, record out of scope
+# -> scope.denied)
+# ==============================================================================
+
+
+async def test_create_in_an_org_unit_outside_the_grant_is_scope_denied(
+    client: httpx.AsyncClient, make_pool: PoolFactory
+) -> None:
+    pool = await make_pool("api")
+    org_id, unit_id, category_id = await _setup(pool)
+    headers = {
+        **_headers(org_id, role="asset_manager"),
+        "x-scope-type": "org_unit",
+        "x-org-unit-path": "elsewhere",
+    }
+    res = await client.post(
+        BASE,
+        json={"name": "Laptop 1", "category_id": str(category_id), "owner_org_unit_id": str(unit_id)},
+        headers=headers,
+    )
+    assert res.status_code == 403
+    assert res.json()["code"] == "scope.denied"
+
+
+async def test_edit_outside_the_grant_is_scope_denied(
+    client: httpx.AsyncClient, make_pool: PoolFactory
+) -> None:
+    pool = await make_pool("api")
+    org_id, unit_id, category_id = await _setup(pool)
+    created = await client.post(
+        BASE,
+        json={"name": "Laptop 1", "category_id": str(category_id), "owner_org_unit_id": str(unit_id)},
+        headers=_headers(org_id),
+    )
+    asset = created.json()["data"]
+    headers = {
+        **_headers(org_id, role="asset_manager"),
+        "x-scope-type": "org_unit",
+        "x-org-unit-path": "elsewhere",
+    }
+    res = await client.patch(
+        f"{BASE}/{asset['id']}", json={"name": "x", "version": asset["version"]}, headers=headers
+    )
+    # Not readable from this scope either, so the existence of the record stays hidden or the
+    # write is refused as out of scope; never the bare permission code.
+    assert res.status_code in (403, 404)
+    assert res.json()["code"] in ("scope.denied", "asset.not_found")
+
+
+# ==============================================================================
+# Vocabulary: the template's status labels and criticality levels (P8-11)
+# ==============================================================================
+
+
+@pytest.mark.parametrize("domain_key", ["it-assets", "facilities"])
+async def test_vocabulary_serves_the_organizations_template(
+    client: httpx.AsyncClient, make_pool: PoolFactory, domain_key: str
+) -> None:
+    pool = await make_pool("api")
+    org_id = await _create_org(pool, domain_key=domain_key)
+    res = await client.get(f"{BASE}/vocabulary", headers=_headers(org_id, role="member"))
+    assert res.status_code == 200, res.text
+    data = res.json()["data"]
+    declared = yaml.safe_load((DOMAINS / f"{domain_key}.yaml").read_text(encoding="utf-8"))["assets"]
+    assert [(s["key"], s["label"], s["category"]) for s in data["statuses"]] == [
+        (s["key"], s["label"], s["category"]) for s in declared["statuses"]
+    ]
+    assert data["criticality"] == declared["criticality"]
+
+
+async def test_vocabulary_differs_between_templates(
+    client: httpx.AsyncClient, make_pool: PoolFactory
+) -> None:
+    pool = await make_pool("api")
+    it_org = await _create_org(pool, domain_key="it-assets")
+    fac_org = await _create_org(pool, domain_key="facilities")
+    it = (await client.get(f"{BASE}/vocabulary", headers=_headers(it_org))).json()["data"]
+    fac = (await client.get(f"{BASE}/vocabulary", headers=_headers(fac_org))).json()["data"]
+    assert it["criticality"] != fac["criticality"]
+    assert {s["key"] for s in it["statuses"]} != {s["key"] for s in fac["statuses"]}
+
+
+async def test_vocabulary_is_not_confused_with_an_asset_id(
+    client: httpx.AsyncClient, make_pool: PoolFactory
+) -> None:
+    """`/vocabulary` is a fixed route, not `/{asset_id}`: it must not answer 422 for a non-UUID id."""
+    pool = await make_pool("api")
+    org_id = await _create_org(pool)
+    res = await client.get(f"{BASE}/vocabulary", headers=_headers(org_id))
+    assert res.status_code == 200
+
+
+async def test_vocabulary_needs_a_signed_in_caller_with_asset_read(
+    client: httpx.AsyncClient, make_pool: PoolFactory
+) -> None:
+    pool = await make_pool("api")
+    org_id = await _create_org(pool)
+    anonymous = await client.get(f"{BASE}/vocabulary")
+    assert anonymous.status_code == 401
+    # `technician` reads assets; a role with no asset.read at all is refused.
+    refused = await client.get(f"{BASE}/vocabulary", headers=_headers(org_id, role="no_such_role"))
+    assert refused.status_code == 403
+    assert refused.json()["code"] == "auth.permission_denied"
+
+
+async def test_vocabulary_is_organization_scoped(client: httpx.AsyncClient, make_pool: PoolFactory) -> None:
+    """The route answers with the template of the caller's own organization only: an organization
+    without a domain template gets an empty vocabulary, never another organization's."""
+    pool = await make_pool("api")
+    await _create_org(pool, domain_key="it-assets")
+    other = uuid4()
+    async with tenant_transaction(pool, other) as conn:
+        await conn.execute(
+            "INSERT INTO public.organizations (id, slug, name, idp_organization_id, domain_key, settings)"
+            " VALUES ($1, $2, 'No Template Org', $3, 'generic', '{}'::jsonb)",
+            other,
+            f"no-template-{other.hex[:12]}",
+            f"idp-no-template-{uuid4().hex[:12]}",
+        )
+        await install_module(conn, other, "assets")
+    res = await client.get(f"{BASE}/vocabulary", headers=_headers(other))
+    assert res.status_code == 200
+    assert res.json()["data"] == {"statuses": [], "criticality": []}
