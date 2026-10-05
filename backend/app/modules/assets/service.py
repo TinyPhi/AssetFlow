@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 TinyPhi
 # SPDX-License-Identifier: AGPL-3.0-only
-"""Asset service: create, edit, detail (§B8.1, §B5.3, §C4.2-§C4.4, M2.1-T5, P8-07).
+"""Asset service: create, edit, detail, list (§B8.1, §B5.3, §C4.2-§C4.4, M2.1-T5, P8-07).
 
 Builds on primitives P8-04/P8-05/P8-06 already proved against the database: `validate_custom_fields`,
 `encrypt_custom_fields`/`decrypt_custom_fields`, `lock_and_check_unique_custom_field`,
@@ -11,13 +11,18 @@ another `app.modules.assets.*` submodule is not the cross-module import `.import
 Record-level checks use `ScopeResolver.check_access` against `{"owner_org_unit_path": ...}`; a caller
 with no `asset.create` grant at all is refused before any lookup (§C4.5: never probes existence).
 
-List is a later part of this plan, added to this same file (split to stay under the repo's
-800-changed-line PR guardrail: the whole feature does not fit in one PR).
+List uses `ScopeResolver.resolve_scope_filter` instead of a per-record check, since a list has no
+single record to check against (§B5.3): the repository builds the id set as a `UNION` of the
+org-unit-path, team and self scope branches.
 """
 
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
+from dataclasses import dataclass, replace
+from datetime import date, datetime
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -31,11 +36,12 @@ from app.core.scope import MemberContext, default_scope_resolver
 from app.engines.automation.domain_template import DomainTemplateError, load_domain_template
 from app.modules.assets import repository as repo
 from app.modules.assets.catalog import repository as catalog_repo
-from app.modules.assets.config import AssetsConfig, parse_assets_section
+from app.modules.assets.config import STATUS_CATEGORIES, AssetsConfig, parse_assets_section
 from app.modules.assets.custom_fields import (
     CleanValues,
     CustomFieldDefinition,
     JsonValue,
+    refuse_encrypted_field_filter,
     validate_custom_fields,
 )
 from app.modules.assets.errors import AssetNotFoundError, AssetVersionConflictError
@@ -54,8 +60,10 @@ from app.providers.secrets.base import SecretsProvider
 
 __all__ = [
     "READ_SENSITIVE_PERMISSION",
+    "AssetListResult",
     "create_asset",
     "get_asset",
+    "list_assets",
     "update_asset",
 ]
 
@@ -469,6 +477,7 @@ async def create_asset(
             conn, detail, organization_id=organization_id, caller=caller, secrets_provider=secrets_provider
         )
 
+
 # ==============================================================================
 # Edit
 # ==============================================================================
@@ -710,3 +719,152 @@ async def get_asset(
             conn, row, organization_id=organization_id, caller=caller, secrets_provider=secrets_provider
         )
 
+
+# ==============================================================================
+# List
+# ==============================================================================
+
+
+@dataclass(frozen=True)
+class AssetListResult:
+    items: list[dict[str, Any]]
+    next_cursor: str | None
+    total: int | None
+
+
+async def _statuses_of_category(conn: Any, organization_id: UUID, category: str) -> tuple[str, ...]:
+    """Status keys of the organization's domain template that belong to a status category."""
+    if category not in STATUS_CATEGORIES:
+        raise ValidationFailedError(
+            errors=[FieldError(field="query.status_category", message=f'unknown category "{category}"')]
+        )
+    domain_key = await _organization_domain_key(conn, organization_id)
+    config = _load_assets_config(domain_key, None) if domain_key else None
+    if config is None:
+        return ()
+    return tuple(st.key for st in config.statuses if st.category == category)
+
+
+async def _resolve_custom_field_filters(
+    conn: Any, organization_id: UUID, raw: Sequence[tuple[str, str, str]]
+) -> tuple[tuple[str, str, object, str], ...]:
+    """Check each `cf.<key>` filter against the organization's definitions and type its value."""
+    if not raw:
+        return ()
+    rows = await conn.fetch(
+        "SELECT key, field_type, bool_or(is_encrypted) AS is_encrypted "
+        "FROM public.custom_field_definitions WHERE organization_id = $1 GROUP BY key, field_type",
+        organization_id,
+    )
+    known = {r["key"]: r["field_type"] for r in rows}
+    encrypted = {r["key"] for r in rows if r["is_encrypted"]}
+    out: list[tuple[str, str, object, str]] = []
+    for key, op, value in raw:
+        where = f"query.cf.{key}"
+        refuse_encrypted_field_filter(key, encrypted_keys=encrypted, where=where)
+        field_type = known.get(key)
+        if field_type is None:
+            raise ValidationFailedError(errors=[FieldError(field=where, message="unknown custom field")])
+        if op != "eq" and field_type not in ("number", "date"):
+            raise ValidationFailedError(
+                errors=[FieldError(field=where, message=f'operator "{op}" needs a number or date field')]
+            )
+        try:
+            typed: object = (
+                Decimal(value)
+                if field_type == "number"
+                else date.fromisoformat(value)
+                if field_type == "date"
+                else value
+            )
+        except (InvalidOperation, ValueError) as exc:
+            raise ValidationFailedError(
+                errors=[FieldError(field=where, message=f"value does not match the {field_type} field type")]
+            ) from exc
+        out.append((key, op, typed, field_type))
+    return tuple(out)
+
+
+async def list_assets(
+    pool: Pool,
+    *,
+    organization_id: UUID,
+    caller: MemberContext,
+    query: repo.AssetQuery,
+    custom_field_filters: Sequence[tuple[str, str, str]] = (),
+    status_category: str | None = None,
+    sort: str = "-created_at",
+    after: str | None = None,
+    limit: int = 50,
+    include_total: bool = False,
+) -> AssetListResult:
+    limit = max(1, min(limit, 200))
+    # A caller with no `asset.read` grant at all is refused (403); one who holds it but whose
+    # grants cover nothing yet (e.g. a brand-new org-unit grant with no assets under it) gets an
+    # ordinary empty page (200), not an error - these are different situations (§C4.5).
+    default_scope_resolver.require(caller, READ_PERMISSION, None)
+    scope_filter = default_scope_resolver.resolve_scope_filter(caller, READ_PERMISSION)
+    if scope_filter.is_empty:
+        return AssetListResult(items=[], next_cursor=None, total=0 if include_total else None)
+
+    async with tenant_transaction(pool, organization_id) as conn:
+        resolved = replace(
+            query,
+            custom_field_filters=await _resolve_custom_field_filters(
+                conn, organization_id, custom_field_filters
+            ),
+        )
+        if status_category is not None:
+            keys = await _statuses_of_category(conn, organization_id, status_category)
+            wanted = tuple(k for k in keys if not query.status or k in query.status)
+            if not wanted:
+                return AssetListResult(items=[], next_cursor=None, total=0 if include_total else None)
+            resolved = replace(resolved, status=wanted)
+
+        # One extra row tells whether another page exists (§C4.4), without a second count query.
+        rows, total = await _asset_repo.list_assets(
+            conn,
+            organization_id=organization_id,
+            scope_filter=scope_filter,
+            query=resolved,
+            sort=sort,
+            after=after,
+            limit=limit + 1,
+            include_total=include_total,
+        )
+        has_more = len(rows) > limit
+        rows = rows[:limit]
+
+        member_ids = [
+            r["holder_id"] for r in rows if r["holder_type"] == "member" and r["holder_id"] is not None
+        ]
+        departed = await _asset_repo.departed_member_ids(
+            conn, organization_id=organization_id, member_ids=member_ids
+        )
+
+        items: list[dict[str, Any]] = []
+        for record in rows:
+            data = dict(record)
+            data["custom_fields"] = _as_dict(data["custom_fields"])
+            _apply_departed_marker(data, departed)
+            data["holder"] = _holder(data)
+            items.append(data)
+
+    next_cursor = _next_cursor(items, sort=sort, has_more=has_more, has_search=bool(query.q))
+    return AssetListResult(items=items, next_cursor=next_cursor, total=total)
+
+
+def _next_cursor(items: list[dict[str, Any]], *, sort: str, has_more: bool, has_search: bool) -> str | None:
+    if not has_more or not items:
+        return None
+    last = items[-1]
+    if has_search:
+        return repo.encode_cursor(str(last.get("search_rank")), last["id"])
+    desc = sort.startswith("-")
+    key = sort[1:] if desc else sort
+    raw = last.get(key)
+    if raw is None and key in repo.NULLABLE_SENTINELS:
+        value = repo.NULLABLE_SENTINELS[key][1 if desc else 0]
+    else:
+        value = raw.isoformat() if isinstance(raw, date | datetime) else str(raw)
+    return repo.encode_cursor(value, last["id"])

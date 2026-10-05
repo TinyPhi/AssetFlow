@@ -21,6 +21,7 @@ import base64
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
@@ -31,12 +32,18 @@ from app.core.permissions import ScopeFilter
 type DbConn = asyncpg.Connection[asyncpg.Record] | asyncpg.pool.PoolConnectionProxy[asyncpg.Record]
 
 __all__ = [
+    "NULLABLE_SENTINELS",
     "SORT_COLUMNS",
+    "TOTAL_CAP",
     "AssetQuery",
     "AssetRepository",
     "decode_cursor",
     "encode_cursor",
 ]
+
+
+#: `include_total` counts at most this many rows (§B4.5 capped count).
+TOTAL_CAP = 10_000
 
 
 def encode_cursor(value: str, record_id: UUID) -> str:
@@ -45,9 +52,15 @@ def encode_cursor(value: str, record_id: UUID) -> str:
 
 
 def decode_cursor(cursor: str) -> tuple[str, UUID]:
-    raw = base64.urlsafe_b64decode(cursor.encode("ascii"))
-    value, id_raw = json.loads(raw)
-    return str(value), UUID(id_raw)
+    try:
+        raw = base64.urlsafe_b64decode(cursor.encode("ascii"))
+        value, id_raw = json.loads(raw)
+        return str(value), UUID(id_raw)
+    except (ValueError, TypeError, UnicodeError) as exc:
+        from app.core.problems import FieldError, ValidationFailedError  # noqa: PLC0415
+
+        error = FieldError(field="query.after", message="invalid cursor")
+        raise ValidationFailedError(errors=[error]) from exc
 
 
 #: Allowlisted sort columns (§C4.4: never build ORDER BY from raw user input); `-` prefix descends.
@@ -61,12 +74,13 @@ SORT_COLUMNS: dict[str, str] = {
     "purchase_date": "a.purchase_date",
 }
 
+#: (asyncpg maps `date.min`/`date.max` to +-infinity, so the sentinels are one day inside them.)
 #: Nullable sort columns always sort their NULLs last, regardless of direction, by substituting a
 #: sentinel for the comparison (both ORDER BY and the keyset predicate use the same expression, so
 #: three-valued NULL logic never enters the row comparison - see repository docstring).
-_NULLABLE_SENTINELS: dict[str, tuple[str, str]] = {
-    "warranty_end": ("9999-12-31", "0001-01-01"),
-    "purchase_date": ("9999-12-31", "0001-01-01"),
+NULLABLE_SENTINELS: dict[str, tuple[str, str]] = {
+    "warranty_end": ("9999-12-30", "0001-01-02"),
+    "purchase_date": ("9999-12-30", "0001-01-02"),
 }
 
 _CAST_BY_COLUMN: dict[str, str] = {
@@ -134,12 +148,12 @@ class AssetQuery:
     criticality: tuple[str, ...] = ()
     manufacturer_id: UUID | None = None
     supplier_id: UUID | None = None
-    warranty_end_before: str | None = None
-    warranty_end_after: str | None = None
-    purchase_date_before: str | None = None
-    purchase_date_after: str | None = None
-    updated_since: str | None = None
-    custom_field_filters: tuple[tuple[str, str, str], ...] = ()  # (key, op, value)
+    warranty_end_before: date | None = None
+    warranty_end_after: date | None = None
+    purchase_date_before: date | None = None
+    purchase_date_after: date | None = None
+    updated_since: datetime | None = None
+    custom_field_filters: tuple[tuple[str, str, object, str], ...] = ()  # (key, op, typed value, type)
 
 
 class AssetRepository:
@@ -311,9 +325,9 @@ class AssetRepository:
         best of the four similarities. Shorter input: prefix `ILIKE` (too short for trigram
         similarity to be meaningful), ranked by which field matched (tag first).
         """
-        args.append(q)
-        n = len(args)
         if len(q) >= 3:
+            args.append(q)
+            n = len(args)
             predicate = f"(a.tag % ${n} OR a.name % ${n} OR a.serial_number % ${n} OR a.model % ${n})"
             rank = (
                 f"GREATEST(similarity(a.tag, ${n}), similarity(a.name, ${n}), "
@@ -321,7 +335,7 @@ class AssetRepository:
                 f"similarity(coalesce(a.model, ''), ${n}))"
             )
         else:
-            args.append(f"{q}%")
+            args.append(_escape_like(q) + "%")
             like_n = len(args)
             predicate = (
                 f"(a.tag ILIKE ${like_n} OR a.name ILIKE ${like_n} "
@@ -333,26 +347,21 @@ class AssetRepository:
             )
         return predicate, rank
 
-    def _custom_field_clause(self, key: str, op: str, value: str, args: list[Any]) -> str:
-        column = f"a.custom_fields ->> '{key}'"
-        if op == "eq":
-            args.append(value)
-            return f"{column} = ${len(args)}"
-        if op == "gte":
-            args.append(value)
-            return (
-                f"({column})::numeric >= ${len(args)}::numeric"
-                if _is_number(value)
-                else (f"{column} >= ${len(args)}")
-            )
-        if op == "lte":
-            args.append(value)
-            return (
-                f"({column})::numeric <= ${len(args)}::numeric"
-                if _is_number(value)
-                else (f"{column} <= ${len(args)}")
-            )
-        raise ValueError(f"unsupported custom field operator {op!r}")
+    def _custom_field_clause(self, key: str, op: str, value: object, field_type: str, args: list[Any]) -> str:
+        """`key` is bound as a parameter, never formatted into the SQL (§C4.4); `value` is already
+        typed by the service (Decimal for numbers, date for dates, text otherwise)."""
+        args.append(key)
+        column = f"(a.custom_fields ->> ${len(args)}::text)"
+        args.append(value)
+        param = f"${len(args)}"
+        if field_type == "number":
+            column, param = f"{column}::numeric", f"{param}::numeric"
+        elif field_type == "date":
+            column, param = f"{column}::date", f"{param}::date"
+        sql_op = {"eq": "=", "gte": ">=", "lte": "<="}.get(op)
+        if sql_op is None:
+            raise ValueError(f"unsupported custom field operator {op!r}")
+        return f"{column} {sql_op} {param}"
 
     async def list_assets(  # noqa: PLR0912, PLR0915
         self,
@@ -453,15 +462,20 @@ class AssetRepository:
         if query.updated_since is not None:
             args.append(query.updated_since)
             where.append(f"a.updated_at > ${len(args)}::timestamptz")
-        for key, op, value in query.custom_field_filters:
-            where.append(self._custom_field_clause(key, op, value, args))
+        for key, op, value, field_type in query.custom_field_filters:
+            where.append(self._custom_field_clause(key, op, value, field_type, args))
 
         rank_select = f", {search_rank} AS search_rank" if search_rank else ""
-        base_sql = f"SELECT {_BASE_COLUMNS}{rank_select}{_JOINS}WHERE {' AND '.join(where)}"
 
         total: int | None = None
         if include_total:
-            total = await conn.fetchval(f"SELECT count(*) FROM ({base_sql}) t")  # noqa: S608
+            # Capped: counting past TOTAL_CAP rows would scan the whole scope for a number no
+            # screen shows exactly; the caller learns "TOTAL_CAP or more" from `total == TOTAL_CAP`.
+            total = await conn.fetchval(
+                f"SELECT count(*) FROM (SELECT 1 FROM public.assets a WHERE {' AND '.join(where)} "  # noqa: S608
+                f"LIMIT {TOTAL_CAP}) t",
+                *args,
+            )
 
         order_sql, cursor_sql = self._order_and_cursor(
             sort=sort, search_rank=search_rank, after=after, args=args
@@ -479,7 +493,7 @@ class AssetRepository:
         self, *, sort: str, search_rank: str | None, after: str | None, args: list[Any]
     ) -> tuple[str, str]:
         if search_rank is not None:
-            sort_expr, cast, desc = "search_rank", "::float8", True
+            sort_expr, cast, desc = f"({search_rank})", "::float8", True
         else:
             desc = sort.startswith("-")
             key = sort[1:] if desc else sort
@@ -490,8 +504,8 @@ class AssetRepository:
                     errors=[FieldError(field="query.sort", message=f'unknown sort key "{key}"')]
                 )
             column = SORT_COLUMNS[key]
-            if key in _NULLABLE_SENTINELS:
-                sentinel = _NULLABLE_SENTINELS[key][1 if desc else 0]
+            if key in NULLABLE_SENTINELS:
+                sentinel = NULLABLE_SENTINELS[key][1 if desc else 0]
                 sort_expr = f"COALESCE({column}, '{sentinel}'::date)"
             else:
                 sort_expr = column
@@ -503,10 +517,31 @@ class AssetRepository:
         if after is None:
             return order_sql, ""
         value, record_id = decode_cursor(after)
-        args.extend([value, record_id])
+        args.extend([_typed_cursor_value(cast, value), record_id])
         op = "<" if desc else ">"
         value_arg = f"${len(args) - 1}{cast}"
         return order_sql, f" AND ({sort_expr}, a.id) {op} ({value_arg}, ${len(args)})"
+
+
+def _escape_like(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
+
+
+def _typed_cursor_value(cast: str, value: str) -> object:
+    """asyncpg needs a native Python value for a typed parameter, not the cursor's text."""
+    try:
+        if cast == "::timestamptz":
+            return datetime.fromisoformat(value)
+        if cast == "::date":
+            return date.fromisoformat(value)
+        if cast == "::float8":
+            return float(value)
+    except ValueError as exc:
+        from app.core.problems import FieldError, ValidationFailedError  # noqa: PLC0415
+
+        error = FieldError(field="query.after", message="invalid cursor")
+        raise ValidationFailedError(errors=[error]) from exc
+    return value
 
 
 def _try_uuid(value: str | None) -> UUID | None:

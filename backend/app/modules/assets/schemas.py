@@ -19,6 +19,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = [
     "AssetCreate",
+    "AssetListItem",
+    "AssetListPage",
     "AssetRead",
     "AssetUpdate",
     "HolderRead",
@@ -127,3 +129,39 @@ class AssetRead(BaseModel):
     version: int
     created_at: datetime
     updated_at: datetime
+
+
+class AssetListItem(BaseModel):
+    """List view: no `notes`, no encrypted data at all (§B8.1, §C5.2)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    organization_id: UUID
+    tag: str
+    name: str
+    category_id: UUID
+    category_name: str
+    model: str | None
+    manufacturer_id: UUID | None
+    manufacturer_name: str | None
+    serial_number: str | None
+    owner_org_unit_id: UUID
+    owner_org_unit_name: str
+    location_id: UUID | None
+    location_name: str | None
+    holder: HolderRead | None
+    status: str
+    criticality: str | None
+    warranty_end: date | None
+    purchase_date: date | None
+    custom_fields: dict[str, object]
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class AssetListPage(BaseModel):
+    items: list[AssetListItem]
+    next_cursor: str | None
+    total: int | None = Field(default=None, description="Only present when `include_total` was set")
