@@ -33,15 +33,39 @@ export const TeamsPage: React.FC = () => {
       })
       .then((body) => {
         const items: TeamItem[] = body.data ?? [];
-        setTeams(items.length > 0 ? items : [
-          { id: "team-1", name: "Core Infrastructure", description: "Main electrical and HVAC maintenance", member_count: 5 },
-          { id: "team-2", name: "Field Technicians", description: "Mobile rapid response team", member_count: 8 },
-        ]);
+        setTeams(
+          items.length > 0
+            ? items
+            : [
+                {
+                  id: "team-1",
+                  name: "Core Infrastructure",
+                  description: "Main electrical and HVAC maintenance",
+                  member_count: 5,
+                },
+                {
+                  id: "team-2",
+                  name: "Field Technicians",
+                  description: "Mobile rapid response team",
+                  member_count: 8,
+                },
+              ],
+        );
       })
       .catch(() => {
         setTeams([
-          { id: "team-1", name: "Core Infrastructure", description: "Main electrical and HVAC maintenance", member_count: 5 },
-          { id: "team-2", name: "Field Technicians", description: "Mobile rapid response team", member_count: 8 },
+          {
+            id: "team-1",
+            name: "Core Infrastructure",
+            description: "Main electrical and HVAC maintenance",
+            member_count: 5,
+          },
+          {
+            id: "team-2",
+            name: "Field Technicians",
+            description: "Mobile rapid response team",
+            member_count: 8,
+          },
         ]);
       })
       .finally(() => {
@@ -96,7 +120,9 @@ export const TeamsPage: React.FC = () => {
 
               <div className="mt-4 flex items-center justify-between border-t border-border pt-3 text-xs text-muted">
                 <span>{`${String(team.member_count ?? 0)} members`}</span>
-                <span className="font-medium text-primary hover:underline cursor-pointer">{"View team →"}</span>
+                <span className="font-medium text-primary hover:underline cursor-pointer">
+                  {"View team →"}
+                </span>
               </div>
             </div>
           ))}

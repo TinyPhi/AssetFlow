@@ -57,17 +57,21 @@ export const OrgChartPage: React.FC = () => {
           }
         }
 
-        setNodes(roots.length > 0 ? roots : [
-          {
-            id: "root-unit",
-            name: me?.organization.name ?? "Headquarters",
-            count: 1,
-            children: [
-              { id: "engineering", name: "Engineering", count: 8, children: [] },
-              { id: "operations", name: "Operations", count: 12, children: [] },
-            ],
-          },
-        ]);
+        setNodes(
+          roots.length > 0
+            ? roots
+            : [
+                {
+                  id: "root-unit",
+                  name: me?.organization.name ?? "Headquarters",
+                  count: 1,
+                  children: [
+                    { id: "engineering", name: "Engineering", count: 8, children: [] },
+                    { id: "operations", name: "Operations", count: 12, children: [] },
+                  ],
+                },
+              ],
+        );
       })
       .catch(() => {
         // Fallback for tests / demo state
