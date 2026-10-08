@@ -48,7 +48,9 @@ def render_markdown(requirements: list[dict[str, Any]], mapping: dict[str, dict[
     lines: list[str] = [
         "<!--",
         "SPDX-FileCopyrightText: 2026 TinyPhi",
+        # REUSE-IgnoreStart - generated document content, not this file's own SPDX tag
         "SPDX-License-Identifier: AGPL-3.0-only",
+        # REUSE-IgnoreEnd
         "-->",
         "",
         "# OWASP ASVS 5.0 Level 2 Checklist",
