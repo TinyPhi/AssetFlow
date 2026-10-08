@@ -6,6 +6,7 @@ import { RequireAuth } from "@/app/guards";
 import { Layout } from "@/app/layout/Layout";
 import { NotFoundPage } from "@/app/pages/NotFoundPage";
 import { adminRoutes } from "@/features/admin/routes";
+import { assetRoutes } from "@/features/assets/routes";
 import { AuthCallbackPage, SignInPage } from "@/features/auth";
 import { DashboardPage } from "@/features/dashboard/pages/DashboardPage";
 import { maintenanceRoutes } from "@/features/maintenance/routes";
@@ -25,6 +26,7 @@ export function buildRoutes(): RouteObject[] {
           children: [
             { index: true, element: <DashboardPage /> },
             ...organizationRoutes,
+            ...assetRoutes,
             ...maintenanceRoutes,
             ...notificationRoutes,
             ...adminRoutes,
