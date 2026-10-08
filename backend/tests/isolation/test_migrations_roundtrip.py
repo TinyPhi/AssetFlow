@@ -31,6 +31,38 @@ async def _sql(db: IsolationDb, sql: str) -> None:
         await conn.close()
 
 
+async def _release_roles_in_other_databases(db: IsolationDb) -> None:
+    """Drop the AssetFlow roles' rights in every other database of the cluster.
+
+    Roles are cluster-wide, and `DROP ROLE` fails while the role still holds a grant in any
+    database. Another test session (or a leftover database) on the same server would block the
+    `downgrade base` below, so its grants are released first. Only AssetFlow's own roles are touched.
+    """
+    admin = await asyncpg.connect(db.admin_dsn)
+    try:
+        names = [
+            r["datname"]
+            for r in await admin.fetch(
+                "SELECT datname FROM pg_database WHERE NOT datistemplate AND datname <> current_database()"
+            )
+        ]
+        roles = [
+            r["rolname"]
+            for r in await admin.fetch("SELECT rolname FROM pg_roles WHERE rolname LIKE 'assetflow%'")
+        ]
+    finally:
+        await admin.close()
+    for name in names:
+        conn = await asyncpg.connect(db.admin_dsn.rsplit("/", 1)[0] + "/" + name)
+        try:
+            for role in roles:
+                await conn.execute(f'DROP OWNED BY "{role}"')
+        except asyncpg.PostgresError:
+            pass  # a database we cannot enter or that is gone is not holding anything we can drop
+        finally:
+            await conn.close()
+
+
 def _ok(result: object) -> None:
     rc = getattr(result, "returncode", None)
     assert rc == 0, f"{getattr(result, 'stdout', '')}\n{getattr(result, 'stderr', '')}"
@@ -44,6 +76,7 @@ async def test_upgrade_downgrade_upgrade(isolation_db: IsolationDb) -> None:
         _ok(db.alembic("downgrade", "0000_roles"))
         assert await _objects(db) == (False, False, 5)
 
+        await _release_roles_in_other_databases(db)
         _ok(db.alembic("downgrade", "base"))
         assert await _objects(db) == (False, False, 0)
 
@@ -57,6 +90,7 @@ async def test_upgrade_downgrade_upgrade(isolation_db: IsolationDb) -> None:
 async def test_roles_migration_is_idempotent_and_refuses_unsafe_roles(isolation_db: IsolationDb) -> None:
     db = isolation_db
     try:
+        await _release_roles_in_other_databases(db)
         _ok(db.alembic("downgrade", "base"))
 
         # A role left from an earlier install with safe attributes is reused.

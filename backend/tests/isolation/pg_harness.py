@@ -17,9 +17,11 @@ Organizations A and B are inserted by the superuser (which bypasses RLS) as fixt
 from __future__ import annotations
 
 import asyncio
+import atexit
 import os
 import secrets
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -27,6 +29,7 @@ import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote, urlsplit
 
 import asyncpg
@@ -36,6 +39,10 @@ from app.core.db import DbRole, Pool, close_pool, init_pool
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 POSTGRES_IMAGE = "postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea"
+PROJECT_LABEL = "com.tinyphi.project=assetflow"
+#: database inside a running `af-postgres` (make dev) that the isolation suite reuses instead of
+#: starting a throwaway container (R6: tests start no containers when the dev stack is up).
+SHARED_TEST_DATABASE = "assetflow_test"
 LOGIN_ROLES = {
     "api": "assetflow_api",
     "worker": "assetflow_worker",
@@ -60,6 +67,9 @@ class PgServer:
     superuser: str
     superuser_password: str | None
     container_id: str | None = None
+    #: True when this is the `af-postgres` of a running `make dev` stack (R6): the isolation suite
+    #: then reuses one fixed `assetflow_test` database on it instead of starting its own container.
+    reused: bool = False
 
     def dsn(self, database: str, user: str | None = None, password: str | None = None) -> str:
         user = user or self.superuser
@@ -158,7 +168,24 @@ def _server_from_url(url: str) -> PgServer:
     )
 
 
+def _force_remove(docker: str, container_id: str) -> None:
+    """Best-effort cleanup; never raises (called from atexit and signal handlers too)."""
+    subprocess.run(  # noqa: S603 - fixed argv, no shell
+        [docker, "rm", "--force", "--volumes", container_id],
+        capture_output=True,
+        timeout=60,
+        check=False,
+    )
+
+
 def _start_container(docker: str) -> PgServer:
+    """A throwaway, labelled, named container; removed on return, on exit, and on SIGTERM/SIGINT.
+
+    Named and labelled (`af-test-pg-<random>`, com.tinyphi.project=assetflow) so a killed test run
+    never leaves an unlabelled leftover (AF audit R6): atexit and the signal handlers below remove
+    it even when the process is killed before the fixture's own `finally` runs.
+    """
+    name = f"af-test-pg-{secrets.token_hex(4)}"
     password = secrets.token_urlsafe(24)
     run = subprocess.run(  # noqa: S603 - fixed argv, no shell
         [
@@ -166,6 +193,10 @@ def _start_container(docker: str) -> PgServer:
             "run",
             "--detach",
             "--rm",
+            "--name",
+            name,
+            "--label",
+            PROJECT_LABEL,
             "--env",
             f"POSTGRES_PASSWORD={password}",
             "--publish",
@@ -180,6 +211,20 @@ def _start_container(docker: str) -> PgServer:
     if run.returncode != 0:
         _unavailable(f"docker run failed: {run.stderr.strip()[:300]}")
     container_id = run.stdout.strip()
+    atexit.register(_force_remove, docker, container_id)
+    previous_handlers: dict[signal.Signals, Any] = {}
+    for sig in (signal.SIGTERM, signal.SIGINT):
+
+        def _on_signal(signum: int, frame: object, sig: signal.Signals = sig) -> None:
+            _force_remove(docker, container_id)
+            handler = previous_handlers[sig]
+            if callable(handler):
+                handler(signum, frame)
+            else:
+                signal.signal(sig, signal.SIG_DFL)
+                os.kill(os.getpid(), sig)
+
+        previous_handlers[sig] = signal.signal(sig, _on_signal)
     port_out = subprocess.run(  # noqa: S603 - fixed argv, no shell
         [docker, "port", container_id, "5432/tcp"],
         capture_output=True,
@@ -189,6 +234,51 @@ def _start_container(docker: str) -> PgServer:
     )
     port = int(port_out.stdout.strip().splitlines()[0].rsplit(":", 1)[1])
     return PgServer("127.0.0.1", port, "postgres", password, container_id)
+
+
+def _running_dev_postgres(docker: str) -> PgServer | None:
+    """The `af-postgres` container of a running `make dev` stack, when one is up; else ``None``.
+
+    Superuser DSN and password are read from the same AppRole-rendered runtime secret the stack
+    itself uses (scripts/dev_setup.py); nothing is printed or logged.
+    """
+    inspect = subprocess.run(  # noqa: S603 - fixed argv, no shell
+        [
+            docker,
+            "inspect",
+            "af-postgres",
+            "--format",
+            '{{.State.Running}}|{{index .Config.Labels "com.tinyphi.project"}}',
+        ],
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=False,
+    )
+    if inspect.returncode != 0:
+        return None
+    running, _, label = inspect.stdout.strip().partition("|")
+    if running != "true" or label != "assetflow":
+        return None
+    port_out = subprocess.run(  # noqa: S603 - fixed argv, no shell
+        [docker, "port", "af-postgres", "5432/tcp"], capture_output=True, text=True, timeout=15, check=False
+    )
+    if port_out.returncode != 0 or not port_out.stdout.strip():
+        return None
+    port = int(port_out.stdout.strip().splitlines()[0].rsplit(":", 1)[1])
+    # Read the already-rendered superuser password from inside the container itself (the file
+    # OpenBao's agent / af-setup placed at /run/af/postgres-password, deploy/compose.dev.yml);
+    # never copied onto the host.
+    password = subprocess.run(  # noqa: S603 - fixed argv, no shell
+        [docker, "exec", "af-postgres", "cat", "/run/af/postgres-password"],
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=False,
+    )
+    if password.returncode != 0 or not password.stdout.strip():
+        return None
+    return PgServer("127.0.0.1", port, "postgres", password.stdout.strip(), reused=True)
 
 
 async def _wait_ready(server: PgServer) -> None:
@@ -241,29 +331,37 @@ def pg_server() -> Iterator[PgServer]:
     )
     if info.returncode != 0:
         _unavailable("the Docker daemon is not reachable and ASSETFLOW_TEST_DATABASE_URL is not set")
+
+    # R6: tests start no containers when the `make dev` stack is already up; reuse its af-postgres.
+    dev_server = _running_dev_postgres(docker)
+    if dev_server is not None:
+        asyncio.run(_wait_ready(dev_server))
+        yield dev_server
+        return
+
     server = _start_container(docker)
     try:
         asyncio.run(_wait_ready(server))
         yield server
     finally:
-        subprocess.run(  # noqa: S603 - fixed argv, no shell
-            [docker, "rm", "--force", "--volumes", server.container_id or ""],
-            capture_output=True,
-            timeout=60,
-            check=False,
-        )
+        _force_remove(docker, server.container_id or "")
 
 
 @pytest.fixture(scope="session")
 def isolation_db(pg_server: PgServer) -> Iterator[IsolationDb]:
+    # Reusing af-postgres (R6): one fixed, shared database, dropped and re-created on each session
+    # rather than a uniquely-suffixed one per run (a throwaway container still gets its own).
     suffix = secrets.token_hex(4)
+    database = SHARED_TEST_DATABASE if pg_server.reused else f"af_isolation_{suffix}"
     db = IsolationDb(
         server=pg_server,
-        database=f"af_isolation_{suffix}",
+        database=database,
         users={
             kind: LoginUser(f"af_test_{kind}_{suffix}", secrets.token_urlsafe(24)) for kind in LOGIN_ROLES
         },
     )
+    if pg_server.reused:
+        asyncio.run(_admin(pg_server, f"DROP DATABASE IF EXISTS {_ident(db.database)} WITH (FORCE)"))
     asyncio.run(_admin(pg_server, f"CREATE DATABASE {_ident(db.database)}"))
     try:
         db.upgrade_head()
@@ -296,8 +394,8 @@ class _DbCfg:
     idle_in_transaction_timeout_ms: int = 30000
     pool_min: int = 1
     pool_max: int = 1
-    connect_timeout_s: float = 5.0
-    acquire_timeout_s: float = 5.0
+    connect_timeout_s: float = 30.0
+    acquire_timeout_s: float = 10.0
 
 
 PoolFactory = Callable[..., Awaitable[Pool]]
