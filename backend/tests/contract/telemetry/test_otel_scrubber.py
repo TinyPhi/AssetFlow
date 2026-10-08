@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from app.core.config import ConfigError
+from app.core.config import ConfigError, Environment
 from app.providers.context import ProviderContext
 from app.providers.telemetry.otel import OtelTelemetryProvider, scrub_value
 
@@ -52,9 +52,18 @@ def test_otel_span_scrubs_attributes() -> None:
     assert span.attributes["order.id"] == "0192f000-0000-7000-8000-000000000002"
 
 
-def test_otel_production_guard_refuses_disabled_scrubber() -> None:
-    ctx = ProviderContext(env="production", pillar="telemetry", base_dir=Path.cwd())
+@pytest.mark.parametrize("env", ["production", "staging"])
+def test_otel_guard_refuses_disabled_scrubber_outside_dev_and_test(env: Environment) -> None:
+    ctx = ProviderContext(env=env, pillar="telemetry", base_dir=Path.cwd())
     with pytest.raises(ConfigError) as exc_info:
         OtelTelemetryProvider.from_settings({"scrub": False}, ctx)
 
-    assert "telemetry scrubbing cannot be disabled in production" in str(exc_info.value)
+    assert "telemetry scrubbing cannot be disabled outside development and test" in str(exc_info.value)
+
+
+@pytest.mark.parametrize("env", ["development", "test"])
+def test_otel_allows_disabled_scrubber_in_development_and_test(env: Environment) -> None:
+    ctx = ProviderContext(env=env, pillar="telemetry", base_dir=Path.cwd())
+    provider = OtelTelemetryProvider.from_settings({"scrub": False}, ctx)
+
+    assert provider.settings.scrub is False
