@@ -48,7 +48,11 @@ describe("navigation follows the member's permissions and installed modules", ()
     unmount();
     renderApp("/", { me: { permissions, installed_modules: ["assets"] } });
     await waitFor(async () => {
-      expect(await navLinks()).toEqual([t("nav.items.dashboard"), t("nav.items.assets"), t("nav.items.my_settings")]);
+      expect(await navLinks()).toEqual([
+        t("nav.items.dashboard"),
+        t("nav.items.assets"),
+        t("nav.items.my_settings"),
+      ]);
     });
   });
 

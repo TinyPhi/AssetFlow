@@ -79,7 +79,12 @@ export const OrganizationSettingsPage: React.FC = () => {
         </div>
       )}
 
-      <form onSubmit={(e) => { void handleSubmit(e); }} className="space-y-6 rounded-xl border border-border bg-surface p-6 shadow-sm">
+      <form
+        onSubmit={(e) => {
+          void handleSubmit(e);
+        }}
+        className="space-y-6 rounded-xl border border-border bg-surface p-6 shadow-sm"
+      >
         <div className="space-y-2">
           <label htmlFor="setting-provisioning" className="block text-sm font-medium text-foreground">
             {"Sign-in Provisioning Policy"}

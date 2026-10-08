@@ -39,10 +39,7 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
-      "@typescript-eslint/no-unused-vars": [
-        "error",
-        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
-      ],
+      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
       "react/jsx-no-literals": ["error", { noStrings: false, ignoreProps: true }],
       "react/no-danger": "error",

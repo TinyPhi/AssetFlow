@@ -36,15 +36,43 @@ export const NotificationChannelsPage: React.FC = () => {
       })
       .then((body) => {
         const items = body.data ?? [];
-        setChannels(items.length > 0 ? items : [
-          { id: "ch-1", channel_key: "email", name: "Corporate Email Relay", enabled: true, kill_switch: false },
-          { id: "ch-2", channel_key: "webhook", name: "SIEM Audit Webhook", enabled: true, kill_switch: false },
-        ]);
+        setChannels(
+          items.length > 0
+            ? items
+            : [
+                {
+                  id: "ch-1",
+                  channel_key: "email",
+                  name: "Corporate Email Relay",
+                  enabled: true,
+                  kill_switch: false,
+                },
+                {
+                  id: "ch-2",
+                  channel_key: "webhook",
+                  name: "SIEM Audit Webhook",
+                  enabled: true,
+                  kill_switch: false,
+                },
+              ],
+        );
       })
       .catch(() => {
         setChannels([
-          { id: "ch-1", channel_key: "email", name: "Corporate Email Relay", enabled: true, kill_switch: false },
-          { id: "ch-2", channel_key: "webhook", name: "SIEM Audit Webhook", enabled: true, kill_switch: false },
+          {
+            id: "ch-1",
+            channel_key: "email",
+            name: "Corporate Email Relay",
+            enabled: true,
+            kill_switch: false,
+          },
+          {
+            id: "ch-2",
+            channel_key: "webhook",
+            name: "SIEM Audit Webhook",
+            enabled: true,
+            kill_switch: false,
+          },
         ]);
       })
       .finally(() => {
@@ -78,7 +106,12 @@ export const NotificationChannelsPage: React.FC = () => {
                 }
               : {
                   endpoint_url: { type: "string", title: "Endpoint URL", format: "uri" },
-                  secret_token: { type: "string", title: "Signing Secret", format: "password", "x-assetflow-secret": true },
+                  secret_token: {
+                    type: "string",
+                    title: "Signing Secret",
+                    format: "password",
+                    "x-assetflow-secret": true,
+                  },
                 },
         });
       }
@@ -104,7 +137,9 @@ export const NotificationChannelsPage: React.FC = () => {
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => { void handleOpenAdd("email"); }}
+              onClick={() => {
+                void handleOpenAdd("email");
+              }}
               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus"
             >
               <Plus className="h-4 w-4" />
@@ -112,7 +147,9 @@ export const NotificationChannelsPage: React.FC = () => {
             </button>
             <button
               type="button"
-              onClick={() => { void handleOpenAdd("webhook"); }}
+              onClick={() => {
+                void handleOpenAdd("webhook");
+              }}
               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3.5 py-2 text-sm font-semibold text-foreground hover:bg-border focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus"
             >
               <Plus className="h-4 w-4" />
@@ -128,7 +165,10 @@ export const NotificationChannelsPage: React.FC = () => {
             <h2 className="text-lg font-semibold text-foreground">{`Configure ${addingKey} Channel`}</h2>
             <button
               type="button"
-              onClick={() => { setAddingKey(null); setSchema(null); }}
+              onClick={() => {
+                setAddingKey(null);
+                setSchema(null);
+              }}
               className="text-xs text-muted hover:text-foreground"
             >
               {"Cancel"}
@@ -162,7 +202,11 @@ export const NotificationChannelsPage: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                      {ch.channel_key === "email" ? <Mail className="h-5 w-5" /> : <Webhook className="h-5 w-5" />}
+                      {ch.channel_key === "email" ? (
+                        <Mail className="h-5 w-5" />
+                      ) : (
+                        <Webhook className="h-5 w-5" />
+                      )}
                     </div>
                     <div>
                       <h2 className="text-base font-semibold text-foreground">{ch.name}</h2>

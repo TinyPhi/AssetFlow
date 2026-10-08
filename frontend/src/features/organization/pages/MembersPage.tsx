@@ -33,14 +33,33 @@ export const MembersPage: React.FC = () => {
     const query = search ? `?search=${encodeURIComponent(search)}` : "";
     apiFetch<MemberItem[]>(`/members${query}`)
       .then((data) => {
-        setMembers(data.length > 0 ? data : [
-          { id: "member-1", display_name: "Ada Lovelace", email: "ada.lovelace@example.org", status: "active" },
-          { id: "member-2", display_name: "Alan Turing", email: "alan.turing@example.org", status: "active" },
-        ]);
+        setMembers(
+          data.length > 0
+            ? data
+            : [
+                {
+                  id: "member-1",
+                  display_name: "Ada Lovelace",
+                  email: "ada.lovelace@example.org",
+                  status: "active",
+                },
+                {
+                  id: "member-2",
+                  display_name: "Alan Turing",
+                  email: "alan.turing@example.org",
+                  status: "active",
+                },
+              ],
+        );
       })
       .catch(() => {
         setMembers([
-          { id: "member-1", display_name: "Ada Lovelace", email: "ada.lovelace@example.org", status: "active" },
+          {
+            id: "member-1",
+            display_name: "Ada Lovelace",
+            email: "ada.lovelace@example.org",
+            status: "active",
+          },
           { id: "member-2", display_name: "Alan Turing", email: "alan.turing@example.org", status: "active" },
         ]);
       })
@@ -60,7 +79,10 @@ export const MembersPage: React.FC = () => {
       header: "Member",
       cell: (row) => (
         <div className="flex flex-col">
-          <Link to={`/organization/members/${row.id}`} className="font-semibold text-foreground hover:text-primary hover:underline">
+          <Link
+            to={`/organization/members/${row.id}`}
+            className="font-semibold text-foreground hover:text-primary hover:underline"
+          >
             {row.display_name}
           </Link>
           {row.email && <span className="text-xs text-muted">{row.email}</span>}
@@ -90,7 +112,10 @@ export const MembersPage: React.FC = () => {
           <Link to={`/organization/members/${row.id}`} className="font-medium text-primary hover:underline">
             {"Profile"}
           </Link>
-          <Link to={`/admin/access/${row.id}`} className="font-medium text-muted hover:text-foreground hover:underline">
+          <Link
+            to={`/admin/access/${row.id}`}
+            className="font-medium text-muted hover:text-foreground hover:underline"
+          >
             {"Access View"}
           </Link>
         </div>
@@ -118,7 +143,10 @@ export const MembersPage: React.FC = () => {
 
       <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" aria-hidden="true" />
+          <Search
+            className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted"
+            aria-hidden="true"
+          />
           <input
             type="search"
             value={search}
@@ -136,7 +164,10 @@ export const MembersPage: React.FC = () => {
       ) : error ? (
         <ErrorState message={error} onRetry={loadMembers} />
       ) : members.length === 0 ? (
-        <EmptyState title="No members found" message="Try searching for a different name or invite a new member." />
+        <EmptyState
+          title="No members found"
+          message="Try searching for a different name or invite a new member."
+        />
       ) : (
         <div className="rounded-xl border border-border bg-surface shadow-sm">
           <DataTable columns={columns} rows={members} rowKey={(row) => row.id} caption="Members Directory" />
