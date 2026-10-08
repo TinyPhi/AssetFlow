@@ -22,7 +22,7 @@ import pytest
 from fastapi import FastAPI
 from pg_harness import PoolFactory
 
-from app.api.auth import REFRESH_COOKIE_NAME
+from app.api.auth import AUTH_REFRESH_LIMIT, AUTH_SESSION_LIMIT, REFRESH_COOKIE_NAME
 from app.core.cookie_crypto import derive_key
 from app.core.db import Pool, tenant_transaction
 from app.main import create_app
@@ -328,3 +328,25 @@ async def test_session_request_refuses_an_extra_field(anonymous_app: FastAPI, ex
         res = await client.post("/api/auth/session", json={**_pkce(), extra: "x"})
     assert res.status_code == 422
     assert "set-cookie" not in res.headers
+
+
+async def test_session_exchange_is_rate_limited_per_client(anonymous_app: FastAPI) -> None:
+    """PR #291 review: /api/auth/session had no rate limit at all, unlike /api/health."""
+    async with _client(anonymous_app) as client:
+        for _ in range(AUTH_SESSION_LIMIT):
+            res = await client.post("/api/auth/session", json=_pkce())
+            assert res.status_code == 401
+        limited = await client.post("/api/auth/session", json=_pkce())
+    assert limited.status_code == 429
+    assert "retry-after" in {h.lower() for h in limited.headers}
+
+
+async def test_refresh_is_rate_limited_per_client(anonymous_app: FastAPI) -> None:
+    """PR #291 review: /api/auth/refresh had no rate limit at all."""
+    async with _client(anonymous_app) as client:
+        for _ in range(AUTH_REFRESH_LIMIT):
+            res = await client.post("/api/auth/refresh")
+            assert res.status_code == 401
+        limited = await client.post("/api/auth/refresh")
+    assert limited.status_code == 429
+    assert "retry-after" in {h.lower() for h in limited.headers}

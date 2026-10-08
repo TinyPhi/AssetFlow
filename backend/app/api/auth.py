@@ -45,6 +45,7 @@ from app.core.problems import (
     ServiceUnavailableError,
     UnauthorizedError,
 )
+from app.core.rate_limit import InMemoryRateLimitStore, RateLimiter
 from app.modules.audit.service import record_audit_event
 from app.modules.organization.provisioning import ProvisioningDeniedError, resolve_member_context
 
@@ -53,6 +54,40 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 REFRESH_COOKIE_NAME = "af_refresh"
 COOKIE_PATH = "/api/auth"
 COOKIE_MAX_AGE = 7 * 24 * 3600  # 7 days (§B7.2)
+
+# Both endpoints are reachable before any principal exists (credential-stuffing / token-rotation
+# targets), so the limit is tighter than the authenticated-route default and keyed by IP.
+AUTH_SESSION_LIMIT: Final = 10
+AUTH_REFRESH_LIMIT: Final = 20
+AUTH_RATE_LIMIT_WINDOW_SECONDS: Final = 60
+
+
+def _auth_rate_limit_store(request: Request) -> InMemoryRateLimitStore:
+    store: InMemoryRateLimitStore | None = getattr(request.app.state, "auth_rate_limit_store", None)
+    if store is None:
+        store = InMemoryRateLimitStore()
+        request.app.state.auth_rate_limit_store = store
+    return store
+
+
+async def session_exchange_rate_limit(request: Request) -> None:
+    """Per-client limit on the PKCE code exchange (§B7.2)."""
+    await RateLimiter(
+        times=AUTH_SESSION_LIMIT,
+        seconds=AUTH_RATE_LIMIT_WINDOW_SECONDS,
+        store=_auth_rate_limit_store(request),
+        key_prefix="auth-session",
+    )(request)
+
+
+async def refresh_rate_limit(request: Request) -> None:
+    """Per-client limit on refresh-token rotation (§B7.2)."""
+    await RateLimiter(
+        times=AUTH_REFRESH_LIMIT,
+        seconds=AUTH_RATE_LIMIT_WINDOW_SECONDS,
+        store=_auth_rate_limit_store(request),
+        key_prefix="auth-refresh",
+    )(request)
 
 
 STATE_TTL_SECONDS: Final = 600
@@ -143,7 +178,13 @@ def _check_nonce(request: Request, token_data: dict[str, Any], nonce: str) -> No
         raise UnauthorizedError("The sign-in response does not match the request.")
 
 
-@router.post("/session", response_model=TokenResponse, openapi_extra=public_extra())
+@router.post(
+    "/session",
+    response_model=TokenResponse,
+    dependencies=[Depends(session_exchange_rate_limit)],
+    responses={429: {"description": "Rate limited"}},
+    openapi_extra=public_extra(),
+)
 async def exchange_session(
     body: SessionExchangeRequest,
     request: Request,
@@ -226,8 +267,9 @@ async def exchange_session(
 
 @router.post(
     "/refresh",
-    dependencies=[Depends(require_cookie_request_guard)],
+    dependencies=[Depends(require_cookie_request_guard), Depends(refresh_rate_limit)],
     response_model=TokenResponse,
+    responses={429: {"description": "Rate limited"}},
     openapi_extra=public_extra(),
 )
 async def refresh_session(

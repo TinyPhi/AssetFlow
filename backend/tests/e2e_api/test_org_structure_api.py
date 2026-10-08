@@ -374,3 +374,89 @@ async def test_member_list_answers_with_the_success_envelope(
     assert body["status"] == "success"
     assert [m["display_name"] for m in body["data"]] == ["Admin User"]
     assert body["data"][0]["id"] == str(admin_id)
+
+
+async def test_member_list_applies_the_callers_scope_filter(
+    client: httpx.AsyncClient, make_pool: PoolFactory
+) -> None:
+    """A team- or org-unit-scoped `member.read` grant must only see members within that scope
+    (PR #291 review finding: scope_filter was computed but never applied to the SQL WHERE clause).
+    """
+    pool = await make_pool("api")
+    org_id, admin_id, _ = await _create_org(pool)
+    branch_id, in_branch_id, out_branch_id = uuid4(), uuid4(), uuid4()
+    team_id, in_team_id, out_team_id = uuid4(), uuid4(), uuid4()
+
+    async with tenant_transaction(pool, org_id) as conn:
+        await conn.execute(
+            "INSERT INTO public.org_units "
+            "(id, organization_id, parent_id, path, type, code, name, status, version) "
+            "SELECT $1, $2, ou.id, 'root.branch'::ltree, 'department', 'branch', 'Branch', 'active', 1 "
+            "FROM public.org_units ou WHERE ou.organization_id = $2 AND ou.path = 'root'",
+            branch_id,
+            org_id,
+        )
+        await conn.execute(
+            "INSERT INTO public.teams (id, organization_id, code, name, type, status, version) "
+            "VALUES ($1, $2, 'team-a', 'Team A', 'crew', 'active', 1)",
+            team_id,
+            org_id,
+        )
+        for member_id, name in ((in_branch_id, "In Branch"), (out_branch_id, "Out Branch")):
+            await conn.execute(
+                "INSERT INTO public.members (id, organization_id, email, status, idp_subject, display_name) "
+                "VALUES ($1, $2, $3, 'active', $4, $5)",
+                member_id,
+                org_id,
+                f"{member_id}@example.test",
+                f"sub-{member_id}",
+                name,
+            )
+        await conn.execute(
+            "INSERT INTO public.member_org_units (id, organization_id, member_id, org_unit_id) "
+            "VALUES ($1, $2, $3, $4)",
+            uuid4(),
+            org_id,
+            in_branch_id,
+            branch_id,
+        )
+        for member_id, name in ((in_team_id, "In Team"), (out_team_id, "Out Team")):
+            await conn.execute(
+                "INSERT INTO public.members (id, organization_id, email, status, idp_subject, display_name) "
+                "VALUES ($1, $2, $3, 'active', $4, $5)",
+                member_id,
+                org_id,
+                f"{member_id}@example.test",
+                f"sub-{member_id}",
+                name,
+            )
+        await conn.execute(
+            "INSERT INTO public.team_members "
+            "(id, organization_id, team_id, member_id) VALUES ($1, $2, $3, $4)",
+            uuid4(),
+            org_id,
+            team_id,
+            in_team_id,
+        )
+
+    org_unit_headers = {
+        "x-organization-id": str(org_id),
+        "x-member-id": str(admin_id),
+        "x-role": "team_lead",
+        "x-scope-type": "org_unit",
+        "x-org-unit-path": "root.branch",
+    }
+    res = await client.get("/api/v1/members", headers=org_unit_headers)
+    assert res.status_code == 200
+    assert [m["display_name"] for m in res.json()["data"]] == ["In Branch"]
+
+    team_headers = {
+        "x-organization-id": str(org_id),
+        "x-member-id": str(admin_id),
+        "x-role": "team_lead",
+        "x-scope-type": "team",
+        "x-scope-id": str(team_id),
+    }
+    res = await client.get("/api/v1/members", headers=team_headers)
+    assert res.status_code == 200
+    assert [m["display_name"] for m in res.json()["data"]] == ["In Team"]

@@ -21,6 +21,17 @@ from app.modules.organization.profile import effective_permissions
 router = APIRouter(prefix="/members", tags=["Members"])
 
 
+def _is_uuid(value: str) -> bool:
+    """Small, pure duplicate of organization.repository's helper (which is private to that module,
+    import-linter contract `repo-organization`; app.api may not import app.modules.organization.repository).
+    """
+    try:
+        UUID(value)
+        return True
+    except ValueError:
+        return False
+
+
 class MemberOrgUnit(BaseModel):
     org_unit_id: str
     is_primary: bool
@@ -99,6 +110,32 @@ async def list_members(
             "EXISTS (SELECT 1 FROM public.team_members tm "  # nosec B608 # noqa: S608 - bound index
             f"WHERE tm.member_id = m.id AND tm.team_id = ${len(args)})"
         )
+
+    if not scope_filter.organization:
+        branches: list[str] = []
+        if scope_filter.org_unit_paths:
+            args.append(list(scope_filter.org_unit_paths))
+            branches.append(
+                "SELECT mou.member_id FROM public.member_org_units mou "  # nosec B608 # noqa: S608
+                "JOIN public.org_units ou ON ou.id = mou.org_unit_id "
+                f"WHERE mou.organization_id = $1 AND (ou.path <@ ANY(${len(args)}::ltree[]))"
+            )
+        if scope_filter.team_ids:
+            team_uuids = [UUID(t) for t in scope_filter.team_ids if _is_uuid(t)]
+            if team_uuids:
+                args.append(team_uuids)
+                branches.append(
+                    "SELECT tm.member_id FROM public.team_members tm "  # nosec B608 # noqa: S608
+                    f"WHERE tm.organization_id = $1 AND tm.team_id = ANY(${len(args)}::uuid[]) "
+                    "AND (tm.valid_to IS NULL OR tm.valid_to > now())"
+                )
+        if scope_filter.member_id:
+            args.append(UUID(scope_filter.member_id))
+            branches.append(f"SELECT ${len(args)}::uuid")
+        if not branches:
+            return success_response(data=[], request_id=request_id(request))
+        allowed_union = " UNION ALL ".join(branches)
+        clauses.append(f"m.id IN ({allowed_union})")
 
     args.append(limit)
     sql = f"""
