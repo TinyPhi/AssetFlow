@@ -114,9 +114,10 @@ class FileSecretsProvider(SecretsProvider):
         match = _MAP_REF_PATTERN.match(path)
         if match is None or any(seg in {".", ".."} for seg in path[len("secret://") :].split("/")):
             raise SecretsUnavailableError("A secret reference is malformed.")
-        values = await asyncio.to_thread(self._read_map, match.group("area"), match.group("name"))
+        area, name = match.group("area"), match.group("name")
+        values = await asyncio.to_thread(self._read_map, area, name)
         if not values:
-            logger.warning("secrets.file.missing", extra={"area": match.group("area")})
+            logger.warning("secrets.file.missing", extra={"area": area})
             raise SecretsUnavailableError("A required secret is not available.")
         return values
 
