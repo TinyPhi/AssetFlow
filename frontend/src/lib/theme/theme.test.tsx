@@ -52,11 +52,17 @@ describe("theme toggle", () => {
     renderApp("/");
     const group = await screen.findByRole("radiogroup", { name: t("theme.toggle.label") });
     expect(group).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: t("theme.toggle.system") })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: t("theme.toggle.system") })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
 
     await user.click(screen.getByRole("radio", { name: t("theme.toggle.dark") }));
     expect(document.documentElement).toHaveAttribute("data-theme", "dark");
-    expect(screen.getByRole("radio", { name: t("theme.toggle.dark") })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: t("theme.toggle.dark") })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
     expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe("dark");
 
     await user.click(screen.getByRole("radio", { name: t("theme.toggle.light") }));

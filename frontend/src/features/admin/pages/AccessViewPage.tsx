@@ -56,9 +56,7 @@ export const AccessViewPage: React.FC = () => {
     {
       id: "permission",
       header: "Effective Permission",
-      cell: (row) => (
-        <span className="font-mono text-xs font-medium text-foreground">{row.permission}</span>
-      ),
+      cell: (row) => <span className="font-mono text-xs font-medium text-foreground">{row.permission}</span>,
     },
     {
       id: "scopes",
@@ -92,7 +90,9 @@ export const AccessViewPage: React.FC = () => {
       <div className="flex flex-col justify-between gap-4 border-b border-border pb-5 sm:flex-row sm:items-center">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{"Effective Access Matrix"}</h1>
-          <p className="text-sm text-muted">{"Computed effective permissions and covered scope boundaries"}</p>
+          <p className="text-sm text-muted">
+            {"Computed effective permissions and covered scope boundaries"}
+          </p>
         </div>
         {canGrant && (
           <button
@@ -113,7 +113,12 @@ export const AccessViewPage: React.FC = () => {
         <EmptyState title="No effective permissions found for this member" />
       ) : (
         <div className="rounded-xl border border-border bg-surface shadow-sm">
-          <DataTable columns={columns} rows={permissions} rowKey={(row) => row.permission} caption="Access Matrix" />
+          <DataTable
+            columns={columns}
+            rows={permissions}
+            rowKey={(row) => row.permission}
+            caption="Access Matrix"
+          />
         </div>
       )}
     </div>

@@ -31,15 +31,43 @@ export const NotificationsPage: React.FC = () => {
       })
       .then((body: { data?: { items?: Notification[] } }) => {
         const items = body.data?.items ?? [];
-        setNotifications(items.length > 0 ? items : [
-          { id: "1", title: "Welcome to AssetFlow", body: "Your account is active.", is_read: false, created_at: new Date().toISOString() },
-          { id: "2", title: "Organization Profile Configured", body: "Defaults and settings are active.", is_read: true, created_at: new Date().toISOString() },
-        ]);
+        setNotifications(
+          items.length > 0
+            ? items
+            : [
+                {
+                  id: "1",
+                  title: "Welcome to AssetFlow",
+                  body: "Your account is active.",
+                  is_read: false,
+                  created_at: new Date().toISOString(),
+                },
+                {
+                  id: "2",
+                  title: "Organization Profile Configured",
+                  body: "Defaults and settings are active.",
+                  is_read: true,
+                  created_at: new Date().toISOString(),
+                },
+              ],
+        );
       })
       .catch(() => {
         setNotifications([
-          { id: "1", title: "Welcome to AssetFlow", body: "Your account is active.", is_read: false, created_at: new Date().toISOString() },
-          { id: "2", title: "Organization Profile Configured", body: "Defaults and settings are active.", is_read: true, created_at: new Date().toISOString() },
+          {
+            id: "1",
+            title: "Welcome to AssetFlow",
+            body: "Your account is active.",
+            is_read: false,
+            created_at: new Date().toISOString(),
+          },
+          {
+            id: "2",
+            title: "Organization Profile Configured",
+            body: "Defaults and settings are active.",
+            is_read: true,
+            created_at: new Date().toISOString(),
+          },
         ]);
       })
       .finally(() => {
@@ -86,7 +114,9 @@ export const NotificationsPage: React.FC = () => {
               setUnreadOnly(!unreadOnly);
             }}
             className={`inline-flex min-h-11 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold ${
-              unreadOnly ? "border-primary bg-primary/10 text-primary" : "border-border bg-surface text-foreground"
+              unreadOnly
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border bg-surface text-foreground"
             }`}
           >
             <Filter className="h-3.5 w-3.5" />
@@ -95,7 +125,9 @@ export const NotificationsPage: React.FC = () => {
 
           <button
             type="button"
-            onClick={() => { void handleMarkAllRead(); }}
+            onClick={() => {
+              void handleMarkAllRead();
+            }}
             className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-xs font-semibold text-foreground hover:bg-border focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus"
           >
             <CheckCheck className="h-4 w-4 text-primary" />
@@ -122,7 +154,9 @@ export const NotificationsPage: React.FC = () => {
                   void handleMarkRead(item.id);
                 }
               }}
-              onClick={() => { void handleMarkRead(item.id); }}
+              onClick={() => {
+                void handleMarkRead(item.id);
+              }}
               className={`flex items-start justify-between gap-4 p-4 transition-colors cursor-pointer hover:bg-border/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus ${
                 !item.is_read ? "bg-primary/5" : ""
               }`}

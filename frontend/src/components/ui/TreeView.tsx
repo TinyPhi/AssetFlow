@@ -34,17 +34,7 @@ const TreeNodeItem: React.FC<{
   onMove?: ((node: TreeNode) => void) | undefined;
   onArchive?: ((node: TreeNode) => void) | undefined;
   canManage?: boolean | undefined;
-}> = ({
-  node,
-  level,
-  selectedId,
-  onSelect,
-  onAddChild,
-  onRename,
-  onMove,
-  onArchive,
-  canManage,
-}) => {
+}> = ({ node, level, selectedId, onSelect, onAddChild, onRename, onMove, onArchive, canManage }) => {
   const [expanded, setExpanded] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const hasChildren = Boolean(node.children && node.children.length > 0);
@@ -87,9 +77,7 @@ const TreeNodeItem: React.FC<{
           </button>
 
           {typeof node.count === "number" && (
-            <span className="ml-2 rounded-full bg-border px-2 py-0.5 text-xs text-muted">
-              {node.count}
-            </span>
+            <span className="ml-2 rounded-full bg-border px-2 py-0.5 text-xs text-muted">{node.count}</span>
           )}
         </div>
 

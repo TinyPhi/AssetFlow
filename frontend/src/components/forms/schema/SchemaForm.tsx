@@ -48,13 +48,19 @@ export const SchemaForm: React.FC<SchemaFormProps> = ({
   };
 
   return (
-    <form onSubmit={(e) => { void handleSubmit(e); }} className="space-y-5">
+    <form
+      onSubmit={(e) => {
+        void handleSubmit(e);
+      }}
+      className="space-y-5"
+    >
       {Object.entries(properties).map(([key, prop]) => {
         const isRequired = required.has(key);
         const isSecret = prop["x-assetflow-secret"] === true || prop.format === "password";
         const error = errors[key];
         const val = formData[key];
-        const strVal = typeof val === "string" || typeof val === "number" || typeof val === "boolean" ? String(val) : "";
+        const strVal =
+          typeof val === "string" || typeof val === "number" || typeof val === "boolean" ? String(val) : "";
 
         return (
           <div key={key} className="space-y-1.5">
@@ -97,7 +103,13 @@ export const SchemaForm: React.FC<SchemaFormProps> = ({
             ) : (
               <input
                 id={`field-${key}`}
-                type={isSecret ? "password" : prop.type === "integer" || prop.type === "number" ? "number" : "text"}
+                type={
+                  isSecret
+                    ? "password"
+                    : prop.type === "integer" || prop.type === "number"
+                      ? "number"
+                      : "text"
+                }
                 value={strVal}
                 onChange={(e) => {
                   const v =

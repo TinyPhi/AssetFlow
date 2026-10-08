@@ -48,9 +48,7 @@ export const NotificationPreferencesPage: React.FC = () => {
     setPreferences((prev) =>
       prev.map((item, idx) => {
         if (idx !== index) return item;
-        return channel === "email"
-          ? { ...item, email: !item.email }
-          : { ...item, webhook: !item.webhook };
+        return channel === "email" ? { ...item, email: !item.email } : { ...item, webhook: !item.webhook };
       }),
     );
   };
@@ -147,7 +145,9 @@ export const NotificationPreferencesPage: React.FC = () => {
       <div className="pt-2">
         <button
           type="button"
-          onClick={() => { void handleSave(); }}
+          onClick={() => {
+            void handleSave();
+          }}
           disabled={saving}
           className="inline-flex min-h-11 items-center justify-center rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm hover:opacity-90 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus"
         >

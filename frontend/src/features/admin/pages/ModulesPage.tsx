@@ -30,10 +30,14 @@ export const ModulesPage: React.FC = () => {
       })
       .then((data) => {
         const list = Array.isArray(data) ? data : (data.data ?? []);
-        setModules(list.length > 0 ? list : [
-          { key: "assets", is_installed: true, dependencies: [] },
-          { key: "maintenance", is_installed: true, dependencies: ["assets"] },
-        ]);
+        setModules(
+          list.length > 0
+            ? list
+            : [
+                { key: "assets", is_installed: true, dependencies: [] },
+                { key: "maintenance", is_installed: true, dependencies: ["assets"] },
+              ],
+        );
       })
       .catch(() => {
         setModules([

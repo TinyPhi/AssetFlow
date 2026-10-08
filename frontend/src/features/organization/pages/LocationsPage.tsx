@@ -53,16 +53,24 @@ export const LocationsPage: React.FC = () => {
           }
         }
 
-        setNodes(roots.length > 0 ? roots : [
-          {
-            id: "site-main",
-            name: "Main Campus",
-            children: [
-              { id: "building-a", name: "Building A", children: [{ id: "floor-1", name: "Floor 1", children: [] }] },
-              { id: "building-b", name: "Building B", children: [] },
-            ],
-          },
-        ]);
+        setNodes(
+          roots.length > 0
+            ? roots
+            : [
+                {
+                  id: "site-main",
+                  name: "Main Campus",
+                  children: [
+                    {
+                      id: "building-a",
+                      name: "Building A",
+                      children: [{ id: "floor-1", name: "Floor 1", children: [] }],
+                    },
+                    { id: "building-b", name: "Building B", children: [] },
+                  ],
+                },
+              ],
+        );
       })
       .catch(() => {
         setNodes([
@@ -70,7 +78,11 @@ export const LocationsPage: React.FC = () => {
             id: "site-main",
             name: "Main Campus",
             children: [
-              { id: "building-a", name: "Building A", children: [{ id: "floor-1", name: "Floor 1", children: [] }] },
+              {
+                id: "building-a",
+                name: "Building A",
+                children: [{ id: "floor-1", name: "Floor 1", children: [] }],
+              },
               { id: "building-b", name: "Building B", children: [] },
             ],
           },

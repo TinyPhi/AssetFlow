@@ -31,24 +31,28 @@ export const DeliveryLogPage: React.FC = () => {
       })
       .then((body) => {
         const items = body.data ?? [];
-        setLogs(items.length > 0 ? items : [
-          {
-            id: "del-1",
-            channel_key: "email",
-            event_type: "member.invited",
-            status: "delivered",
-            attempts: 1,
-            created_at: new Date().toISOString(),
-          },
-          {
-            id: "del-2",
-            channel_key: "webhook",
-            event_type: "org_unit.created",
-            status: "delivered",
-            attempts: 1,
-            created_at: new Date().toISOString(),
-          },
-        ]);
+        setLogs(
+          items.length > 0
+            ? items
+            : [
+                {
+                  id: "del-1",
+                  channel_key: "email",
+                  event_type: "member.invited",
+                  status: "delivered",
+                  attempts: 1,
+                  created_at: new Date().toISOString(),
+                },
+                {
+                  id: "del-2",
+                  channel_key: "webhook",
+                  event_type: "org_unit.created",
+                  status: "delivered",
+                  attempts: 1,
+                  created_at: new Date().toISOString(),
+                },
+              ],
+        );
       })
       .catch(() => {
         setLogs([
@@ -108,9 +112,7 @@ export const DeliveryLogPage: React.FC = () => {
     {
       id: "created_at",
       header: "Timestamp",
-      cell: (row) => (
-        <span className="text-xs text-muted">{new Date(row.created_at).toLocaleString()}</span>
-      ),
+      cell: (row) => <span className="text-xs text-muted">{new Date(row.created_at).toLocaleString()}</span>,
     },
     {
       id: "actions",

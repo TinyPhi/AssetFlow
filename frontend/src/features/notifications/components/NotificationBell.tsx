@@ -54,7 +54,13 @@ export const NotificationBell: React.FC = () => {
         })
         .catch(() => {
           setRecent([
-            { id: "1", title: "Welcome to AssetFlow", body: "Your account is active.", is_read: false, created_at: new Date().toISOString() },
+            {
+              id: "1",
+              title: "Welcome to AssetFlow",
+              body: "Your account is active.",
+              is_read: false,
+              created_at: new Date().toISOString(),
+            },
           ]);
         });
     }
@@ -99,7 +105,9 @@ export const NotificationBell: React.FC = () => {
               recent.map((item) => (
                 <div key={item.id} className="py-2.5 space-y-1">
                   <div className="flex items-start justify-between gap-1">
-                    <p className={`font-medium ${!item.is_read ? "text-foreground" : "text-muted"}`}>{item.title}</p>
+                    <p className={`font-medium ${!item.is_read ? "text-foreground" : "text-muted"}`}>
+                      {item.title}
+                    </p>
                     {!item.is_read && <span className="h-2 w-2 shrink-0 rounded-full bg-primary" />}
                   </div>
                   {item.body && <p className="text-muted line-clamp-2">{item.body}</p>}

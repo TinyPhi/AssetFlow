@@ -16,7 +16,11 @@ const OPTIONS: readonly { value: ThemePreference; icon: LucideIcon; labelKey: Tr
 export const ThemeToggle: React.FC = () => {
   const { preference, setPreference } = useTheme();
   return (
-    <div role="radiogroup" aria-label={t("theme.toggle.label")} className="flex rounded-lg border border-border">
+    <div
+      role="radiogroup"
+      aria-label={t("theme.toggle.label")}
+      className="flex rounded-lg border border-border"
+    >
       {OPTIONS.map(({ value, icon: Icon, labelKey }) => {
         const selected = preference === value;
         return (
