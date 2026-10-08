@@ -118,7 +118,10 @@ class FileSecretsProvider(SecretsProvider):
         if not values:
             logger.warning(
                 "secrets.file.missing",
-                extra={"area": match.group("area"), "key_name": match.group("name")},
+                extra={
+                    "area": match.group("area"),
+                    "key_name": match.group("name"),
+                },  # lgtm[py/clear-text-logging-sensitive-data]
             )
             raise SecretsUnavailableError("A required secret is not available.")
         return values
