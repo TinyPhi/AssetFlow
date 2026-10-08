@@ -59,7 +59,7 @@ async def list_notifications(
         clauses.append(f"(updated_at, id) < (${len(args) - 1}, ${len(args)})")
     args.append(limit)
     sql = (
-        "SELECT id, member_id, event_type, template_key, title_key, body, link_entity_type, "  # noqa: S608
+        "SELECT id, member_id, event_type, template_key, title_key, body, link_entity_type, "  # nosec B608 # noqa: S608
         "link_entity_id, read_at, created_at, updated_at FROM public.notifications "
         f"WHERE {' AND '.join(clauses)} ORDER BY updated_at DESC, id DESC LIMIT ${len(args)}"
     )

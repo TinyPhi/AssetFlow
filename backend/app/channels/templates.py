@@ -79,7 +79,7 @@ class TemplateSet:
 def _environment(templates_dir: Path, *, autoescape: bool) -> Environment:
     return Environment(
         loader=FileSystemLoader(str(templates_dir)),
-        autoescape=autoescape,  # nosemgrep # noqa: S701 - plain-text not autoescaped
+        autoescape=autoescape,  # nosemgrep # nosec B701 # noqa: S701 - plain-text not autoescaped
         undefined=StrictUndefined,
     )
 

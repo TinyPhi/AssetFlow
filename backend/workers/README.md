@@ -1,7 +1,7 @@
 # `backend/workers`
 
 Asynchronous background worker processes (§B4.2, §B9.3). Run with `python -m workers.main`; see
-[docs/operations/worker.md](../../docs/operations/worker.md).
+`docs/operations/worker.md` (lands later in this PR stack).
 
 | Module | Role |
 | --- | --- |
