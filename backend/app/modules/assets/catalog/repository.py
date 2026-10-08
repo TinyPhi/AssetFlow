@@ -28,7 +28,9 @@ __all__ = [
     "ReferenceDataRepository",
     "SupplierRepository",
     "decode_cursor",
+    "decode_field_cursor",
     "encode_cursor",
+    "encode_field_cursor",
     "to_ltree_label",
 ]
 
@@ -57,6 +59,26 @@ def decode_cursor(cursor: str) -> tuple[str, UUID]:
     raw = base64.urlsafe_b64decode(cursor.encode("ascii"))
     value, id_raw = json.loads(raw)
     return str(value), UUID(id_raw)
+
+
+def encode_field_cursor(position: int, key: str, record_id: UUID) -> str:
+    """Opaque keyset cursor for custom-field definitions, sorted `(position, key, id)`.
+
+    A plain `(key, id)` cursor (as `encode_cursor` gives categories/manufacturers/suppliers, all
+    sorted by a single text column then id) silently drops rows here: two fields can share a key
+    prefix but sort at different positions, so the cursor must carry all three sort columns.
+    """
+    raw = json.dumps([position, key, str(record_id)]).encode("utf-8")
+    return base64.urlsafe_b64encode(raw).decode("ascii")
+
+
+def decode_field_cursor(cursor: str) -> tuple[int, str, UUID]:
+    """Inverse of `encode_field_cursor`; raises `ValueError`/`KeyError`/`TypeError` on malformed input."""
+    raw = base64.urlsafe_b64decode(cursor.encode("ascii"))
+    position, key, id_raw = json.loads(raw)
+    if not isinstance(position, int):
+        raise TypeError("cursor position must be an integer")
+    return position, str(key), UUID(id_raw)
 
 
 _CATEGORY_COLUMNS = (
@@ -203,22 +225,38 @@ class CategoryRepository:
         )
         return await conn.fetchrow(sql, organization_id, category_id, version)
 
-    async def count_active_children(self, conn: DbConn, *, organization_id: UUID, category_id: UUID) -> int:
-        val: int | None = await conn.fetchval(
-            "SELECT count(*) FROM public.asset_categories "
-            "WHERE organization_id = $1 AND parent_id = $2 AND status = 'active'",
-            organization_id,
-            category_id,
-        )
-        return val or 0
+    async def lock_active_children(
+        self, conn: DbConn, *, organization_id: UUID, category_id: UUID
+    ) -> list[UUID]:
+        """Active children, locked for the caller's transaction (archive-TOCTOU guard, §C4.4).
 
-    async def count_assets_using(self, conn: DbConn, *, organization_id: UUID, category_id: UUID) -> int:
-        val: int | None = await conn.fetchval(
-            "SELECT count(*) FROM public.assets WHERE organization_id = $1 AND category_id = $2",
+        A plain `count(*)` lets a concurrent `create_category` (new child under this parent) or
+        `assign_category` (asset moved onto this category) land between the count and the archive
+        UPDATE, producing an archived category with live children/assets. Locking the rows that
+        exist right now forces a concurrent UPDATE of one of them to wait for this transaction;
+        `SKIP LOCKED` means a row already locked by an unrelated concurrent write is left out of
+        the count rather than blocking this one (accepted trade-off, same one the review proposed).
+        """
+        rows = await conn.fetch(
+            "SELECT id FROM public.asset_categories "
+            "WHERE organization_id = $1 AND parent_id = $2 AND status = 'active' "
+            "FOR UPDATE SKIP LOCKED",
             organization_id,
             category_id,
         )
-        return val or 0
+        return [r["id"] for r in rows]
+
+    async def lock_assets_using(
+        self, conn: DbConn, *, organization_id: UUID, category_id: UUID
+    ) -> list[UUID]:
+        """Assets currently on this category, locked for the caller's transaction (see above)."""
+        rows = await conn.fetch(
+            "SELECT id FROM public.assets WHERE organization_id = $1 AND category_id = $2 "
+            "FOR UPDATE SKIP LOCKED",
+            organization_id,
+            category_id,
+        )
+        return [r["id"] for r in rows]
 
     async def list_page(
         self,
@@ -396,7 +434,7 @@ class CustomFieldDefinitionRepository:
         scope_filter: ScopeFilter,
         category_id: UUID,
         status: str | None = None,
-        after: tuple[str, UUID] | None = None,
+        after: tuple[int, str, UUID] | None = None,
         limit: int = 50,
     ) -> list[asyncpg.Record]:
         """Organization-wide reference data; see `CategoryRepository.list_page`."""
@@ -411,9 +449,11 @@ class CustomFieldDefinitionRepository:
             args.append(status)
             clauses.append(f"status = ${len(args)}")
         if after is not None:
-            after_key, after_id = after
-            args.extend([after_key, after_id])
-            clauses.append(f"(key, id) > (${len(args) - 1}, ${len(args)})")
+            # Must match the query's own sort key exactly: (position, key, id), not just (key, id),
+            # or rows with the same key prefix but a different position silently drop on later pages.
+            after_position, after_key, after_id = after
+            args.extend([after_position, after_key, after_id])
+            clauses.append(f"(position, key, id) > (${len(args) - 2}, ${len(args) - 1}, ${len(args)})")
         args.append(limit)
         sql = (
             f"SELECT {_FIELD_COLUMNS} FROM public.custom_field_definitions "  # nosec B608  # noqa: S608

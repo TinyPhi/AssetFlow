@@ -81,7 +81,14 @@ class _SpyProvider(SecretsProvider):
 
 
 class _FailingProvider(SecretsProvider):
-    """Every encrypt attempt fails (simulates a sealed or unreachable secrets provider)."""
+    """Every encrypt attempt fails (simulates a sealed or unreachable secrets provider).
+
+    `encrypt_custom_fields` calls `encrypt_many`, not `encrypt`, directly. `SecretsProvider`'s
+    default `encrypt_many` loops over `self.encrypt` (so the override below is redundant in this
+    codebase's actual base class and the test passed before it was added too), but overriding it
+    explicitly here removes any need for a reader to trace into that default to see why the test
+    exercises the right code path, and survives a future base class change that drops the default.
+    """
 
     async def get(self, ref: str) -> str:
         raise SecretsUnavailableError
@@ -90,6 +97,9 @@ class _FailingProvider(SecretsProvider):
         raise SecretsUnavailableError
 
     async def encrypt(self, context: str, plaintext: str) -> str:
+        raise SecretsUnavailableError("The secrets provider is sealed.")
+
+    async def encrypt_many(self, items: Any) -> list[str]:
         raise SecretsUnavailableError("The secrets provider is sealed.")
 
     async def decrypt(self, context: str, ciphertext: str) -> str:

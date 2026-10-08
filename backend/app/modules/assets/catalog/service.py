@@ -437,20 +437,21 @@ async def archive_category(
         if current is None:
             raise CategoryNotFoundError()
 
-        active_children = await _category_repo.count_active_children(
+        active_children = await _category_repo.lock_active_children(
             conn, organization_id=organization_id, category_id=category_id
         )
-        if active_children > 0:
+        if active_children:
             raise CategoryArchiveBlockedError(
-                f"Cannot archive category with {active_children} active child categories "
+                f"Cannot archive category with {len(active_children)} active child categories "
                 f"(blocker: active_children)"
             )
-        assets_using = await _category_repo.count_assets_using(
+        assets_using = await _category_repo.lock_assets_using(
             conn, organization_id=organization_id, category_id=category_id
         )
-        if assets_using > 0:
+        if assets_using:
             raise CategoryArchiveBlockedError(
-                f"Cannot archive category with {assets_using} assets still assigned to it (blocker: assets)"
+                f"Cannot archive category with {len(assets_using)} assets still assigned to it "
+                f"(blocker: assets)"
             )
 
         row = await _category_repo.archive(
@@ -551,7 +552,7 @@ async def list_custom_field_definitions(
 ) -> CursorPage:
     _require_read(caller)
     scope_filter = _list_scope_filter()
-    cursor = repo.decode_cursor(after) if after else None
+    cursor = repo.decode_field_cursor(after) if after else None
     async with tenant_transaction(pool, organization_id) as conn:
         category = await _category_repo.get_by_id(
             conn, organization_id=organization_id, category_id=category_id
@@ -570,7 +571,11 @@ async def list_custom_field_definitions(
     items = [
         CustomFieldDefinitionRead.model_validate(_field_dict(row)).model_dump(mode="json") for row in rows
     ]
-    next_cursor = repo.encode_cursor(rows[-1]["key"], rows[-1]["id"]) if len(rows) == limit else None
+    next_cursor = (
+        repo.encode_field_cursor(rows[-1]["position"], rows[-1]["key"], rows[-1]["id"])
+        if len(rows) == limit
+        else None
+    )
     return CursorPage(items=items, next_cursor=next_cursor)
 
 
@@ -924,6 +929,7 @@ async def _update_reference(
     data: ManufacturerUpdate | SupplierUpdate,
     not_found_cls: type[ManufacturerNotFoundError] | type[SupplierNotFoundError],
     version_conflict_cls: type[ManufacturerVersionConflictError] | type[SupplierVersionConflictError],
+    conflict_cls: type[ManufacturerConflictError] | type[SupplierConflictError],
     entity_type: str,
     updated_event: str,
     request_id: str | None,
@@ -935,6 +941,11 @@ async def _update_reference(
         )
         if current is None:
             raise not_found_cls()
+
+        if data.name is not None and data.name != current["name"]:
+            existing = await data_repo.get_by_name(conn, organization_id=organization_id, name=data.name)
+            if existing is not None and existing["id"] != record_id:
+                raise conflict_cls(f"{entity_type.capitalize()} {data.name!r} already exists")
 
         row = await data_repo.update(
             conn,
@@ -1106,6 +1117,7 @@ async def update_manufacturer(
             data=data,
             not_found_cls=ManufacturerNotFoundError,
             version_conflict_cls=ManufacturerVersionConflictError,
+            conflict_cls=ManufacturerConflictError,
             entity_type="manufacturer",
             updated_event=MANUFACTURER_UPDATED,
             request_id=request_id,
@@ -1225,6 +1237,7 @@ async def update_supplier(
             data=data,
             not_found_cls=SupplierNotFoundError,
             version_conflict_cls=SupplierVersionConflictError,
+            conflict_cls=SupplierConflictError,
             entity_type="supplier",
             updated_event=SUPPLIER_UPDATED,
             request_id=request_id,
