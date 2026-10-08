@@ -34,8 +34,14 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.channels.base import ChannelContext, DeliveryResult, NotificationChannel, Recipient, RenderedMessage
 from app.channels.retry import failure_from_exception
 from app.core.config import EmailChannelConfig
+from app.core.rate_limit import InMemoryRateLimitStore
 
 __all__ = ["EmailChannel", "EmailSettings"]
+
+# Module-level, not per-instance: `channel_class()` makes a fresh `EmailChannel` for every single
+# delivery attempt (see `workers/notification_sender.py`), so instance state never survives between
+# sends. The cap is per organization (never per process), matching `EmailChannelConfig.max_per_org_per_hour`.
+_send_rate_limit_store = InMemoryRateLimitStore()
 
 _ADDRESS = re.compile(r"^[^@\s<>,;\"]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
@@ -211,6 +217,11 @@ class EmailChannel(NotificationChannel):
         recipient = await ctx.recipients.resolve(target)
         if recipient is None:
             return DeliveryResult(False, "recipient.unavailable", retryable=False, skipped=True)
+        allowed, _retry_after = await _send_rate_limit_store.hit(
+            f"email:{ctx.organization_id}", cfg.max_per_org_per_hour, 3600
+        )
+        if not allowed:
+            return DeliveryResult(False, "email.rate_limited", retryable=True)
         try:
             msg, sender = self._build(cfg, settings, recipient, message, idempotency_key)
             addresses = await ctx.http.resolve_all_checked(cfg.host, cfg.port)

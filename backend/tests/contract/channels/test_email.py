@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import email
 import logging
+import uuid
 from email import policy
 from email.message import EmailMessage
 from typing import Any
@@ -32,6 +33,14 @@ DEVANAGARI = "नमस्ते टीम, आपको जोड़ा गय�
 
 
 ADA = Recipient(address=ADDRESS, display_name="Ada Lovelace")
+
+
+@pytest.fixture
+def unique_org() -> str:
+    """A fresh organization id per test: the send-rate-limit store is module-level (shared
+    across every `EmailChannel()` instance for the process), so a reused id would leak state
+    between tests."""
+    return f"org-{uuid.uuid4().hex}"
 
 
 class _Recipients:
@@ -65,6 +74,8 @@ def _ctx(
     host: str = SERVER_NAME,
     allowed: tuple[str, ...] = (SERVER_NAME,),
     password: str | None = None,
+    organization_id: str = ORG,
+    max_per_org_per_hour: int = 200,
 ) -> ChannelContext:
     platform = EmailChannelConfig(
         enabled=True,
@@ -75,13 +86,14 @@ def _ctx(
         default_from="noreply@platform.example.test",
         timeout_seconds=2.0,
         allow_private_addresses=allow_private,
+        max_per_org_per_hour=max_per_org_per_hour,
     ).model_dump()
 
     async def resolve(name: str, port: int) -> list[str]:
         return [resolver_ip]
 
     return ChannelContext(
-        organization_id=ORG,
+        organization_id=organization_id,
         installation={"settings": settings or {}},
         credentials={"password": password} if password else {},  # type: ignore[arg-type]
         http=EgressClient(allowed, resolver=resolve, allow_private_addresses=allow_private),
@@ -334,3 +346,33 @@ async def test_health_degraded_never_leaks_the_server_text() -> None:
     assert (await EmailChannel().health(ChannelContext(organization_id=ORG, installation={})))[
         "healthy"
     ] is False
+
+
+async def test_a_per_organization_send_cap_stops_a_runaway_sender(unique_org: str) -> None:
+    """PR #288 review: a misbehaving automation rule in one org must not exhaust the shared relay
+    for every other tenant. `channel_class()` makes a fresh `EmailChannel` per send (the worker's
+    actual call pattern, see `workers/notification_sender.py`), so the cap must survive that -
+    it lives in a module-level store, not on `self`.
+    """
+    async with run_server() as server:
+        ctx = _ctx(server, organization_id=unique_org, max_per_org_per_hour=2)
+        first = await _send(server, ctx)
+        second = await _send(server, ctx)
+        third = await _send(server, ctx)
+
+        assert first.delivered
+        assert second.delivered
+        assert not third.delivered
+        assert (third.error_code, third.retryable) == ("email.rate_limited", True)
+        assert len(server.received.messages) == 2  # the capped attempt never reached the relay
+
+
+async def test_the_send_cap_is_scoped_per_organization(unique_org: str) -> None:
+    async with run_server() as server:
+        other_org = f"{unique_org}-other"
+        exhausted = _ctx(server, organization_id=unique_org, max_per_org_per_hour=1)
+        unrelated = _ctx(server, organization_id=other_org, max_per_org_per_hour=1)
+
+        assert (await _send(server, exhausted)).delivered
+        assert not (await _send(server, exhausted)).delivered
+        assert (await _send(server, unrelated)).delivered
