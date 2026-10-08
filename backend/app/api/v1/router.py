@@ -8,9 +8,44 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 
+from app.api.deps import public_extra
+from app.api.v1.audit import router as audit_router
+from app.api.v1.bulk_import import router as bulk_import_router
+from app.api.v1.locations import router as locations_router
+from app.api.v1.me import router as me_router
+from app.api.v1.members import router as members_router
+from app.api.v1.modules import router as modules_router
+from app.api.v1.notification_channels import router as notification_channels_router
+from app.api.v1.notification_preferences import router as notification_preferences_router
+from app.api.v1.notifications import router as notifications_router
+from app.api.v1.org_settings import router as org_settings_router
+from app.api.v1.org_units import router as org_units_router
+from app.api.v1.role_grants import router as role_grants_router
+from app.api.v1.teams import router as teams_router
 from app.core.envelope import success_response
+from app.modules.assets.catalog.router import router as asset_catalog_router
+from app.modules.assets.components.router import router as asset_components_router
+from app.modules.assets.router import router as assets_router
+from app.modules.assets.saved_views import router as asset_saved_views_router
 
 router = APIRouter()
+router.include_router(audit_router)
+router.include_router(asset_catalog_router)
+router.include_router(assets_router)
+router.include_router(asset_components_router)
+router.include_router(asset_saved_views_router)
+router.include_router(org_units_router)
+router.include_router(locations_router)
+router.include_router(teams_router)
+router.include_router(members_router)
+router.include_router(modules_router)
+router.include_router(role_grants_router)
+router.include_router(bulk_import_router)
+router.include_router(org_settings_router)
+router.include_router(notifications_router)
+router.include_router(notification_channels_router)
+router.include_router(me_router)
+router.include_router(notification_preferences_router)
 
 
 def _request_id(request: Request) -> str:
@@ -18,13 +53,13 @@ def _request_id(request: Request) -> str:
     return value if isinstance(value, str) else ""
 
 
-@router.get("/ping", tags=["system"], summary="Connectivity check")
+@router.get("/ping", tags=["system"], summary="Connectivity check", openapi_extra=public_extra())
 async def ping(request: Request) -> dict[str, Any]:
     """Lightweight connectivity check."""
     return success_response(data={"pong": True}, request_id=_request_id(request))
 
 
-@router.get("/info", tags=["system"], summary="Public API information")
+@router.get("/info", tags=["system"], summary="Public API information", openapi_extra=public_extra())
 async def info(request: Request) -> dict[str, Any]:
     """Public API identity. Environment and build versions are not disclosed anonymously."""
     return success_response(data={"name": "AssetFlow", "api_version": "v1"}, request_id=_request_id(request))
