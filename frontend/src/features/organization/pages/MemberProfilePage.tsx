@@ -6,6 +6,7 @@ import type React from "react";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
 import { ErrorState, Skeleton } from "@/components/ui";
+import { apiFetch } from "@/lib/api";
 import { hasModule, useMe } from "@/lib/permissions";
 
 interface ProfileData {
@@ -30,26 +31,12 @@ export const MemberProfilePage: React.FC = () => {
     if (!memberId) return;
     setLoading(true);
     setError(null);
-    fetch(`/api/v1/members/${memberId}`)
-      .then((res) => {
-        if (!res.ok) throw new Error("Member not found or outside your scope");
-        return res.json();
-      })
-      .then((data: ProfileData) => {
+    apiFetch<ProfileData>(`/members/${memberId}`)
+      .then((data) => {
         setProfile(data);
       })
       .catch(() => {
-        // Fallback for tests / demo preview
-        setProfile({
-          id: memberId,
-          display_name: "Ada Lovelace",
-          email: "ada.lovelace@example.org",
-          phone: "+1 (555) 019-2834",
-          status: "active",
-          is_suspended: false,
-          org_units: [{ org_unit_id: "ou-1", is_primary: true, org_unit_name: "Engineering" }],
-          teams: [{ team_id: "team-1", team_name: "Core Infrastructure", role_in_team: "Lead" }],
-        });
+        setError("Member not found or outside your scope");
       })
       .finally(() => {
         setLoading(false);

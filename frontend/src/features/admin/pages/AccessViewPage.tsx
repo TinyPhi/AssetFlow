@@ -6,6 +6,7 @@ import type React from "react";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
 import { DataTable, EmptyState, ErrorState, Skeleton, type Column } from "@/components/ui";
+import { apiFetch } from "@/lib/api";
 import { can, useMe } from "@/lib/permissions";
 
 interface PermissionRow {
@@ -25,22 +26,12 @@ export const AccessViewPage: React.FC = () => {
     if (!memberId) return;
     setLoading(true);
     setError(null);
-    fetch(`/api/v1/members/${memberId}/access`)
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to load access permissions");
-        return res.json();
-      })
-      .then((data: { member_id: string; permissions: PermissionRow[] }) => {
+    apiFetch<{ member_id: string; permissions: PermissionRow[] }>(`/members/${memberId}/access`)
+      .then((data) => {
         setPermissions(data.permissions);
       })
       .catch(() => {
-        // Fallback demo permissions
-        setPermissions([
-          { permission: "org_unit.read", scopes: [{ scope_type: "organization", scope_id: null }] },
-          { permission: "team.read", scopes: [{ scope_type: "organization", scope_id: null }] },
-          { permission: "member.read", scopes: [{ scope_type: "organization", scope_id: null }] },
-          { permission: "role_grant.read", scopes: [{ scope_type: "organization", scope_id: null }] },
-        ]);
+        setError("Failed to load access permissions");
       })
       .finally(() => {
         setLoading(false);

@@ -32,5 +32,6 @@ export function can(me: Me | undefined, permission: string, record?: ScopedRecor
 }
 
 export function hasModule(me: Me | undefined, module: ModuleKey): boolean {
-  return me?.installed_modules.includes(module) ?? false;
+  if (me === undefined || me.is_suspended) return false;
+  return me.installed_modules.includes(module);
 }

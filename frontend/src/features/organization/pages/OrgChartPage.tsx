@@ -5,6 +5,7 @@ import { Plus } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useState } from "react";
 import { EmptyState, ErrorState, Skeleton, TreeView, type TreeNode } from "@/components/ui";
+import { apiFetch } from "@/lib/api";
 import { t } from "@/lib/i18n";
 import { can, useMe } from "@/lib/permissions";
 
@@ -25,14 +26,8 @@ export const OrgChartPage: React.FC = () => {
   const loadOrgUnits = useCallback(() => {
     setLoading(true);
     setError(null);
-    fetch("/api/v1/org-units")
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to load org units");
-        return res.json() as Promise<{ data?: RawOrgUnit[] }>;
-      })
-      .then((body) => {
-        const rawItems: RawOrgUnit[] = body.data ?? [];
-
+    apiFetch<RawOrgUnit[]>("/org-units")
+      .then((rawItems) => {
         // Build hierarchy tree
         const map = new Map<string, TreeNode>();
         const roots: TreeNode[] = [];
@@ -74,18 +69,7 @@ export const OrgChartPage: React.FC = () => {
         );
       })
       .catch(() => {
-        // Fallback for tests / demo state
-        setNodes([
-          {
-            id: "root-unit",
-            name: me?.organization.name ?? "Headquarters",
-            count: 1,
-            children: [
-              { id: "engineering", name: "Engineering", count: 8, children: [] },
-              { id: "operations", name: "Operations", count: 12, children: [] },
-            ],
-          },
-        ]);
+        setError("Failed to load org units");
       })
       .finally(() => {
         setLoading(false);

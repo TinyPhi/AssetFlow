@@ -61,4 +61,9 @@ describe("hasModule", () => {
     expect(hasModule(me, "maintenance")).toBe(false);
     expect(hasModule(undefined, "assets")).toBe(false);
   });
+
+  it("is false for every module when the member is suspended, even one installed", () => {
+    const me = makeMe({ is_suspended: true, installed_modules: ["assets"] });
+    expect(hasModule(me, "assets")).toBe(false);
+  });
 });
