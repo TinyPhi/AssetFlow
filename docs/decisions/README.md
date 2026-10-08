@@ -27,3 +27,4 @@ This directory records architectural decisions made for AssetFlow per master pla
 | [0016](ADR-0016-html-weasyprint-pdf-rendering.md) | PDF Generation from HTML Templates via WeasyPrint | `Accepted` | 2026-09-23 |
 | [0017](ADR-0017-pydantic-json-schema-driven-forms.md) | Pydantic JSON Schema-Driven Connector and Provider Configuration | `Accepted` | 2026-09-23 |
 | [0018](ADR-0018-break-glass-access.md) | Time-Limited Audited Break-Glass Access for Identity Provider Outages | `Accepted` | 2026-09-23 |
+| [0019](ADR-0019-database-roles-and-login-users.md) | Database Roles and Login Users Standard | `Accepted` | 2026-10-01 |
