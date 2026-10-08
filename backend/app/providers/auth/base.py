@@ -23,6 +23,7 @@ class Principal:
     organization_id: str
     roles: list[str] = field(default_factory=list)
     email: str | None = None
+    email_verified: bool = False
     name: str | None = None
     is_machine: bool = False
     client_id: str | None = None
@@ -37,6 +38,9 @@ class AuthProvider(ABC):
     def name(self) -> str:
         """Provider implementation identifier."""
         return self.__class__.__name__
+
+    async def aclose(self) -> None:  # noqa: B027 - optional hook with a no-op default
+        """Release held resources (connections, clients). The default holds none."""
 
     @abstractmethod
     async def verify_token(self, token: str) -> Principal:

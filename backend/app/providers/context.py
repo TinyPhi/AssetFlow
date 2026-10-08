@@ -16,7 +16,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from app.core.config import ConfigError, Environment, Pillar, format_path
+from app.core.config import ConfigError, Environment, Pillar, format_path, is_guarded_env
 
 
 @dataclass(frozen=True)
@@ -31,6 +31,11 @@ class ProviderContext:
     def is_production(self) -> bool:
         """True in ``env: production``."""
         return self.env == "production"
+
+    @property
+    def is_guarded(self) -> bool:
+        """True in every environment except ``development`` and ``test`` (AF-004)."""
+        return is_guarded_env(self.env)
 
     def settings_path(self) -> str:
         """Config path of this pillar's settings, for error messages."""
@@ -57,5 +62,5 @@ def parse_settings[S: ProviderSettings](
 
 def refuse_in_production(context: ProviderContext, what: Literal["mock auth", "file secrets"]) -> None:
     """Second line of defence behind the config guard (§B6.1 rule 6)."""
-    if context.is_production:
-        raise ConfigError([(f"providers.{context.pillar}.type", f"{what} is refused in production")])
+    if context.is_guarded:
+        raise ConfigError([(f"providers.{context.pillar}.type", f"{what} is refused in {context.env}")])
