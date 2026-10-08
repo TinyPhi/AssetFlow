@@ -38,7 +38,7 @@ class ComponentRepository:
         self, conn: DbConn, *, organization_id: UUID, child_asset_id: UUID
     ) -> asyncpg.Record | None:
         return await conn.fetchrow(
-            f"SELECT {_LINK_COLUMNS} FROM public.asset_components "  # noqa: S608
+            f"SELECT {_LINK_COLUMNS} FROM public.asset_components "  # nosec B608  # noqa: S608
             "WHERE organization_id = $1 AND child_asset_id = $2 AND detached_at IS NULL",
             organization_id,
             child_asset_id,
@@ -48,7 +48,7 @@ class ComponentRepository:
         self, conn: DbConn, *, organization_id: UUID, parent_asset_id: UUID, child_asset_id: UUID
     ) -> asyncpg.Record | None:
         return await conn.fetchrow(
-            f"SELECT {_LINK_COLUMNS} FROM public.asset_components "  # noqa: S608
+            f"SELECT {_LINK_COLUMNS} FROM public.asset_components "  # nosec B608  # noqa: S608
             "WHERE organization_id = $1 AND parent_asset_id = $2 AND child_asset_id = $3 "
             "AND detached_at IS NULL FOR UPDATE",
             organization_id,
@@ -92,7 +92,7 @@ class ComponentRepository:
         self, conn: DbConn, *, organization_id: UUID, parent_asset_id: UUID, child_asset_id: UUID
     ) -> asyncpg.Record:
         row = await conn.fetchrow(
-            f"INSERT INTO public.asset_components (id, organization_id, parent_asset_id, child_asset_id) "  # noqa: S608
+            f"INSERT INTO public.asset_components (id, organization_id, parent_asset_id, child_asset_id) "  # nosec B608  # noqa: S608
             f"VALUES ($1, $2, $3, $4) RETURNING {_LINK_COLUMNS}",
             uuid7(),
             organization_id,
@@ -104,7 +104,7 @@ class ComponentRepository:
 
     async def detach(self, conn: DbConn, *, organization_id: UUID, component_id: UUID) -> asyncpg.Record:
         row = await conn.fetchrow(
-            f"UPDATE public.asset_components SET detached_at = now(), updated_at = now(), "  # noqa: S608
+            f"UPDATE public.asset_components SET detached_at = now(), updated_at = now(), "  # nosec B608  # noqa: S608
             "version = version + 1 WHERE organization_id = $1 AND id = $2 "
             f"RETURNING {_LINK_COLUMNS}",
             organization_id,
@@ -127,7 +127,7 @@ class ComponentRepository:
         not read is left out, as in any list)."""
         where_history = "" if include_history else "AND c.detached_at IS NULL "
         rows = await conn.fetch(
-            "SELECT c.id AS component_id, c.parent_asset_id, c.child_asset_id, c.attached_at, "  # noqa: S608
+            "SELECT c.id AS component_id, c.parent_asset_id, c.child_asset_id, c.attached_at, "  # nosec B608  # noqa: S608
             "c.detached_at, c.version, a.tag, a.name, a.status, a.owner_org_unit_path::text AS path, "
             "a.holder_member_id, a.holder_team_id "
             "FROM public.asset_components c "

@@ -162,14 +162,14 @@ class AssetRepository:
     ) -> asyncpg.Record | None:
         lock = " FOR UPDATE" if for_update else ""
         sql = (
-            f"SELECT {_ASSET_COLUMNS} FROM public.assets "  # noqa: S608
+            f"SELECT {_ASSET_COLUMNS} FROM public.assets "  # nosec B608  # noqa: S608
             f"WHERE organization_id = $1 AND id = $2{lock}"
         )
         return await conn.fetchrow(sql, organization_id, asset_id)
 
     async def get_by_tag(self, conn: DbConn, *, organization_id: UUID, tag: str) -> asyncpg.Record | None:
         return await conn.fetchrow(
-            f"SELECT {_ASSET_COLUMNS} FROM public.assets WHERE organization_id = $1 AND tag = $2",  # noqa: S608
+            f"SELECT {_ASSET_COLUMNS} FROM public.assets WHERE organization_id = $1 AND tag = $2",  # nosec B608  # noqa: S608
             organization_id,
             tag,
         )
@@ -178,7 +178,7 @@ class AssetRepository:
         self, conn: DbConn, *, organization_id: UUID, idempotency_key: str
     ) -> asyncpg.Record | None:
         return await conn.fetchrow(
-            f"SELECT {_ASSET_COLUMNS} FROM public.assets "  # noqa: S608
+            f"SELECT {_ASSET_COLUMNS} FROM public.assets "  # nosec B608  # noqa: S608
             "WHERE organization_id = $1 AND idempotency_key = $2",
             organization_id,
             idempotency_key,
@@ -216,7 +216,7 @@ class AssetRepository:
         idempotency_key: str | None,
     ) -> asyncpg.Record:
         row = await conn.fetchrow(
-            "INSERT INTO public.assets "  # noqa: S608
+            "INSERT INTO public.assets "  # nosec B608  # noqa: S608
             "(id, organization_id, tag, name, category_id, model, manufacturer_id, supplier_id, "
             "serial_number, owner_org_unit_id, location_id, status, criticality, purchase_date, "
             "purchase_cost, warranty_end, custom_fields, encrypted_fields, notes, idempotency_key, version) "
@@ -264,7 +264,7 @@ class AssetRepository:
             cast = "::jsonb" if column in ("custom_fields", "encrypted_fields") else ""
             clauses.append(f"{column} = ${len(args)}{cast}")
         sql = (
-            f"UPDATE public.assets SET {', '.join(clauses)} "  # noqa: S608
+            f"UPDATE public.assets SET {', '.join(clauses)} "  # nosec B608  # noqa: S608
             f"WHERE organization_id = $1 AND id = $2 AND version = $3 "
             f"RETURNING {_ASSET_COLUMNS}"
         )
@@ -297,21 +297,21 @@ class AssetRepository:
         if scope_filter.org_unit_paths:
             args.append(list(scope_filter.org_unit_paths))
             branches.append(
-                "SELECT id FROM public.assets "  # noqa: S608
+                "SELECT id FROM public.assets "  # nosec B608  # noqa: S608
                 f"WHERE organization_id = $1 AND owner_org_unit_path <@ ANY(${len(args)}::ltree[])"
             )
         team_uuids = [t for t in (_try_uuid(v) for v in scope_filter.team_ids) if t is not None]
         if team_uuids:
             args.append(team_uuids)
             branches.append(
-                "SELECT id FROM public.assets "  # noqa: S608
+                "SELECT id FROM public.assets "  # nosec B608  # noqa: S608
                 f"WHERE organization_id = $1 AND holder_team_id = ANY(${len(args)}::uuid[])"
             )
         member_uuid = _try_uuid(scope_filter.member_id) if scope_filter.member_id else None
         if member_uuid is not None:
             args.append(member_uuid)
             branches.append(
-                "SELECT id FROM public.assets "  # noqa: S608
+                "SELECT id FROM public.assets "  # nosec B608  # noqa: S608
                 f"WHERE organization_id = $1 AND holder_member_id = ${len(args)}"
             )
         if not branches:
@@ -396,7 +396,7 @@ class AssetRepository:
                 args.append(query.category_id)
                 n = len(args)
                 where.append(
-                    "a.category_id IN (SELECT id FROM public.asset_categories "  # noqa: S608
+                    "a.category_id IN (SELECT id FROM public.asset_categories "  # nosec B608  # noqa: S608
                     f"WHERE organization_id = $1 AND (id = ${n} OR path <@ "
                     f"(SELECT path FROM public.asset_categories WHERE organization_id = $1 AND id = ${n})))"
                 )
@@ -407,7 +407,7 @@ class AssetRepository:
             if query.include_sub_units:
                 args.append(query.owner_org_unit_id)
                 where.append(
-                    "a.owner_org_unit_path <@ (SELECT path FROM public.org_units "  # noqa: S608
+                    "a.owner_org_unit_path <@ (SELECT path FROM public.org_units "  # nosec B608  # noqa: S608
                     f"WHERE organization_id = $1 AND id = ${len(args)})"
                 )
             else:
@@ -418,7 +418,7 @@ class AssetRepository:
                 args.append(query.location_id)
                 n = len(args)
                 where.append(
-                    "a.location_id IN (SELECT id FROM public.locations "  # noqa: S608
+                    "a.location_id IN (SELECT id FROM public.locations "  # nosec B608  # noqa: S608
                     f"WHERE organization_id = $1 AND (id = ${n} OR path <@ "
                     f"(SELECT path FROM public.locations WHERE organization_id = $1 AND id = ${n})))"
                 )
@@ -472,7 +472,7 @@ class AssetRepository:
             # Capped: counting past TOTAL_CAP rows would scan the whole scope for a number no
             # screen shows exactly; the caller learns "TOTAL_CAP or more" from `total == TOTAL_CAP`.
             total = await conn.fetchval(
-                f"SELECT count(*) FROM (SELECT 1 FROM public.assets a WHERE {' AND '.join(where)} "  # noqa: S608
+                f"SELECT count(*) FROM (SELECT 1 FROM public.assets a WHERE {' AND '.join(where)} "  # nosec B608  # noqa: S608
                 f"LIMIT {TOTAL_CAP}) t",
                 *args,
             )
