@@ -73,7 +73,7 @@ class CategoryRepository:
     ) -> asyncpg.Record | None:
         lock = " FOR UPDATE" if for_update else ""
         sql = (
-            f"SELECT {_CATEGORY_COLUMNS} FROM public.asset_categories "  # noqa: S608
+            f"SELECT {_CATEGORY_COLUMNS} FROM public.asset_categories "  # nosec B608  # noqa: S608
             f"WHERE organization_id = $1 AND id = $2{lock}"
         )
         return await conn.fetchrow(sql, organization_id, category_id)
@@ -83,7 +83,7 @@ class CategoryRepository:
     ) -> asyncpg.Record | None:
         lock = " FOR UPDATE" if for_update else ""
         sql = (
-            f"SELECT {_CATEGORY_COLUMNS} FROM public.asset_categories "  # noqa: S608
+            f"SELECT {_CATEGORY_COLUMNS} FROM public.asset_categories "  # nosec B608  # noqa: S608
             f"WHERE organization_id = $1 AND code = $2{lock}"
         )
         return await conn.fetchrow(sql, organization_id, code)
@@ -103,7 +103,7 @@ class CategoryRepository:
         responsible_team_id: UUID | None,
     ) -> asyncpg.Record:
         return await conn.fetchrow(  # type: ignore[return-value]
-            "INSERT INTO public.asset_categories "  # noqa: S608
+            "INSERT INTO public.asset_categories "  # nosec B608  # noqa: S608
             "(id, organization_id, parent_id, path, code, name, tag_prefix, default_criticality, "
             "responsible_team_id, status, version) "
             "VALUES ($1, $2, $3, $4::ltree, $5, $6, $7, $8, $9, 'active', 1) "
@@ -157,7 +157,7 @@ class CategoryRepository:
             sets.append(f"responsible_team_id = ${len(args)}")
 
         sql = (
-            f"UPDATE public.asset_categories SET {', '.join(sets)} "  # noqa: S608
+            f"UPDATE public.asset_categories SET {', '.join(sets)} "  # nosec B608  # noqa: S608
             f"WHERE organization_id = $1 AND id = $2 AND version = $3 "
             f"RETURNING {_CATEGORY_COLUMNS}"
         )
@@ -185,7 +185,7 @@ class CategoryRepository:
             category_id,
         )
         sql = (
-            "UPDATE public.asset_categories "  # noqa: S608
+            "UPDATE public.asset_categories "  # nosec B608  # noqa: S608
             "SET parent_id = $1, path = $2::ltree, version = version + 1, updated_at = now() "
             "WHERE organization_id = $3 AND id = $4 AND version = $5 "
             f"RETURNING {_CATEGORY_COLUMNS}"
@@ -196,7 +196,7 @@ class CategoryRepository:
         self, conn: DbConn, *, organization_id: UUID, category_id: UUID, version: int
     ) -> asyncpg.Record | None:
         sql = (
-            "UPDATE public.asset_categories "  # noqa: S608
+            "UPDATE public.asset_categories "  # nosec B608  # noqa: S608
             "SET status = 'archived', version = version + 1, updated_at = now() "
             "WHERE organization_id = $1 AND id = $2 AND version = $3 "
             f"RETURNING {_CATEGORY_COLUMNS}"
@@ -254,7 +254,7 @@ class CategoryRepository:
             clauses.append(f"(code, id) > (${len(args) - 1}, ${len(args)})")
         args.append(limit)
         sql = (
-            f"SELECT {_CATEGORY_COLUMNS} FROM public.asset_categories "  # noqa: S608
+            f"SELECT {_CATEGORY_COLUMNS} FROM public.asset_categories "  # nosec B608  # noqa: S608
             f"WHERE {' AND '.join(clauses)} ORDER BY code ASC, id ASC LIMIT ${len(args)}"
         )
         return await conn.fetch(sql, *args)
@@ -274,7 +274,7 @@ class CustomFieldDefinitionRepository:
     ) -> asyncpg.Record | None:
         lock = " FOR UPDATE" if for_update else ""
         sql = (
-            f"SELECT {_FIELD_COLUMNS} FROM public.custom_field_definitions "  # noqa: S608
+            f"SELECT {_FIELD_COLUMNS} FROM public.custom_field_definitions "  # nosec B608  # noqa: S608
             f"WHERE organization_id = $1 AND id = $2{lock}"
         )
         return await conn.fetchrow(sql, organization_id, field_id)
@@ -284,7 +284,7 @@ class CustomFieldDefinitionRepository:
     ) -> asyncpg.Record | None:
         lock = " FOR UPDATE" if for_update else ""
         sql = (
-            f"SELECT {_FIELD_COLUMNS} FROM public.custom_field_definitions "  # noqa: S608
+            f"SELECT {_FIELD_COLUMNS} FROM public.custom_field_definitions "  # nosec B608  # noqa: S608
             f"WHERE organization_id = $1 AND category_id = $2 AND key = $3{lock}"
         )
         return await conn.fetchrow(sql, organization_id, category_id, key)
@@ -306,7 +306,7 @@ class CustomFieldDefinitionRepository:
         position: int,
     ) -> asyncpg.Record:
         return await conn.fetchrow(  # type: ignore[return-value]
-            "INSERT INTO public.custom_field_definitions "  # noqa: S608
+            "INSERT INTO public.custom_field_definitions "  # nosec B608  # noqa: S608
             "(id, organization_id, category_id, key, label, field_type, is_required, rules, "
             "is_unique, is_encrypted, position, status, version) "
             "VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, 'active', 1) "
@@ -361,7 +361,7 @@ class CustomFieldDefinitionRepository:
             sets.append(f"position = ${len(args)}")
 
         sql = (
-            f"UPDATE public.custom_field_definitions SET {', '.join(sets)} "  # noqa: S608
+            f"UPDATE public.custom_field_definitions SET {', '.join(sets)} "  # nosec B608  # noqa: S608
             f"WHERE organization_id = $1 AND id = $2 AND version = $3 "
             f"RETURNING {_FIELD_COLUMNS}"
         )
@@ -371,7 +371,7 @@ class CustomFieldDefinitionRepository:
         self, conn: DbConn, *, organization_id: UUID, field_id: UUID, version: int
     ) -> asyncpg.Record | None:
         sql = (
-            "UPDATE public.custom_field_definitions "  # noqa: S608
+            "UPDATE public.custom_field_definitions "  # nosec B608  # noqa: S608
             "SET status = 'archived', version = version + 1, updated_at = now() "
             "WHERE organization_id = $1 AND id = $2 AND version = $3 "
             f"RETURNING {_FIELD_COLUMNS}"
@@ -416,7 +416,7 @@ class CustomFieldDefinitionRepository:
             clauses.append(f"(key, id) > (${len(args) - 1}, ${len(args)})")
         args.append(limit)
         sql = (
-            f"SELECT {_FIELD_COLUMNS} FROM public.custom_field_definitions "  # noqa: S608
+            f"SELECT {_FIELD_COLUMNS} FROM public.custom_field_definitions "  # nosec B608  # noqa: S608
             f"WHERE {' AND '.join(clauses)} ORDER BY position ASC, key ASC, id ASC LIMIT ${len(args)}"
         )
         return await conn.fetch(sql, *args)
@@ -438,7 +438,7 @@ class ReferenceDataRepository:
     ) -> asyncpg.Record | None:
         lock = " FOR UPDATE" if for_update else ""
         sql = (
-            f"SELECT {self._columns} FROM public.{self._table} "  # noqa: S608
+            f"SELECT {self._columns} FROM public.{self._table} "  # nosec B608  # noqa: S608
             f"WHERE organization_id = $1 AND id = $2{lock}"
         )
         return await conn.fetchrow(sql, organization_id, record_id)
@@ -448,7 +448,7 @@ class ReferenceDataRepository:
     ) -> asyncpg.Record | None:
         lock = " FOR UPDATE" if for_update else ""
         sql = (
-            f"SELECT {self._columns} FROM public.{self._table} "  # noqa: S608
+            f"SELECT {self._columns} FROM public.{self._table} "  # nosec B608  # noqa: S608
             f"WHERE organization_id = $1 AND name = $2{lock}"
         )
         return await conn.fetchrow(sql, organization_id, name)
@@ -465,7 +465,7 @@ class ReferenceDataRepository:
         notes: str | None,
     ) -> asyncpg.Record:
         sql = (
-            f"INSERT INTO public.{self._table} "  # noqa: S608
+            f"INSERT INTO public.{self._table} "  # nosec B608  # noqa: S608
             "(id, organization_id, code, name, contact, notes, status, version) "
             "VALUES ($1, $2, $3, $4, $5::jsonb, $6, 'active', 1) "
             f"RETURNING {self._columns}"
@@ -502,7 +502,7 @@ class ReferenceDataRepository:
             sets.append(f"notes = ${len(args)}")
 
         sql = (
-            f"UPDATE public.{self._table} SET {', '.join(sets)} "  # noqa: S608
+            f"UPDATE public.{self._table} SET {', '.join(sets)} "  # nosec B608  # noqa: S608
             f"WHERE organization_id = $1 AND id = $2 AND version = $3 "
             f"RETURNING {self._columns}"
         )
@@ -512,7 +512,7 @@ class ReferenceDataRepository:
         self, conn: DbConn, *, organization_id: UUID, record_id: UUID, version: int
     ) -> asyncpg.Record | None:
         sql = (
-            f"UPDATE public.{self._table} "  # noqa: S608
+            f"UPDATE public.{self._table} "  # nosec B608  # noqa: S608
             "SET status = 'archived', version = version + 1, updated_at = now() "
             "WHERE organization_id = $1 AND id = $2 AND version = $3 "
             f"RETURNING {self._columns}"
@@ -545,7 +545,7 @@ class ReferenceDataRepository:
             clauses.append(f"(name, id) > (${len(args) - 1}, ${len(args)})")
         args.append(limit)
         sql = (
-            f"SELECT {self._columns} FROM public.{self._table} "  # noqa: S608
+            f"SELECT {self._columns} FROM public.{self._table} "  # nosec B608  # noqa: S608
             f"WHERE {' AND '.join(clauses)} ORDER BY name ASC, id ASC LIMIT ${len(args)}"
         )
         return await conn.fetch(sql, *args)
