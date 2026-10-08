@@ -430,8 +430,9 @@ class OidcAuthProvider(AuthProvider):
                 disc.get("revocation_endpoint") or f"{self.settings.issuer.rstrip('/')}/oauth/v2/revoke"
             )
             data = {"token": token, "client_id": self.settings.client_id}
-            if self.settings.client_secret:
-                data["client_secret"] = self.settings.client_secret
+            client_secret = await self._client_secret()
+            if client_secret:
+                data["client_secret"] = client_secret
             async with self._client(5.0) as client:
                 await client.post(endpoint, data=data)
         except (httpx.HTTPError, UnauthorizedError) as exc:

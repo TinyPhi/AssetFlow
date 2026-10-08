@@ -82,6 +82,7 @@ class FakeIdp:
         self.discovery_issuer = discovery_issuer or issuer
         self.discovery_status = discovery_status
         self.requests: list[str] = []
+        self.revoke_bodies: list[dict[str, str]] = []
         self._refresh_tokens: set[str] = set()
 
     def _issue(self) -> dict[str, object]:
@@ -121,6 +122,8 @@ class FakeIdp:
                 return httpx.Response(200, json=self._issue())
             return httpx.Response(400, json={"error": "invalid_grant"})
         if path.endswith("/oauth/v2/revoke"):
+            form = parse_qs(request.content.decode())
+            self.revoke_bodies.append({k: v[0] for k, v in form.items()})
             return httpx.Response(200)
         return httpx.Response(404)
 

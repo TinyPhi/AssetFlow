@@ -73,6 +73,20 @@ async def test_revocation() -> None:
         await provider.verify_token(token)
 
 
+async def test_revoke_resolves_a_secret_ref_client_secret_before_sending_it() -> None:
+    provider, idp = make(client_secret="secret://oidc/web#client_secret")
+    seen: list[str] = []
+
+    async def resolver(ref: str) -> str:
+        seen.append(ref)
+        return "the-real-secret"
+
+    provider.secret_resolver = resolver
+    await provider.revoke("some-token")
+    assert seen == ["secret://oidc/web#client_secret"]
+    assert idp.revoke_bodies[-1]["client_secret"] == "the-real-secret"
+
+
 # AF-001: an empty key set refuses; the signature is always checked.
 async def test_empty_jwks_is_unauthorized() -> None:
     provider, idp = make()
