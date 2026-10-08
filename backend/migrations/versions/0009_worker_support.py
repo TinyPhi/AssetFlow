@@ -41,12 +41,11 @@ AS $fn$
 $fn$
 """)
     op.execute("REVOKE ALL ON FUNCTION platform.list_active_organizations() FROM PUBLIC")
+    op.execute("GRANT EXECUTE ON FUNCTION platform.list_active_organizations() TO assetflow_worker")
     # A new owner needs CREATE on the schema; it is granted only for the ownership change.
     op.execute("GRANT CREATE ON SCHEMA platform TO assetflow_resolver")
     op.execute("ALTER FUNCTION platform.list_active_organizations() OWNER TO assetflow_resolver")
     op.execute("REVOKE CREATE ON SCHEMA platform FROM assetflow_resolver")
-    op.execute("REVOKE ALL ON FUNCTION platform.list_active_organizations() FROM PUBLIC")
-    op.execute("GRANT EXECUTE ON FUNCTION platform.list_active_organizations() TO assetflow_worker")
 
     op.execute("ALTER TABLE public.outbox ADD COLUMN dead_lettered_at timestamptz NULL")
     op.execute(

@@ -94,9 +94,9 @@ class IsolationDb:
     def admin_dsn(self) -> str:
         return self.server.dsn(self.database)
 
-    def alembic(self, *args: str) -> subprocess.CompletedProcess[str]:
-        """Run Alembic as the migrator (here the superuser, since roles are created by 0000)."""
-        env = {**os.environ, "ASSETFLOW_MIGRATION_DATABASE_URL": self.admin_dsn}
+    def alembic(self, *args: str, dsn: str | None = None) -> subprocess.CompletedProcess[str]:
+        """Run Alembic, by default as the superuser (roles are created by 0000); `dsn` overrides it."""
+        env = {**os.environ, "ASSETFLOW_MIGRATION_DATABASE_URL": dsn or self.admin_dsn}
         return subprocess.run(  # noqa: S603 - fixed argv, no shell
             [sys.executable, "-m", "alembic", "-c", str(BACKEND_DIR / "alembic.ini"), *args],
             cwd=BACKEND_DIR,
