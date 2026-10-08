@@ -112,8 +112,7 @@ def place(directory: Path, name: str, content: str, uid: int, gid: int, mode: in
     directory.mkdir(parents=True, exist_ok=True)
     target = directory / name
     temp = directory / f".{name}.tmp"
-    # lgtm[py/clear-text-storage-sensitive-data] - local dev secret, mode restricted by own() right below
-    temp.write_text(content, encoding="utf-8")
+    temp.write_text(content, encoding="utf-8")  # lgtm[py/clear-text-storage-sensitive-data]
     own(temp, uid, gid, mode)
     temp.replace(target)
 
@@ -390,9 +389,8 @@ def step_migrate() -> int:
     # Migration 0000 creates the group roles, which needs CREATEROLE: the PostgreSQL superuser of this
     # local server runs the migrations; the login roles are created right after.
     dsn_file = Path("/tmp/af-migration-dsn")
-    # lgtm[py/clear-text-storage-sensitive-data] - local dev superuser DSN, chmod 0600 right below
     dsn_file.write_text(
-        f"postgresql://{POSTGRES_USER}:{quote(password, safe='')}@{POSTGRES_HOST}:5432/{APP_DATABASE}",
+        f"postgresql://{POSTGRES_USER}:{quote(password, safe='')}@{POSTGRES_HOST}:5432/{APP_DATABASE}",  # lgtm[py/clear-text-storage-sensitive-data]
         encoding="utf-8",
     )
     os.chmod(dsn_file, 0o600)
@@ -446,8 +444,9 @@ def step_admin_password() -> int:
     apply_script = load_script("openbao-apply.py")
     token = (KEYS / "root-token").read_text(encoding="utf-8").strip()
     bao = apply_script.Bao(BAO_ADDR, token, None)
-    # lgtm[py/clear-text-logging-sensitive-data] - explicit admin-password command, local dev only
-    print(kv_read(bao, "assetflow/zitadel/admin")["initial_password"])
+    print(
+        kv_read(bao, "assetflow/zitadel/admin")["initial_password"]
+    )  # lgtm[py/clear-text-logging-sensitive-data]
     return 0
 
 
