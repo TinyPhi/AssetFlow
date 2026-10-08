@@ -296,6 +296,8 @@ class _DbCfg:
     idle_in_transaction_timeout_ms: int = 30000
     pool_min: int = 1
     pool_max: int = 1
+    connect_timeout_s: float = 5.0
+    acquire_timeout_s: float = 5.0
 
 
 PoolFactory = Callable[..., Awaitable[Pool]]

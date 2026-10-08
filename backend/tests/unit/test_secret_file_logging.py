@@ -25,4 +25,4 @@ async def test_a_missing_secret_logs_and_raises_the_domain_error(
             await provider.get_map("secret://area/missing")
     records = [r for r in caplog.records if r.getMessage() == "secrets.file.missing"]
     assert len(records) == 2
-    assert all(r.secret_area == "area" and r.secret_name == "missing" for r in records)
+    assert all(r.area == "area" and r.key_name == "missing" for r in records)

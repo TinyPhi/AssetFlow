@@ -260,7 +260,7 @@ class WorkersConfig(_Strict):
 
     outbox: OutboxWorkerConfig = Field(default_factory=OutboxWorkerConfig)
     heartbeat_file: str = Field(
-        default="/tmp/af-worker-heartbeat",  # noqa: S108 - a tmpfs path inside the container
+        default="/tmp/af-worker-heartbeat",  # nosec B108 # noqa: S108 - a tmpfs path inside the container
         min_length=1,
         description="File the worker touches every loop; the container healthcheck reads its age",
     )
