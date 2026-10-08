@@ -15,8 +15,9 @@ name: CI
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
+  # No branches filter: the regroup's PRs stack onto each other (PR N's base is PR N-1, not main),
+  # so a branches: [main] filter here would give every PR but the first no CI at all.
+  pull_request: {}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
