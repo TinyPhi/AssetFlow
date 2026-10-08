@@ -124,7 +124,9 @@ async def test_a_job_over_its_memory_limit_is_stopped(
     make_pool: PoolFactory, isolation_db: IsolationDb
 ) -> None:
     pool = await make_pool("worker")
-    spec = JobSpec("allocates_too_much", allocates_too_much_memory, time_limit_seconds=10, memory_limit_mb=64)
+    spec = JobSpec(
+        "allocates_too_much", allocates_too_much_memory, time_limit_seconds=10, memory_limit_mb=128
+    )
     with pytest.raises(JobMemoryLimitError):
         await run_job(
             pool,
