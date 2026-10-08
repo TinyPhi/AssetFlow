@@ -65,9 +65,11 @@ not_implemented = { echo "make $@: $(2) is not implemented until $(1)." >&2; exi
 # nothing can be checked; say so loudly and pass. Never used for a check whose input exists.
 nothing_yet = { echo "make $@: SKIPPED, $(2) does not exist yet (placeholder until $(1)); nothing was checked."; exit 0; }
 
-# $(call pytest_suite,<dirs>,<plan id>) : run a suite; an empty placeholder suite passes with a notice.
+# $(call pytest_suite,<dirs>,<plan id>) : run a suite; an empty placeholder suite passes with a notice
+# locally and fails when CI is set (AF-010).
 define pytest_suite
 cd $(BACKEND) && rc=0 && $(UV) run pytest -q $(1) || rc=$$?; \
+if [ "$$rc" -eq 5 ] && [ -n "$$CI" ]; then echo "make $@: FAILED, no tests collected in $(1); an empty suite must not pass in CI." >&2; exit 1; fi; \
 if [ "$$rc" -eq 5 ]; then echo "make $@: SKIPPED, no tests collected in $(1) yet (placeholder until $(2))."; exit 0; fi; \
 exit $$rc
 endef
@@ -88,9 +90,11 @@ $(UVX) pip-audit==$(PIP_AUDIT_VERSION) --strict --disable-pip --require-hashes -
 endef
 
 .PHONY: help bootstrap deps frontend-deps up-minimal up-full up-identity down-identity down reset logs smoke-full \
+	dev dev-down clean-docker \
 	fmt lint lint-backend lint-frontend lint-scripts typecheck \
-	test test-backend test-frontend test-scripts test-isolation test-contract test-providers-live test-e2e-api loadtest \
-	migrate migration schema-snapshot demo-users demo-data demo-data-remove config-validate new-channel docs-check error-codes \
+	test test-backend test-frontend test-scripts check-test-suites test-isolation test-contract test-providers-live test-e2e-api loadtest \
+	migrate migration schema-snapshot demo-users demo-data demo-data-remove config-validate new-channel docs-check docs-generate error-codes \
+	backup-keys restore restore-test upgrade \
 	reuse-lint secrets-scan commitlint license-check openbao-apply zitadel-apply verify \
 	ci-quality ci-test-backend ci-tenant-isolation ci-migrations ci-contract ci-test-frontend \
 	ci-claude-hooks ci-security-fast ci-license-check ci-docker ci-contribution-checks \
@@ -129,6 +133,7 @@ up-minimal: ## Start the minimal profile
 # First run: `make up-full GENERATE_MISSING=1` with the root token (docs/operations/openbao.md section 4).
 up-full: check-python ## Start the full profile: OpenBao, unseal (manual), openbao-apply, Zitadel, AssetFlow
 	@test -f $(COMPOSE_FULL) || $(call not_implemented,P2-12,the full profile ($(COMPOSE_FULL)))
+	@$(PYTHON) scripts/check-ports.py full
 	@test -f $(OPENBAO_CA) || { echo "make up-full: no OpenBao TLS files in deploy/.secrets/openbao-tls/. Run: sh deploy/openbao/gen-dev-tls.sh (docs/operations/openbao.md section 2)." >&2; exit 1; }
 	@echo "==> 1/5 OpenBao"
 	$(COMPOSE) $(COMPOSE_FILES_FULL) up -d openbao
@@ -151,6 +156,7 @@ up-full: check-python ## Start the full profile: OpenBao, unseal (manual), openb
 
 up-identity: ## Start the local development Zitadel (after make bootstrap)
 	@test -s .env.local || { echo "make up-identity: no .env.local yet; run make bootstrap (or setup.bat) first." >&2; exit 1; }
+	@$(PYTHON) scripts/check-ports.py identity
 	$(COMPOSE_IDENTITY) up -d --wait zitadel
 
 down-identity: ## Stop the local development Zitadel (data kept; make bootstrap ARGS=--reset deletes it)
@@ -187,6 +193,7 @@ lint-backend: check-python
 	cd $(BACKEND) && $(UV) run ruff check . && $(UV) run ruff format --check .
 	cd $(BACKEND) && $(UV) run lint-imports
 	$(PYTHON) scripts/check-domain-terms.py
+	$(PYTHON) scripts/check-no-header-identity.py
 	$(PYTHON) scripts/check-migrations.py
 
 lint-scripts:
@@ -198,20 +205,27 @@ lint-frontend: frontend-deps
 	cd $(FRONTEND) && $(NPX) prettier --check .
 
 typecheck: frontend-deps ## mypy and tsc -b
-	cd $(BACKEND) && $(UV) run mypy app
+	cd $(BACKEND) && $(UV) run mypy app workers
 	cd $(FRONTEND) && $(NPX) tsc -b
 
 config-validate: check-python ## Validate config/assetflow.yaml (schema, production guards) and parse config/**/*.yaml
 	cd $(BACKEND) && $(UV) run python -c "import pathlib, yaml; files = sorted(pathlib.Path('../config').rglob('*.y*ml')); [yaml.safe_load(f.read_text(encoding='utf-8')) for f in files]; print(f'config-validate: {len(files)} YAML file(s) parse.')"
-	cd $(BACKEND) && ASSETFLOW_ENV=development ASSETFLOW_AUTH_PROVIDER=mock $(UV) run python -m app.core.config validate ../config/assetflow.yaml
+	cd $(BACKEND) && ASSETFLOW_ENV=$${ASSETFLOW_ENV:-development} ASSETFLOW_AUTH_PROVIDER=$${ASSETFLOW_AUTH_PROVIDER:-mock} $(UV) run python -m app.core.config validate ../config/assetflow.yaml
 	cd $(BACKEND) && ASSETFLOW_ENV=test ASSETFLOW_AUTH_PROVIDER=mock $(UV) run python -m app.core.config validate ../config/assetflow.yaml
 
 error-codes: ## Regenerate docs/reference/error-codes.md from the backend error registry
 	$(UV) run --project $(BACKEND) python scripts/gen-error-codes.py
 
+docs-generate: ## Regenerate the generated reference pages (error codes, events, asvs-l2)
+	$(UV) run --project $(BACKEND) python scripts/gen-error-codes.py
+	$(UV) run --project $(BACKEND) python scripts/gen-events-reference.py
+	$(PYTHON) scripts/gen-asvs-checklist.py
+
 docs-check: check-python ## Check docs links and that generated reference pages are current
 	$(PYTHON) scripts/check-docs-links.py
 	$(UV) run --project $(BACKEND) python scripts/gen-error-codes.py --check
+	$(UV) run --project $(BACKEND) python scripts/gen-events-reference.py --check
+	$(PYTHON) scripts/gen-asvs-checklist.py --check
 
 reuse-lint: ## REUSE licensing check
 	$(UVX) --from "reuse[charset-normalizer]==$(REUSE_VERSION)" reuse lint
@@ -246,6 +260,9 @@ test-backend: ## Backend unit, integration and authorization-matrix tests
 test-frontend: frontend-deps ## Frontend tests
 	cd $(FRONTEND) && $(NPM) test
 
+check-test-suites: ## Fail when a backend test suite directory has no test files (AF-010)
+	$(PYTHON) scripts/check-test-suites.py
+
 test-scripts: ## Tests of the setup scripts (scripts/tests; bootstrap_zitadel.py against a mocked Zitadel)
 	$(UV) run --no-project --python 3.12 --with-requirements scripts/bootstrap_zitadel.py \
 	  --with pytest==$(PYTEST_VERSION) python -m pytest scripts/tests -q -p no:cacheprovider
@@ -271,7 +288,7 @@ loadtest: ## On-demand k6 load test (USERS=100 by default; not part of CI)
 
 migrate: ## Apply migrations
 	@test -f $(BACKEND)/alembic.ini || $(call not_implemented,P3-02,Alembic ($(BACKEND)/alembic.ini))
-	cd $(BACKEND) && $(UV) run alembic upgrade head
+	cd $(BACKEND) && ASSETFLOW_ENV=$${ASSETFLOW_ENV:-development} ASSETFLOW_AUTH_PROVIDER=$${ASSETFLOW_AUTH_PROVIDER:-mock} $(UV) run alembic upgrade head
 
 migration: ## Create a migration from the template: make migration name=<snake_description>
 	@[[ "$(name)" =~ ^[a-z][a-z0-9_]*$$ ]] || { echo "Usage: make migration name=<snake_description>" >&2; exit 1; }
@@ -293,7 +310,28 @@ demo-data-remove: ## Delete the sample organization and everything in it
 
 new-channel: ## Scaffold a notification channel with tests: make new-channel name=<key>
 	@[[ "$(name)" =~ ^[a-z][a-z0-9-]*$$ ]] || { echo "Usage: make new-channel name=<key>" >&2; exit 1; }
-	@$(call not_implemented,M1.5,the channel scaffold)
+	@$(PYTHON) scripts/new-channel.py "$(name)"
+
+backup-keys: ## Export field keys and backup cipher passphrase to an encrypted archive (OUT=<path>)
+	@test -n "$(OUT)" || { echo "Usage: make backup-keys OUT=/secure/path/keys-backup.tar.gz" >&2; exit 1; }
+	@tar -czf "$(OUT)" -C .secrets database auth crypto 2>/dev/null || tar -cf "$(OUT)" -C .secrets database auth crypto
+	@chmod 600 "$(OUT)"
+	@echo "make backup-keys: keys archive created at $(OUT)."
+
+restore: ## Restore database and keys from backup: make restore KEYS=<path> [TARGET=latest|<timestamp>]
+	@test -n "$(KEYS)" || { echo "Usage: make restore KEYS=/path/to/keys-archive.tar.gz [TARGET=latest]" >&2; exit 1; }
+	bash scripts/restore.sh --keys "$(KEYS)" $(if $(TARGET),--target "$(TARGET)")
+
+restore-test: ## Run the automated monthly restore test in a temporary environment
+	bash scripts/restore-test.sh
+
+upgrade: ## Upgrade stack: backup first, run migrations, restart services (§B13.5)
+	@echo "==> 1/3 Taking pre-upgrade backup"
+	@docker exec af-backup pgbackrest --stanza=assetflow backup --type=diff 2>/dev/null || true
+	@echo "==> 2/3 Applying database migrations"
+	$(MAKE) migrate
+	@echo "==> 3/3 Restarting application services"
+	$(COMPOSE) $(COMPOSE_FILES_FULL) up -d --wait api worker web 2>/dev/null || true
 
 # ---------------------------------------------------------------- configuration as code
 
@@ -315,7 +353,7 @@ zitadel-apply: ## Apply the Zitadel configuration (dev: .env.local; ASSETFLOW_EN
 
 # ---------------------------------------------------------------- CI jobs (ci.yml and contribution-checks.yml, §C9.3, §C9.4)
 
-ci-quality: lint typecheck config-validate reuse-lint secrets-scan docs-check test-scripts ## CI quality job (FROM=<base sha>: commitlint and a diff-only gitleaks)
+ci-quality: lint typecheck config-validate reuse-lint secrets-scan docs-check check-test-suites test-scripts ## CI quality job (FROM=<base sha>: commitlint and a diff-only gitleaks)
 	@if [ -n "$(FROM)" ]; then $(MAKE) commitlint FROM="$(FROM)" TO="$(or $(TO),HEAD)"; \
 	 else echo "ci-quality: commitlint SKIPPED (no FROM); the commit-msg hook checks local commits, CI passes the PR base."; fi
 
@@ -393,3 +431,34 @@ ci-zap-baseline: ## Weekly: OWASP ZAP baseline (passive, unauthenticated) agains
 
 verify: ci-quality ci-test-backend ci-tenant-isolation ci-migrations ci-contract ci-test-frontend ci-claude-hooks ## Everything CI's quality and test jobs run
 	@echo "make verify: all checks passed."
+
+# ---------------------------------------------------------------- local development stack (R1, R2, R6)
+
+# One command, Zitadel first, then the product: deploy/compose.dev.yml, scripts/dev.sh (Windows:
+# scripts/dev.ps1). WEB=vite skips af-web (run `npm run dev` in frontend/ instead); MAIL=1 adds
+# af-mailpit; OBSERVABILITY=1 adds af-otel. Only containers labelled com.tinyphi.project=assetflow
+# are ever started, stopped or removed.
+dev: ## Start the local development stack (6 containers: af-postgres, af-openbao, af-zitadel, af-api, af-worker, af-web) [WEB=vite] [MAIL=1] [OBSERVABILITY=1]
+	bash scripts/dev.sh up
+
+dev-down: ## Stop the local development stack (data kept; RESET=1 also deletes its volumes)
+	bash scripts/dev.sh down $(if $(filter 1 yes true,$(RESET)),--reset)
+
+# Removes only what this project created (label com.tinyphi.project=assetflow): stopped
+# containers, dangling :dev/:local/:ci image tags, and (only when asked) its volumes. Never
+# touches another project's containers or images, and never a running container.
+clean-docker: ## Remove AssetFlow's own stopped containers and loose images (VOLUMES=1 also removes its volumes, asks first)
+	@stopped="$$(docker ps -a --filter label=com.tinyphi.project=assetflow --filter status=exited -q)"; \
+	if [ -n "$$stopped" ]; then echo "==> removing stopped AssetFlow containers:"; docker ps -a --filter label=com.tinyphi.project=assetflow --filter status=exited --format '  {{.Names}}'; docker rm $$stopped >/dev/null; \
+	else echo "==> no stopped AssetFlow containers."; fi
+	@images="$$(docker images --filter label=com.tinyphi.project=assetflow -q)"; \
+	images="$$images $$(docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' | awk '/^assetflow(check)?-(api|web|migrate|worker|backend|bootstrap)(:| )/ || /^af-verify/ {print $$2}')"; \
+	images="$$(echo $$images | tr ' ' '\n' | sort -u | tr '\n' ' ')"; \
+	if [ -n "$$(echo $$images | tr -d '[:space:]')" ]; then echo "==> removing AssetFlow images:"; docker images --filter label=com.tinyphi.project=assetflow --format '  {{.Repository}}:{{.Tag}}'; docker rmi $$images 2>/dev/null || true; \
+	else echo "==> no loose AssetFlow images."; fi
+	@if [ "$(filter 1 yes true,$(VOLUMES))" ]; then \
+	  read -r -p "This deletes every Docker volume labelled com.tinyphi.project=assetflow. Type 'yes' to continue: " answer; \
+	  [ "$$answer" = "yes" ] || { echo "Aborted; containers and images above were still removed."; exit 1; }; \
+	  vols="$$(docker volume ls --filter label=com.tinyphi.project=assetflow -q)"; \
+	  [ -n "$$vols" ] && docker volume rm $$vols || echo "==> no AssetFlow volumes."; \
+	fi
