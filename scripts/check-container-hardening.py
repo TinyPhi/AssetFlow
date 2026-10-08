@@ -46,7 +46,10 @@ def evaluate_container(data: dict[str, Any]) -> list[str]:
 
     # 3. No new privileges
     sec_opts = host_config.get("SecurityOpt") or []
-    if not any("no-new-privileges" in str(opt).lower() for opt in sec_opts) and "no_new_privileges" not in exceptions:
+    if (
+        not any("no-new-privileges" in str(opt).lower() for opt in sec_opts)
+        and "no_new_privileges" not in exceptions
+    ):
         violations.append(f"{name}: missing no-new-privileges security option")
 
     # 4. Cap drop ALL

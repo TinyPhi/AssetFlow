@@ -15,6 +15,7 @@ import sys
 import types
 from pathlib import Path
 from typing import Any, Self
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -85,7 +86,7 @@ def test_the_file_wins_over_the_plain_variable(
     secret.write_text(DSN, encoding="utf-8")
     monkeypatch.setenv(FILE_VAR, str(secret))
     monkeypatch.setenv(URL_VAR, "postgresql://other:x@elsewhere.example.org/db")
-    assert "db.example.org" in env_module.migration_url()
+    assert urlsplit(env_module.migration_url()).hostname == "db.example.org"
 
 
 def test_the_plain_variable_still_works(env_module: Any, monkeypatch: pytest.MonkeyPatch) -> None:

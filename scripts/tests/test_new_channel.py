@@ -67,8 +67,12 @@ def test_every_generated_file_has_an_spdx_header_and_no_placeholder_is_left(root
     ):
         text = (root / path).read_text(encoding="utf-8")
         assert "SPDX-License-Identifier: AGPL-3.0-only" in text
-        assert "@KEY@" not in text and "@CLASS@" not in text and "@MODULE@" not in text and "@TITLE@" not in text
-    assert json.loads((root / "backend/tests/contract/channels/fixtures/demo_hook/ok.json").read_text()) == {"ok": True}
+        assert (
+            "@KEY@" not in text and "@CLASS@" not in text and "@MODULE@" not in text and "@TITLE@" not in text
+        )
+    assert json.loads((root / "backend/tests/contract/channels/fixtures/demo_hook/ok.json").read_text()) == {
+        "ok": True
+    }
 
 
 @pytest.mark.parametrize("bad", ["", "Slack", "1slack", "a_b", "a b", "../x", "slack/"])

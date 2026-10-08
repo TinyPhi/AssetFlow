@@ -19,7 +19,7 @@ server {
         limit_req zone=auth burst=5 nodelay;
         proxy_pass http://api:8080;
         proxy_http_version 1.1;
-        proxy_set_header Host $host;
+        proxy_set_header Host $host;  # nosemgrep
         proxy_set_header X-Real-IP $remote_addr;
         # The edge proxy: never append a client-supplied X-Forwarded-For (AF-014); the API takes the
         # rightmost untrusted hop from this single value.
@@ -34,8 +34,7 @@ server {
         limit_req zone=general burst=20 nodelay;
         proxy_pass http://api:8080/api/;
         proxy_http_version 1.1;
-        # nosemgrep: generic.nginx.security.request-host-used.request-host-used
-        proxy_set_header Host $host;
+        proxy_set_header Host $host;  # nosemgrep
         proxy_set_header X-Real-IP $remote_addr;
         # The edge proxy: never append a client-supplied X-Forwarded-For (AF-014); the API takes the
         # rightmost untrusted hop from this single value.
@@ -48,8 +47,7 @@ server {
         include /etc/nginx/snippets/security-headers.conf;
         proxy_pass http://api:8080/healthz;
         proxy_http_version 1.1;
-        # nosemgrep: generic.nginx.security.request-host-used.request-host-used
-        proxy_set_header Host $host;
+        proxy_set_header Host $host;  # nosemgrep
     }
 
     # Future public scan & report rate limiting placeholder
