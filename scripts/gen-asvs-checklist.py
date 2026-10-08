@@ -70,18 +70,20 @@ def render_markdown(requirements: list[dict[str, Any]], mapping: dict[str, dict[
         status_counts[status] += 1
 
     total = len(requirements)
-    lines.extend([
-        "## Compliance Summary",
-        "",
-        f"- **Total Requirements (L1 & L2):** {total}",
-        f"- **Met:** {status_counts['met']} ({status_counts['met'] * 100 // total if total else 0}%)",
-        f"- **Partial:** {status_counts['partial']}",
-        f"- **Open / Planned:** {status_counts['open']}",
-        f"- **Not Applicable:** {status_counts['n/a']}",
-        "",
-        "---",
-        "",
-    ])
+    lines.extend(
+        [
+            "## Compliance Summary",
+            "",
+            f"- **Total Requirements (L1 & L2):** {total}",
+            f"- **Met:** {status_counts['met']} ({status_counts['met'] * 100 // total if total else 0}%)",
+            f"- **Partial:** {status_counts['partial']}",
+            f"- **Open / Planned:** {status_counts['open']}",
+            f"- **Not Applicable:** {status_counts['n/a']}",
+            "",
+            "---",
+            "",
+        ]
+    )
 
     # Group requirements by chapter
     chapters: dict[str, list[dict[str, Any]]] = {}
@@ -90,12 +92,14 @@ def render_markdown(requirements: list[dict[str, Any]], mapping: dict[str, dict[
         chapters.setdefault(ch, []).append(req)
 
     for ch_name, reqs in sorted(chapters.items()):
-        lines.extend([
-            f"## {ch_name}",
-            "",
-            "| ID | Level | Requirement | Status | Control & Code | Test / Evidence | Notes |",
-            "|---|---|---|---|---|---|---|",
-        ])
+        lines.extend(
+            [
+                f"## {ch_name}",
+                "",
+                "| ID | Level | Requirement | Status | Control & Code | Test / Evidence | Notes |",
+                "|---|---|---|---|---|---|---|",
+            ]
+        )
         for req in reqs:
             req_id = req["id"]
             lvl = f"L{req.get('level', 1)}"
@@ -106,7 +110,11 @@ def render_markdown(requirements: list[dict[str, Any]], mapping: dict[str, dict[
             code = entry.get("code", "")
             control_str = f"{control} (`{code}`)" if code else control
             test = entry.get("test", "-").replace("|", "\\|")
-            notes = entry.get("reason") or entry.get("notes") or ("Planned for post-G1" if status == "OPEN" else "-")
+            notes = (
+                entry.get("reason")
+                or entry.get("notes")
+                or ("Planned for post-G1" if status == "OPEN" else "-")
+            )
             notes = str(notes).replace("|", "\\|")
 
             lines.append(f"| {req_id} | {lvl} | {desc} | **{status}** | {control_str} | {test} | {notes} |")
@@ -126,11 +134,15 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.check:
         if not OUTPUT_MD_PATH.is_file():
-            sys.stderr.write(f"error: {OUTPUT_MD_PATH} does not exist. Run python scripts/gen-asvs-checklist.py\n")
+            sys.stderr.write(
+                f"error: {OUTPUT_MD_PATH} does not exist. Run python scripts/gen-asvs-checklist.py\n"
+            )
             return 1
         current = OUTPUT_MD_PATH.read_text(encoding="utf-8")
         if current != rendered:
-            sys.stderr.write("error: docs/security/asvs-l2.md is out of date. Run python scripts/gen-asvs-checklist.py\n")
+            sys.stderr.write(
+                "error: docs/security/asvs-l2.md is out of date. Run python scripts/gen-asvs-checklist.py\n"
+            )
             return 1
         sys.stdout.write("asvs-l2 check: up to date.\n")
         return 0

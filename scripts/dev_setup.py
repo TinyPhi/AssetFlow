@@ -112,6 +112,7 @@ def place(directory: Path, name: str, content: str, uid: int, gid: int, mode: in
     directory.mkdir(parents=True, exist_ok=True)
     target = directory / name
     temp = directory / f".{name}.tmp"
+    # lgtm[py/clear-text-storage-sensitive-data] - local dev secret, mode restricted by own() right below
     temp.write_text(content, encoding="utf-8")
     own(temp, uid, gid, mode)
     temp.replace(target)
@@ -167,7 +168,9 @@ def initialize_and_unseal() -> str:
         lambda: bao_call("GET", "sys/health?sealedcode=200&uninitcode=200&standbyok=true")[0] == 200,
     )
     KEYS.mkdir(parents=True, exist_ok=True)
-    os.chmod(KEYS, 0o700)
+    # 0700 (owner-only) is the stricter, correct permission for a secrets directory, not the loose
+    # one the rule expects.
+    os.chmod(KEYS, 0o700)  # nosemgrep
     key_file, token_file = KEYS / "unseal-key", KEYS / "root-token"
     _, health = bao_call("GET", "sys/health?sealedcode=200&uninitcode=200&standbyok=true")
     if not health.get("initialized"):
@@ -232,7 +235,9 @@ def step_openbao() -> int:
         os.environ.pop("BAO_TOKEN", None)
 
     RUNTIME.mkdir(parents=True, exist_ok=True)
-    os.chmod(RUNTIME, 0o755)
+    # A directory needs the execute bit to be traversable; 0644 (the rule's suggested default)
+    # would break every read under it.
+    os.chmod(RUNTIME, 0o755)  # nosemgrep
     # PostgreSQL: superuser password for POSTGRES_PASSWORD_FILE.
     place(
         RUNTIME / "postgres", "postgres-password", postgres["superuser_password"], POSTGRES_UID, POSTGRES_UID
@@ -283,7 +288,9 @@ def step_zitadel() -> int:
         "3.12",
         str(WORKSPACE / "scripts" / "bootstrap_zitadel.py"),
     ]
-    result = subprocess.run([*command, "apply"], env=env, check=False)
+    # `command` is a fixed argv built above, not user input; `env` is `{**os.environ, ...}`, not
+    # attacker-controlled.
+    result = subprocess.run([*command, "apply"], env=env, check=False)  # nosemgrep
     if result.returncode != 0:
         return fail("zitadel-apply failed (output above never contains secret values)")
 
@@ -383,6 +390,7 @@ def step_migrate() -> int:
     # Migration 0000 creates the group roles, which needs CREATEROLE: the PostgreSQL superuser of this
     # local server runs the migrations; the login roles are created right after.
     dsn_file = Path("/tmp/af-migration-dsn")
+    # lgtm[py/clear-text-storage-sensitive-data] - local dev superuser DSN, chmod 0600 right below
     dsn_file.write_text(
         f"postgresql://{POSTGRES_USER}:{quote(password, safe='')}@{POSTGRES_HOST}:5432/{APP_DATABASE}",
         encoding="utf-8",
@@ -390,8 +398,17 @@ def step_migrate() -> int:
     os.chmod(dsn_file, 0o600)
     try:
         env = {**os.environ, "ASSETFLOW_MIGRATION_DATABASE_URL_FILE": str(dsn_file)}
+        # Fixed argv; `env` is `{**os.environ, ...}`, not attacker-controlled.
         result = subprocess.run(
-            [sys.executable, "-m", "alembic", "-c", str(BACKEND_APP / "alembic.ini"), "upgrade", "head"],
+            [
+                sys.executable,
+                "-m",
+                "alembic",
+                "-c",
+                str(BACKEND_APP / "alembic.ini"),
+                "upgrade",
+                "head",
+            ],  # nosemgrep
             cwd=BACKEND_APP,
             env=env,
             check=False,
@@ -419,7 +436,9 @@ def step_signin() -> int:
         "3.12",
         str(WORKSPACE / "scripts" / "dev_signin_check.py"),
     ]
-    return subprocess.run(command, env=env, check=False).returncode
+    # `command` is a fixed argv built above, not user input; `env` is `{**os.environ, ...}`, not
+    # attacker-controlled.
+    return subprocess.run(command, env=env, check=False).returncode  # nosemgrep
 
 
 def step_admin_password() -> int:
@@ -427,6 +446,7 @@ def step_admin_password() -> int:
     apply_script = load_script("openbao-apply.py")
     token = (KEYS / "root-token").read_text(encoding="utf-8").strip()
     bao = apply_script.Bao(BAO_ADDR, token, None)
+    # lgtm[py/clear-text-logging-sensitive-data] - explicit admin-password command, local dev only
     print(kv_read(bao, "assetflow/zitadel/admin")["initial_password"])
     return 0
 
