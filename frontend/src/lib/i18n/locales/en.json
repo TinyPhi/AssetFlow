@@ -2,9 +2,6 @@
   "app": {
     "shell": {
       "title": "AssetFlow",
-      "tagline": "Industrial asset and maintenance management system.",
-      "status_ready": "Core platform initialized and ready.",
-      "status_not_ready": "Core platform is not ready yet.",
       "online": "Connected",
       "offline": "Offline — Check Network Connection",
       "health_title": "Platform Health",
@@ -20,6 +17,74 @@
       "dismiss": "Dismiss",
       "network_online": "Network connection restored.",
       "network_offline": "Network connection lost."
+    }
+  },
+  "nav": {
+    "menu": {
+      "label": "Main navigation",
+      "open": "Open navigation menu",
+      "close": "Close navigation menu",
+      "skip_to_content": "Skip to content"
+    },
+    "items": {
+      "dashboard": "Dashboard",
+      "organization": "Organization",
+      "teams": "Teams",
+      "members": "Members",
+      "assets": "Assets",
+      "maintenance": "Maintenance",
+      "notifications": "Notifications",
+      "admin": "Administration",
+      "my_settings": "My settings",
+      "asset_categories": "Asset categories"
+    }
+  },
+  "theme": {
+    "toggle": {
+      "label": "Theme",
+      "light": "Light",
+      "dark": "Dark",
+      "system": "System"
+    }
+  },
+  "pages": {
+    "dashboard": {
+      "title": "Dashboard",
+      "welcome": "Welcome back"
+    },
+    "sign_in": {
+      "title": "Sign in",
+      "pending": "Sign-in is not available in this build yet.",
+      "button": "Sign in with Identity Provider",
+      "mock_button": "Sign in with Dev Mock",
+      "description": "Enter your credentials to manage organization assets and maintenance."
+    },
+    "not_authorized": {
+      "title": "You do not have access to this page",
+      "body": "Ask an organization administrator to grant you access if you need it.",
+      "back": "Back to the dashboard"
+    },
+    "not_found": {
+      "title": "Page not found",
+      "body": "The page you asked for does not exist."
+    },
+    "coming_soon": {
+      "title": "This screen is not built yet."
+    }
+  },
+  "ui": {
+    "error": {
+      "title": "Something went wrong",
+      "retry": "Try again"
+    },
+    "empty": {
+      "title": "Nothing here yet"
+    },
+    "table": {
+      "caption_fallback": "Data table"
+    },
+    "state": {
+      "loading": "Loading…"
     }
   }
 }

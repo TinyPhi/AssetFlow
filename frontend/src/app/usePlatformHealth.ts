@@ -6,6 +6,7 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
 export const HEALTH_POLL_MS = 15000;
+export const HEALTH_TIMEOUT_MS = 10000;
 
 export interface PublicHealth {
   status: string;
@@ -29,15 +30,27 @@ function isPublicHealth(value: unknown): value is PublicHealth {
 }
 
 export async function fetchPublicHealth(): Promise<PublicHealth> {
-  const res = await fetch("/api/health", { headers: { Accept: "application/json" } });
-  if (!res.ok) {
-    throw new HealthCheckError(res.status);
+  // A probe that hangs must not hold the status on "checking" for ever: give up after 10 s.
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort();
+  }, HEALTH_TIMEOUT_MS);
+  try {
+    const res = await fetch("/api/health", {
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      throw new HealthCheckError(res.status);
+    }
+    const body: unknown = await res.json();
+    if (!isPublicHealth(body)) {
+      throw new HealthCheckError(res.status);
+    }
+    return { status: body.status };
+  } finally {
+    clearTimeout(timer);
   }
-  const body: unknown = await res.json();
-  if (!isPublicHealth(body)) {
-    throw new HealthCheckError(res.status);
-  }
-  return { status: body.status };
 }
 
 export function usePlatformHealth(): UseQueryResult<PublicHealth> {
