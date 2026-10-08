@@ -1,0 +1,302 @@
+V1.1.1:
+  code: .pre-commit-config.yaml, Makefile
+  control: "\xA7C3.2, \xA7C9.3: Automated CI quality gates, pre-commit hooks, pinned\
+    \ tool versions"
+  status: met
+  test: make ci-quality, make verify
+V1.1.2:
+  code: docs/specs/tmms-vision-notes.md
+  control: "\xA7B11.1, \xA7B11.2: Architecture threat model and attack surface reduction"
+  status: met
+  test: make test-isolation
+V1.14.1:
+  code: deploy/nginx/default.conf, backend/app/main.py
+  control: "\xA7B11.3: BFF architecture separating SPA frontend, FastAPI backend,\
+    \ and PostgreSQL database"
+  status: met
+  test: deploy/nginx/nginx.conf, test_session_flow.py
+V1.2.1:
+  code: backend/uv.lock, frontend/package-lock.json
+  control: "\xA7C4.11: Pinned lockfiles (uv.lock, package-lock.json), automated audit"
+  status: met
+  test: make ci-security-fast (pip-audit, npm audit)
+V1.2.2:
+  code: Makefile (pip_audit with --require-hashes)
+  control: "\xA7C4.11: Hash verification on Python and npm dependencies"
+  status: met
+  test: make license-check, make ci-security-fast
+V1.4.1:
+  code: backend/app/core/scope.py, backend/app/core/permissions.py
+  control: "\xA7B5, \xA7C4.5: Scoped RBAC, least privilege permission checks"
+  status: met
+  test: uv run pytest tests/authz_matrix
+V1.4.2:
+  code: backend/migrations/versions/
+  control: "\xA7B5.1, \xA7C4.8: Tenant isolation via PostgreSQL Row-Level Security\
+    \ (RLS) on all tables"
+  status: met
+  test: make test-isolation (backend/tests/isolation/)
+V1.5.1:
+  code: backend/app/modules/*/schemas.py
+  control: "\xA7C4.4: Pydantic v2 fail-closed schema validation with extra='forbid'"
+  status: met
+  test: backend/tests/unit/
+V1.8.1:
+  code: backend/app/modules/organization/service.py
+  control: "\xA7B5.2: Optimistic concurrency control via version fields and atomic\
+    \ CTE recomputation"
+  status: met
+  test: backend/tests/integration/test_org_structure.py
+V10.1.1:
+  code: .github/CODEOWNERS, .github/pull_request_template.md
+  control: "\xA7C9.1: Branch protection, CODEOWNERS reviews, signed commits"
+  status: met
+  test: make ci-contribution-checks
+V10.3.1:
+  code: .github/workflows/ci.yml, Makefile
+  control: "\xA7C9.2: Gitleaks secrets scan, Semgrep SAST, Bandit Python scan, Trivy\
+    \ container scan"
+  status: met
+  test: make ci-security-fast, make ci-security-full
+V11.1.1:
+  code: backend/app/modules/organization/service.py
+  control: "\xA7B5.2: State machine validation with named archive blockers and cycle\
+    \ prevention"
+  status: met
+  test: backend/tests/integration/test_org_structure.py
+V11.2.1:
+  code: backend/app/modules/organization/bulk_import.py
+  control: "\xA7B5.7: Bulk import preview (read-only) and commit (all-or-nothing transaction,\
+    \ idempotent)"
+  status: met
+  test: backend/tests/integration/test_bulk_import.py
+V12.1.1:
+  code: backend/app/core/config.py
+  control: "\xA7C4.12: Path traversal prevention, all file operations resolved against\
+    \ strict base directories"
+  status: met
+  test: backend/tests/unit/test_config.py
+V12.4.1:
+  code: deploy/nginx/default.conf, deploy/compose.minimal.yml
+  control: "\xA7B11.2: Docker container memory limits (512M) and client_max_body_size\
+    \ (10M)"
+  status: met
+  test: scripts/check-container-hardening.py
+V13.1.1:
+  code: backend/app/main.py
+  control: "\xA7C4.3: Request Content-Type validation (application/json) and reject\
+    \ unexpected types"
+  status: met
+  test: backend/tests/unit/test_problems.py
+V13.2.1:
+  code: deploy/nginx/default.conf
+  control: "\xA7C11: Application-wide rate limiting (global 100 req/s, auth 10 req/s)"
+  status: met
+  notes: "Audit remediation (AF-014, AF-027): the app rate limiter trusts X-Forwarded-For only from configured proxy CIDRs and keys on the route template."
+  test: backend/tests/authz_matrix/test_matrix.py::test_rate_limit_declarations
+V13.3.1:
+  code: backend/app/main.py
+  control: "\xA7C7.1: CORS restricted strictly to configured application host origins"
+  status: met
+  test: backend/tests/unit/test_cors.py
+V14.1.1:
+  code: backend/app/core/config.py
+  control: "\xA7B13.1: Production config validator refuses mock auth and file secrets\
+    \ in production"
+  status: met
+  notes: "Audit remediation (AF-004, AF-015, AF-031, AF-034): env has no default and boot refuses when it is unset; every guard applies to all envs except development and test, so staging is guarded; plain OIDC secrets, static OpenBao tokens and known development passwords are refused outside development."
+  test: make config-validate
+V14.2.1:
+  code: deploy/compose.minimal.yml, deploy/compose.full.yml
+  control: "\xA7B11.2: Container hardening: non-root (10001:10001), readonly rootfs,\
+    \ cap_drop ALL"
+  status: met
+  test: scripts/check-container-hardening.py
+V14.3.1:
+  code: deploy/nginx/default.conf
+  control: "\xA7C7.1: Hardened HTTP headers: CSP, X-Frame-Options: DENY, X-Content-Type-Options:\
+    \ nosniff"
+  status: met
+  test: backend/tests/e2e_api/test_session_flow.py
+V2.1.1:
+  code: scripts/bootstrap_zitadel.py
+  control: "\xA7B5.5, \xA7B5.7: Zitadel enterprise identity provider password complexity\
+    \ policy"
+  status: met
+  test: scripts/tests/test_bootstrap_zitadel.py
+V2.1.2:
+  code: scripts/bootstrap_zitadel.py
+  control: "\xA7B5.5: Zitadel compromised password check integration"
+  status: met
+  test: scripts/tests/test_bootstrap_zitadel.py
+V2.2.1:
+  code: deploy/nginx/default.conf
+  control: "\xA7C11: Nginx rate limiting on auth endpoints (10 req/s with burst 20)"
+  status: met
+  test: backend/tests/authz_matrix/test_matrix.py::test_rate_limit_declarations
+V2.4.1:
+  code: deploy/zitadel/zitadel.yaml
+  control: "\xA7B5.5: Zitadel storage using modern salted password hashing"
+  status: met
+  test: scripts/tests/test_bootstrap_zitadel.py
+V2.8.1:
+  code: backend/app/providers/auth/oidc.py
+  control: "\xA7B5.5: OIDC ID token signature, issuer, audience, and exp verification"
+  status: met
+  notes: "Audit remediation (AF-002, AF-003, AF-011): iss must equal the configured issuer, aud must contain the client or project id (required outside development/test), nbf/iat checked with 60 s leeway, https issuer required outside development/test, roles taken only from the token's own organization."
+  test: backend/tests/contract/auth/test_oidc_contract.py
+V3.1.1:
+  code: backend/app/core/cookie_crypto.py
+  control: "\xA7B5.5, \xA7C5.5: Cryptographically random UUIDv7 and ChaCha20-Poly1305\
+    \ nonces"
+  status: met
+  notes: "Audit remediation (AF-025): login uses PKCE (S256) with state and nonce; the backend requires code_verifier."
+  test: backend/tests/unit/test_cookie_crypto.py
+V3.2.1:
+  code: backend/app/api/auth.py
+  control: "\xA7B5.5, \xA7C7.1: HttpOnly, Secure, SameSite=Lax/Strict session cookies"
+  status: met
+  test: backend/tests/e2e_api/test_session_flow.py
+V3.2.2:
+  code: backend/app/core/cookie_crypto.py
+  control: "\xA7B5.5: Encrypted session cookies (ChaCha20-Poly1305 AEAD authenticated\
+    \ encryption)"
+  status: met
+  notes: "Audit remediation (NEW-1): the session cookie key comes from OpenBao (secret://), is required outside development/test, and boot refuses without it; no built-in fallback key."
+  test: backend/tests/unit/test_cookie_crypto.py
+V3.3.1:
+  code: backend/app/core/auth_middleware.py, frontend/src/features/auth/useSessionTimeout.ts
+  control: "\xA7B5.5: Server-side token expiry and idle timeout enforcement"
+  status: met
+  test: frontend/src/features/auth/__tests__/useSessionTimeout.test.ts
+V3.3.2:
+  code: backend/app/api/auth.py
+  control: "\xA7B5.5: POST /api/auth/logout clearing cookies and revoking tokens"
+  status: met
+  notes: "Audit remediation (AF-012): the revocation set is capped (LRU) and access tokens are short-lived (5 minutes); a shared denylist is backlog."
+  test: backend/tests/e2e_api/test_session_flow.py
+V4.1.1:
+  code: backend/app/api/deps.py, backend/app/api/v1/*.py
+  control: "\xA7C4.5: Explicit permission requirements on all API routes"
+  status: met
+  test: backend/tests/authz_matrix/test_matrix.py
+V4.1.2:
+  code: backend/app/core/scope.py, backend/app/modules/assets/access.py
+  control: "\xA7C4.9: Negative authorization matrix asserting 403/404 on permission\
+    \ denial"
+  status: met
+  test: backend/tests/authz_matrix/test_matrix.py::test_authorization_matrix_all_roles,
+    backend/tests/scope/test_assets_scope.py
+V4.2.1:
+  code: backend/app/core/db.py
+  control: "\xA7B5.1, \xA7C4.8: Tenant isolation enforced in SQL via RLS and tenant_transaction"
+  status: met
+  test: backend/tests/isolation/test_organizations_isolation.py
+V4.2.2:
+  code: backend/app/core/problems.py, backend/app/modules/assets/service.py, backend/app/modules/assets/access.py
+  control: "\xA7C5.4 rule 5, \xA7C4.5: Out-of-scope reads return 404 to prevent resource\
+    \ enumeration; out-of-scope writes answer 403 scope.denied (asset detail, edit,\
+    \ change-status, components checked on the loaded record)"
+  status: met
+  test: backend/tests/scope/test_assets_scope.py, backend/tests/integration/test_asset_status_change.py,
+    backend/tests/e2e_api/test_m21_catalog_acceptance.py
+V4.3.1:
+  code: backend/app/api/deps.py
+  control: "\xA7C5.4 rule 6: Platform separation: org admin cannot access platform\
+    \ routes"
+  status: met
+  test: backend/tests/authz_matrix/test_matrix.py::test_platform_separation_both_directions
+V5.1.1:
+  code: backend/app/api/v1/*.py
+  control: "\xA7C4.4: Server-side validation on every input payload"
+  status: met
+  test: backend/tests/unit/
+V5.1.2:
+  code: backend/app/modules/*/schemas.py, backend/app/modules/assets/custom_fields.py
+  control: "\xA7C4.4, \xA7B8.1: Pydantic models with min/max length, regex constraints\
+    \ and extra='forbid'; custom field values validated against their definition (7\
+    \ types; required, min, max, regex, options, size, unknown key refused) before\
+    \ any write"
+  status: met
+  test: backend/tests/unit/test_schemas.py, backend/tests/unit/test_custom_fields.py,
+    backend/tests/e2e_api/test_m21_catalog_acceptance.py
+V5.2.1:
+  code: deploy/nginx/default.conf, frontend/src/
+  control: "\xA7C7.1: React automated contextual output escaping and CSP headers"
+  status: met
+  test: frontend test suite, make lint-frontend
+V5.3.1:
+  code: backend/app/modules/*/service.py
+  control: "\xA7C4.7: AsyncPG parameterized queries ($1, $2) exclusively, zero string\
+    \ formatting in SQL; custom field list filters bind the field key as a parameter"
+  status: met
+  test: make test-backend, backend/tests/integration/test_assets_list.py (injection
+    attempt refused)
+V6.1.1:
+  code: backend/app/providers/secrets/openbao.py, backend/app/providers/secrets/file.py,
+    backend/app/modules/assets/sensitive.py
+  control: "\xA7B6.2, \xA7B8.1: Field-level encryption using AEAD ciphers; asset encrypted\
+    \ custom fields encrypted in one provider call per write, absent from lists and\
+    \ views, decrypted only for asset.read_sensitive"
+  status: met
+  notes: "Audit remediation (AF-016): the transit key is derived (per-organization context), so another organization's context cannot decrypt; existing non-derived keys are refused by openbao-apply.py (re-key runbook)."
+  test: backend/tests/contract/secrets/test_secrets_contract.py, backend/tests/integration/test_asset_sensitive_fields.py,
+    backend/tests/e2e_api/test_m21_catalog_acceptance.py
+V6.2.1:
+  code: deploy/openbao/, deploy/compose.full.yml
+  control: "\xA7B11.4: OpenBao Vault for dynamic secret and transit key management"
+  status: met
+  notes: "Audit remediation (AF-007, AF-028): the OpenBao token is renewed before expiry with a fresh AppRole login on 403; ca_cert (BAO_CACERT) verifies the OpenBao TLS endpoint."
+  test: scripts/tests/test_openbao_apply.py, scripts/tests/test_openbao_policies.py
+V6.4.1:
+  code: docs/operations/openbao.md
+  control: "\xA7B11.4: Transit key versioning and key rotation procedures"
+  status: met
+  test: docs/operations/runbooks/
+V7.1.1:
+  code: backend/app/core/problems.py
+  control: "\xA7C4.3: RFC 9457 Problem Details for all errors, no stack traces leaked\
+    \ in production"
+  status: met
+  test: backend/tests/unit/test_problems.py
+V7.2.1:
+  code: backend/app/modules/audit/service.py
+  control: "\xA7B5.8: Audit store recording every state change with actor, timestamp,\
+    \ and organization"
+  status: met
+  test: backend/tests/integration/test_audit_store.py
+V7.3.1:
+  code: backend/app/modules/audit/redaction.py
+  control: "\xA7B5.8, \xA7C5.7: Automatic PII hashing and secret redaction before\
+    \ audit storage"
+  status: met
+  notes: "Audit remediation (AF-035, AF-036, AF-048): exception text is scrubbed before logging; the scrubber also covers phones, IPv4/IPv6, bare JWTs and token-shaped strings, with whole-word key matching."
+  test: backend/tests/unit/test_audit_redaction.py
+V8.1.1:
+  code: backend/app/api/
+  control: "\xA7C1.6: Secrets passed in request body or headers, never query strings"
+  status: met
+  test: backend/tests/authz_matrix/
+V8.2.1:
+  code: backend/migrations/versions/0006_audit_store.py
+  control: "\xA7B5.8: Audit personal values isolated in dedicated table for GDPR erasure\
+    \ compliance"
+  status: met
+  test: backend/tests/isolation/test_organizations_isolation.py
+V8.3.1:
+  code: deploy/nginx/default.conf, backend/app/main.py
+  control: "\xA7C7.1: Cache-Control: no-store, no-cache, must-revalidate on API responses"
+  status: met
+  notes: "Audit remediation (AF-033): /docs, /redoc and /openapi.json are off in production."
+  test: backend/tests/e2e_api/test_session_flow.py
+V9.1.1:
+  code: deploy/nginx/nginx.conf
+  control: "\xA7B11.2: TLS termination and TLS 1.3 enforcement"
+  status: met
+  test: make ci-zap-baseline
+V9.2.1:
+  code: deploy/nginx/default.conf
+  control: "\xA7C7.1: Strict-Transport-Security: max-age=63072000; includeSubDomains;\
+    \ preload"
+  status: met
+  test: backend/tests/e2e_api/test_session_flow.py
