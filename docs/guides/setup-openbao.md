@@ -165,7 +165,7 @@ If you prefer not to unseal by hand, configure auto-unseal with a `seal` stanza
 In my own shell on the host (never inside a container):
 
 ```bash
-export BAO_ADDR=https://127.0.0.1:8200
+export BAO_ADDR=https://127.0.0.1:19200
 export BAO_CACERT=deploy/.secrets/openbao-tls/ca.pem
 read -rs BAO_TOKEN && export BAO_TOKEN     # paste your-secret-6 (root token), first run only
 python scripts/openbao-apply.py --generate-missing
@@ -215,13 +215,15 @@ revoke it.
 
 | Role (policy) | May read | Transit `assetflow-fields` |
 | --- | --- | --- |
-| `assetflow-api` | `secret/assetflow/{database,idp,smtp}`, `secret/assetflow/orgs/*` | encrypt, decrypt |
+| `assetflow-api` | `secret/assetflow/{database,idp,smtp}` (plus write-only `secret/assetflow/orgs/+/channels/*`, below) | encrypt, decrypt |
 | `assetflow-worker` | `secret/assetflow/{database,smtp}`, `secret/assetflow/orgs/*` | encrypt, decrypt |
 | `assetflow-migrator` | `secret/assetflow/{migrator,database}` | none |
 | `assetflow-postgres` | `secret/assetflow/postgres` | none |
 | `zitadel` | `secret/assetflow/zitadel/{masterkey,database,admin}` | none |
 
-All application policies are read-only, and `secret/assetflow/migrator` is explicitly denied to the api
+All application policies are read-only except one path: the api may write (create, update, patch, delete), but never read or list,
+`secret/assetflow/orgs/+/channels/*` (channel credentials are write-only from the admin form; only the
+worker's channel runtime reads them). `secret/assetflow/migrator` is explicitly denied to the api
 and the worker. I checked this with a short-lived token:
 
 ```bash
@@ -239,7 +241,7 @@ Secret layout under `secret/` (KV v2):
 | `assetflow/postgres` | `superuser_password` | `openbao-apply.py --generate-missing` |
 | `assetflow/smtp` | SMTP relay credentials | operator |
 | `assetflow/idp` | Zitadel issuer, project and client values | the Zitadel bootstrap ([Set up Zitadel](setup-zitadel.md)) |
-| `assetflow/orgs/<organization_id>/channels/<channel_id>` | notification channel credentials | AssetFlow at runtime |
+| `assetflow/orgs/<organization_id>/channels/<channel_id>` | notification channel credentials | api (write-only); AssetFlow's worker reads them at send time |
 | `assetflow/zitadel/masterkey` | `value` (32 characters; never changes after Zitadel's first start) | `openbao-apply.py --generate-missing` |
 | `assetflow/zitadel/database` | `admin_password`, `user_password` | `openbao-apply.py --generate-missing` |
 | `assetflow/zitadel/admin` | `initial_password` (changed at first sign-in) | `openbao-apply.py --generate-missing` |
@@ -284,7 +286,7 @@ How containers get their values:
 | Check | Command | Expected |
 | --- | --- | --- |
 | Unsealed | `docker compose -f deploy/compose.full.yml exec openbao bao status` | `Sealed false`, exit code 0 |
-| Health endpoint | `curl --cacert deploy/.secrets/openbao-tls/ca.pem https://127.0.0.1:8200/v1/sys/health` | HTTP 200 |
+| Health endpoint | `curl --cacert deploy/.secrets/openbao-tls/ca.pem https://127.0.0.1:19200/v1/sys/health` | HTTP 200 |
 | Configuration applied | `python scripts/openbao-apply.py` | `No changes.` |
 | Least privilege | Step 7 capability checks | `deny` / `read` as shown |
 | Root token revoked | `BAO_TOKEN=your-secret-6 bao token lookup` | HTTP 403 |

@@ -3,3 +3,4 @@
 # Synthetic fixture value in a scrubber test (historic commit; fixed in the tree).
 321e93b40bb060813abda35a04233db29a88c73f:backend/tests/contract/telemetry/test_otel_scrubber.py:generic-api-key:24
 15d9cedea08cb3349e6fb507ed5ca04b6f8e8a23:backend/tests/contract/telemetry/test_otel_scrubber.py:generic-api-key:24
+2b5c18035409e353e04494705438fb3f811b95fd:docs/tracker/gate-g1.md:generic-api-key:24
