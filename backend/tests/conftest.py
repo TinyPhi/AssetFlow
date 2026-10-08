@@ -27,6 +27,9 @@ async def _close_null_pool(_pool: Any) -> None:
     return None
 
 
+pytest_plugins = ["tests.support.header_identity"]
+
+
 @pytest.fixture
 def app() -> FastAPI:
     """Fixture returning the configured FastAPI application, wired to startup doubles (no database)."""
