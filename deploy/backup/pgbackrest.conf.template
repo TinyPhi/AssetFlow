@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: 2026 TinyPhi
+# SPDX-License-Identifier: AGPL-3.0-only
+# pgBackRest configuration template (§B13.5, M1.6-T9).
+
+[global]
+buffer-size=8MiB
+compress-type=zst
+compress-level=3
+process-max=2
+start-fast=y
+stop-auto=y
+log-level-console=info
+log-level-file=detail
+
+# Primary Off-site Repository (S3 compatible)
+repo1-type=s3
+repo1-s3-endpoint=${BACKUP_S3_ENDPOINT:-s3.amazonaws.com}
+repo1-s3-bucket=${BACKUP_S3_BUCKET:-assetflow-backups}
+repo1-s3-region=${BACKUP_S3_REGION:-us-east-1}
+repo1-s3-key=${BACKUP_S3_KEY}
+repo1-s3-key-secret=${BACKUP_S3_SECRET}
+repo1-path=/backup/assetflow
+repo1-cipher-type=aes-256-cbc
+repo1-cipher-pass=${BACKUP_CIPHER_PASS}
+
+# Retention (§B13.5): WAL 14 days, daily 14, weekly 8, monthly 12
+repo1-retention-full=8
+repo1-retention-diff=14
+repo1-retention-archive=14
+
+# Write-Once Repository 2 (Object Lock Compliance Mode)
+repo2-type=s3
+repo2-s3-endpoint=${BACKUP_WORM_ENDPOINT:-${BACKUP_S3_ENDPOINT:-s3.amazonaws.com}}
+repo2-s3-bucket=${BACKUP_WORM_BUCKET:-assetflow-backups-worm}
+repo2-s3-region=${BACKUP_WORM_REGION:-${BACKUP_S3_REGION:-us-east-1}}
+repo2-s3-key=${BACKUP_WORM_KEY:-${BACKUP_S3_KEY}}
+repo2-s3-key-secret=${BACKUP_WORM_SECRET:-${BACKUP_S3_SECRET}}
+repo2-path=/backup/assetflow-worm
+repo2-cipher-type=aes-256-cbc
+repo2-cipher-pass=${BACKUP_CIPHER_PASS}
+repo2-retention-full=52
+
+[assetflow]
+pg1-host=${POSTGRES_HOST:-postgres}
+pg1-port=${POSTGRES_PORT:-5432}
+pg1-user=${POSTGRES_USER:-assetflow_app}
+pg1-path=/var/lib/postgresql/data
+
+[zitadel]
+pg1-host=${ZITADEL_DB_HOST:-zitadel-db}
+pg1-port=5432
+pg1-user=zitadel
+pg1-path=/var/lib/postgresql/data
