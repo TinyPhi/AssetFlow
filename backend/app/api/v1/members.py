@@ -89,14 +89,14 @@ async def list_members(
     if org_unit_id:
         args.append(org_unit_id)
         clauses.append(
-            "EXISTS (SELECT 1 FROM public.member_org_units mou "  # noqa: S608 - bound index
+            "EXISTS (SELECT 1 FROM public.member_org_units mou "  # nosec B608 # noqa: S608 - bound index
             f"WHERE mou.member_id = m.id AND mou.org_unit_id = ${len(args)})"
         )
 
     if team_id:
         args.append(team_id)
         clauses.append(
-            "EXISTS (SELECT 1 FROM public.team_members tm "  # noqa: S608 - bound index
+            "EXISTS (SELECT 1 FROM public.team_members tm "  # nosec B608 # noqa: S608 - bound index
             f"WHERE tm.member_id = m.id AND tm.team_id = ${len(args)})"
         )
 
@@ -107,7 +107,7 @@ async def list_members(
         WHERE {" AND ".join(clauses)}
         ORDER BY m.display_name ASC
         LIMIT ${len(args)}
-    """  # noqa: S608 - clauses are fixed strings, values are bound
+    """  # nosec B608 # noqa: S608 - clauses are fixed strings, values are bound
     rows = await conn.fetch(sql, *args)
     members = [
         MemberSummary(
