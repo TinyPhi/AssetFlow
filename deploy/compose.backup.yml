@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: 2026 TinyPhi
+# SPDX-License-Identifier: AGPL-3.0-only
+# Backup overlay service (pgBackRest) (§B13.1, §B13.5, M1.6-T9).
+# Usable with both minimal and full profiles:
+#   docker compose -p assetflow -f deploy/compose.minimal.yml -f deploy/compose.backup.yml up -d
+
+services:
+  backup:
+    build:
+      context: ./backup
+      dockerfile: Dockerfile
+    container_name: af-backup
+    labels:
+      com.tinyphi.project: assetflow
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${DATABASE_USER:-assetflow_app}
+      BACKUP_CIPHER_PASS: ${BACKUP_CIPHER_PASS:-assetflow-default-backup-passphrase-2026}
+      BACKUP_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:-af-objectstore:9000}
+      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-assetflow-backups}
+      BACKUP_S3_REGION: ${BACKUP_S3_REGION:-us-east-1}
+      BACKUP_S3_KEY: ${BACKUP_S3_KEY:-backupadmin}
+      BACKUP_S3_SECRET: ${BACKUP_S3_SECRET:-backupsecret123}
+    volumes:
+      - ./backup/pgbackrest.conf.template:/etc/pgbackrest/pgbackrest.conf:ro
+      - wal_archive:/var/lib/postgresql/archive
+    read_only: true
+    user: "10001:10001"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+      - /var/spool/pgbackrest:size=512M,uid=10001,gid=10001
+      - /var/log/pgbackrest:size=64M,uid=10001,gid=10001
+
+volumes:
+  wal_archive:
