@@ -129,7 +129,7 @@ class OpenBaoSecretsProvider(SecretsProvider):
                 self._track(auth)
                 return True
         except (httpx.HTTPError, ValueError) as exc:
-            logger.warning("OpenBao token renewal failed: %s", type(exc).__name__)
+            logger.warning("OpenBao renew-self request failed: %s", type(exc).__name__)
         return False
 
     async def _ensure_token(self, client: httpx.AsyncClient) -> str:

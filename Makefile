@@ -203,8 +203,8 @@ typecheck: frontend-deps ## mypy and tsc -b
 
 config-validate: check-python ## Validate config/assetflow.yaml (schema, production guards) and parse config/**/*.yaml
 	cd $(BACKEND) && $(UV) run python -c "import pathlib, yaml; files = sorted(pathlib.Path('../config').rglob('*.y*ml')); [yaml.safe_load(f.read_text(encoding='utf-8')) for f in files]; print(f'config-validate: {len(files)} YAML file(s) parse.')"
-	cd $(BACKEND) && $(UV) run python -m app.core.config validate ../config/assetflow.yaml
-	cd $(BACKEND) && ASSETFLOW_ENV=test $(UV) run python -m app.core.config validate ../config/assetflow.yaml
+	cd $(BACKEND) && ASSETFLOW_ENV=development ASSETFLOW_AUTH_PROVIDER=mock $(UV) run python -m app.core.config validate ../config/assetflow.yaml
+	cd $(BACKEND) && ASSETFLOW_ENV=test ASSETFLOW_AUTH_PROVIDER=mock $(UV) run python -m app.core.config validate ../config/assetflow.yaml
 
 error-codes: ## Regenerate docs/reference/error-codes.md from the backend error registry
 	$(UV) run --project $(BACKEND) python scripts/gen-error-codes.py

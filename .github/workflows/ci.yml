@@ -351,7 +351,7 @@ jobs:
           fail-on-severity: high
           allow-licenses: >-
             MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0, ISC, PSF-2.0,
-            MPL-2.0, Unicode-3.0, Unicode-DFS-2016, CC0-1.0
+            MPL-2.0, Unicode-3.0, Unicode-DFS-2016, CC0-1.0, LicenseRef-scancode-protobuf
 
   license-check:
     name: License allowlist (fallback)

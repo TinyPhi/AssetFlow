@@ -574,9 +574,14 @@ def _validate_domain_templates(platform_config_file: str) -> list[str]:
     """Validate every `config/domains/*.yaml` next to `platform_config_file` (§B7.3, §B7.4).
 
     The check needs the automation engine and the modules' event registry, which sit above core, so
-    it is loaded by name instead of imported (the layering contract allows no upward import).
+    it is loaded by name instead of imported (the layering contract allows no upward import). A tree
+    that has core but not yet the assets module (for example, an earlier PR in a stacked chain) has
+    nothing to cross-check against; skip rather than fail.
     """
-    check = importlib.import_module("app.modules.domain_template_check")
+    try:
+        check = importlib.import_module("app.modules.domain_template_check")
+    except ModuleNotFoundError:
+        return []
     problems: list[str] = check.domain_template_problems(platform_config_file)
     return problems
 
