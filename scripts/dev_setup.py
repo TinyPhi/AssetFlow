@@ -18,7 +18,8 @@ migrate   Alembic `upgrade head`, then the database login roles (passwords from 
           assetflow_test database used by the test harness.
 signin    Check that the first admin can open a Zitadel session (scripts/dev_signin_check.py).
 admin-password
-          Print the first admin's Zitadel password (only when a person runs `dev.sh admin-password`).
+          A no-op that just points the caller at `make dev-admin-password` (scripts/dev.sh reads the
+          password live from OpenBao itself, without going through this script).
 
 OpenBao is the source of truth for every credential. Nothing is printed except step names, paths
 and the names of what changed. The OpenBao token is passed to child processes in memory only;
@@ -112,7 +113,10 @@ def place(directory: Path, name: str, content: str, uid: int, gid: int, mode: in
     directory.mkdir(parents=True, exist_ok=True)
     target = directory / name
     temp = directory / f".{name}.tmp"
-    temp.write_text(content, encoding="utf-8")  # lgtm[py/clear-text-storage-sensitive-data]
+    # Runtime-secrets volume write, mode 0o440 owned by the reading user right below (plan R6).
+    # CodeQL flags this as clear-text storage; dismissed by the owner as by-design (not suppressed
+    # inline - this repo's Default Setup CodeQL does not honor inline suppression comments).
+    temp.write_text(content, encoding="utf-8")
     own(temp, uid, gid, mode)
     temp.replace(target)
 
@@ -378,43 +382,40 @@ async def provision_database(password: str, role_passwords: dict[str, str]) -> N
 
 
 def step_migrate() -> int:
-    from urllib.parse import quote
-
     apply_script = load_script("openbao-apply.py")
     token = (KEYS / "root-token").read_text(encoding="utf-8").strip()
     bao = apply_script.Bao(BAO_ADDR, token, None)
-    password = (RUNTIME / "postgres" / "postgres-password").read_text(encoding="utf-8").strip()
     role_passwords = {kind: kv_read(bao, path)["password"] for kind, (_l, _g, path) in LOGIN_ROLES.items()}
 
     # Migration 0000 creates the group roles, which needs CREATEROLE: the PostgreSQL superuser of this
-    # local server runs the migrations; the login roles are created right after.
-    dsn_file = Path("/tmp/af-migration-dsn")
-    dsn_file.write_text(
-        f"postgresql://{POSTGRES_USER}:{quote(password, safe='')}@{POSTGRES_HOST}:5432/{APP_DATABASE}",  # lgtm[py/clear-text-storage-sensitive-data]
-        encoding="utf-8",
+    # local server runs the migrations; the login roles are created right after. The DSN's password is
+    # a secret:// reference (AF-047): backend/migrations/env.py resolves it through OpenBao just before
+    # connecting, using BAO_ADDR/BAO_TOKEN below, so the real password is never written to a file here,
+    # only the reference is.
+    dsn = (
+        f"postgresql://{POSTGRES_USER}:secret://assetflow/postgres#superuser_password"
+        f"@{POSTGRES_HOST}:5432/{APP_DATABASE}"
     )
-    os.chmod(dsn_file, 0o600)
-    try:
-        env = {**os.environ, "ASSETFLOW_MIGRATION_DATABASE_URL_FILE": str(dsn_file)}
-        # Fixed argv; `env` is `{**os.environ, ...}`, not attacker-controlled.
-        result = subprocess.run(
-            [  # nosemgrep
-                sys.executable,
-                "-m",
-                "alembic",
-                "-c",
-                str(BACKEND_APP / "alembic.ini"),
-                "upgrade",
-                "head",
-            ],
-            cwd=BACKEND_APP,
-            env=env,
-            check=False,
-        )
-    finally:
-        dsn_file.unlink(missing_ok=True)
+    # Fixed argv; `env` is `{**os.environ, ...}` plus a DSN reference and OpenBao address/token, none
+    # of it attacker-controlled.
+    env = {**os.environ, "ASSETFLOW_MIGRATION_DATABASE_URL": dsn, "BAO_ADDR": BAO_ADDR, "BAO_TOKEN": token}
+    result = subprocess.run(
+        [  # nosemgrep
+            sys.executable,
+            "-m",
+            "alembic",
+            "-c",
+            str(BACKEND_APP / "alembic.ini"),
+            "upgrade",
+            "head",
+        ],
+        cwd=BACKEND_APP,
+        env=env,
+        check=False,
+    )
     if result.returncode != 0:
         return fail("alembic upgrade head failed")
+    password = kv_read(bao, "assetflow/postgres")["superuser_password"]
     asyncio.run(provision_database(password, role_passwords))
     say("migrate: done (migrations applied, database login roles in place)")
     return 0
@@ -440,13 +441,13 @@ def step_signin() -> int:
 
 
 def step_admin_password() -> int:
-    """Print the first admin's password. Only for the person who runs `scripts/dev.sh admin-password`."""
-    apply_script = load_script("openbao-apply.py")
-    token = (KEYS / "root-token").read_text(encoding="utf-8").strip()
-    bao = apply_script.Bao(BAO_ADDR, token, None)
-    print(
-        kv_read(bao, "assetflow/zitadel/admin")["initial_password"]
-    )  # lgtm[py/clear-text-logging-sensitive-data]
+    """Point whoever calls this step at the real one; never print the password here.
+
+    `scripts/dev.sh admin-password` (hence `make dev-admin-password`) no longer routes through this
+    step or this file: it reads OpenBao directly in an inline interpreter, so the value never passes
+    through a committed Python source file.
+    """
+    say("run: make dev-admin-password")
     return 0
 
 
