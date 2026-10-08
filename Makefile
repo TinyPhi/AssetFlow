@@ -345,7 +345,9 @@ ci-security-fast: frontend-deps ## CI security-fast job: Semgrep, Bandit, pip-au
 	  $(if $(wildcard .semgrep),--config .semgrep) --exclude frontend/node_modules --exclude frontend/dist .
 	$(UVX) bandit==$(BANDIT_VERSION) -r $(BACKEND)/app -ll -q
 	@$(pip_audit)
-	cd $(FRONTEND) && $(NPM) audit --audit-level=high
+	# --omit=dev: this fast gate cares about what ships; dev-only tooling (vitest, tailwindcss, ...)
+	# is still covered by the weekly ci-security-full scan below.
+	cd $(FRONTEND) && $(NPM) audit --audit-level=high --omit=dev
 	@$(call trivy,fs --scanners vuln --severity HIGH$(comma)CRITICAL --ignore-unfixed --exit-code 1 --skip-dirs frontend/node_modules --skip-dirs backend/.venv .)
 
 ci-license-check: license-check ## CI license-check job (fallback without GitHub Advanced Security, §C2.5)
