@@ -398,7 +398,7 @@ def step_migrate() -> int:
         env = {**os.environ, "ASSETFLOW_MIGRATION_DATABASE_URL_FILE": str(dsn_file)}
         # Fixed argv; `env` is `{**os.environ, ...}`, not attacker-controlled.
         result = subprocess.run(
-            [
+            [  # nosemgrep
                 sys.executable,
                 "-m",
                 "alembic",
@@ -406,7 +406,7 @@ def step_migrate() -> int:
                 str(BACKEND_APP / "alembic.ini"),
                 "upgrade",
                 "head",
-            ],  # nosemgrep
+            ],
             cwd=BACKEND_APP,
             env=env,
             check=False,
