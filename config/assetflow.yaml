@@ -4,9 +4,13 @@
 # This file never contains secret values: only secret://<area>/<name>#<key> references (§C1.6)
 # and ${ASSETFLOW_*} / standard environment variables. Production refuses mock auth, file
 # secrets and any database password that is not a secret:// reference (§B6.1 rule 6).
-# These defaults are for local development; production installs override them per deployment.
+# Every ASSETFLOW_* provider variable is required; local development sets them in .env / the Makefile.
 
-env: "${ASSETFLOW_ENV:-development}"
+# No default: boot refuses when ASSETFLOW_ENV is unset (development, test, staging or production).
+env: "${ASSETFLOW_ENV}"
+
+# Signing key of the session cookie: a secret:// reference, required outside development and test.
+session_cookie_key: "secret://session/cookie#key"
 
 platform:
   admins: []
@@ -14,11 +18,11 @@ platform:
   public_url: "${ASSETFLOW_PUBLIC_URL:-http://localhost:5173}"
   allowed_origins:
     - "http://localhost:5173"
-    - "http://localhost:8080"
+    - "http://localhost:18080"
 
 providers:
   auth:
-    type: "${ASSETFLOW_AUTH_PROVIDER:-mock}"
+    type: "${ASSETFLOW_AUTH_PROVIDER}"
     settings: {}
   secrets:
     type: "${ASSETFLOW_SECRETS_PROVIDER:-file}"
@@ -55,3 +59,26 @@ database:
   idle_in_transaction_timeout_ms: 30000
   pool_min: 1
   pool_max: 10
+
+workers:
+  outbox:
+    batch_size: 50
+    poll_interval_seconds: 2
+    reclaim_after_seconds: 300
+    max_attempts: 5
+  heartbeat_file: "/tmp/af-worker-heartbeat"
+
+notifications:
+  channels:
+    inapp:
+      retention_days: 180
+    email:
+      # The installation-wide SMTP relay. In development it is the Mailpit container; production
+      # needs a real relay with security: starttls (or tls) and a secret:// password.
+      enabled: true
+      host: ${ASSETFLOW_SMTP_HOST:-mailpit}
+      port: ${ASSETFLOW_SMTP_PORT:-1025}
+      security: none
+      allow_private_addresses: true
+      default_from: noreply@assetflow.local
+      timeout_seconds: 10

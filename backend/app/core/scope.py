@@ -19,7 +19,7 @@ from app.core.permissions import (
     ScopeType,
     matches_permission,
 )
-from app.core.problems import PermissionDeniedError
+from app.core.problems import NotFoundError, PermissionDeniedError
 
 logger = logging.getLogger(__name__)
 
@@ -74,14 +74,16 @@ def _grant_covers_resource(
     if grant.scope_type == ScopeType.ORG_UNIT and grant.org_unit_path and owner_path:
         return bool(owner_path == grant.org_unit_path or owner_path.startswith(f"{grant.org_unit_path}."))
     team_id = resource.get("team_id")
-    if grant.scope_type == ScopeType.TEAM:
-        if grant.scope_id and team_id and grant.scope_id == team_id:
-            return True
-        if team_id and team_id in member.team_ids:
-            return True
+    # A TEAM grant covers only the team it was granted on, never the member's other teams.
+    if grant.scope_type == ScopeType.TEAM and grant.scope_id and team_id and grant.scope_id == team_id:
+        return True
     holder_id = resource.get("holder_member_id") or resource.get("holder_id")
     assignee_id = resource.get("assignee_member_id") or resource.get("assignee_id")
     return bool(grant.scope_type == ScopeType.SELF and member.member_id in (holder_id, assignee_id))
+
+
+def _is_read_permission(permission: str) -> bool:
+    return permission.rsplit(".", 1)[-1] in {"read", "list"}
 
 
 class ScopeResolver:
@@ -147,7 +149,7 @@ class ScopeResolver:
                 return ScopeFilter.all_organization()
 
         org_paths: set[str] = set()
-        team_ids: set[str] = set(member.team_ids)
+        team_ids: set[str] = set()
         includes_self = False
 
         for grant in matching_grants:
@@ -172,9 +174,21 @@ class ScopeResolver:
         permission: str,
         resource: dict[str, Any] | None = None,
     ) -> None:
-        """Enforce permission check; raise PermissionDeniedError on refusal."""
-        if not self.check_access(member, permission, resource):
-            raise PermissionDeniedError(f"Permission {permission!r} denied for the requested resource scope.")
+        """Enforce a permission check (§C4.5, §C5.4).
+
+        Reading a record outside the caller's scope raises NotFoundError (404) so existence is not
+        revealed, but only for a caller who holds the permission somewhere. Everything else,
+        including actions and targets that are not yet records, raises PermissionDeniedError (403).
+        """
+        if self.check_access(member, permission, resource):
+            return
+        if (
+            resource is not None
+            and _is_read_permission(permission)
+            and self.has_permission(member, permission)
+        ):
+            raise NotFoundError
+        raise PermissionDeniedError(f"Permission {permission!r} denied for the requested resource scope.")
 
 
 # Default singleton instance

@@ -14,8 +14,9 @@ has BYPASSRLS; the API and worker roles do not own any table.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncGenerator, Awaitable, Callable
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from typing import Literal, Protocol
 from uuid import UUID
@@ -23,11 +24,20 @@ from uuid import UUID
 import asyncpg
 from asyncpg.pool import PoolConnectionProxy
 
+from app.core.config import refuse_development_password
+from app.core.problems import ServiceUnavailableError
+
+logger = logging.getLogger(__name__)
+
 DbRole = Literal["api", "worker", "migrator"]
 SecretResolver = Callable[[str], Awaitable[str]]
 # Lazily evaluated aliases: asyncpg's classes are generic only in asyncpg-stubs, not at runtime.
 type Pool = asyncpg.Pool[asyncpg.Record]
 type Connection = PoolConnectionProxy[asyncpg.Record]
+type DirectConnection = asyncpg.Connection[asyncpg.Record]
+
+DEFAULT_CONNECT_TIMEOUT_S = 30.0
+DEFAULT_ACQUIRE_TIMEOUT_S = 10.0
 
 SECRET_REF_PREFIX = "secret://"  # noqa: S105 - a URI scheme, not a password
 
@@ -78,6 +88,16 @@ class DatabaseSettings(Protocol):
     @property
     def pool_max(self) -> int: ...
 
+    @property
+    def connect_timeout_s(self) -> float: ...
+
+    @property
+    def acquire_timeout_s(self) -> float: ...
+
+
+class DatabaseUnavailableError(RuntimeError):
+    """The database could not be reached when the pool was created (a startup failure)."""
+
 
 @dataclass(frozen=True)
 class _TransactionSettings:
@@ -90,6 +110,9 @@ class _TransactionSettings:
 # Pools created by init_pool that need per-transaction settings, keyed by id(pool). The pool object is
 # kept in the value and compared by identity, so a reused id can never pick up another pool's settings.
 _PER_TRANSACTION: dict[int, tuple[Pool, _TransactionSettings]] = {}
+# Per-pool wait limit for `pool.acquire()`, keyed like _PER_TRANSACTION; pools not made by init_pool
+# use DEFAULT_ACQUIRE_TIMEOUT_S.
+_ACQUIRE_TIMEOUT: dict[int, tuple[Pool, float]] = {}
 _DEFAULT_POOL_CONTAINER: dict[str, Pool | None] = {"pool": None}
 
 
@@ -113,12 +136,16 @@ def _role_settings(cfg: DatabaseSettings, role: DbRole) -> DbRoleSettings:
     raise ValueError(f"unknown database role {role!r}")
 
 
-async def _resolve_password(value: str, role: DbRole, resolve_secret: SecretResolver) -> str:
+async def _resolve_password(
+    value: str, role: DbRole, resolve_secret: SecretResolver, *, refuse_dev: bool = False
+) -> str:
     """Resolve `secret://` references; a literal is accepted only because config validation already
     refuses literals outside development and test (§C1.6). An empty password is refused."""
     password = await resolve_secret(value) if value.startswith(SECRET_REF_PREFIX) else value
     if not password:
         raise ValueError(f"database.{role}.password resolved to an empty value")
+    if refuse_dev:
+        refuse_development_password("staging", password, f"database.{role}.password")
     return password
 
 
@@ -131,22 +158,39 @@ async def init_pool(cfg: DatabaseSettings, role: DbRole, resolve_secret: SecretR
     with SET LOCAL by the transaction helpers instead.
     """
     role_cfg = _role_settings(cfg, role)
-    password = await _resolve_password(role_cfg.password, role, resolve_secret)
+    password = await _resolve_password(
+        role_cfg.password,
+        role,
+        resolve_secret,
+        refuse_dev=bool(getattr(cfg, "refuse_development_passwords", False)),
+    )
     server_settings = {"application_name": f"assetflow-{role}"}
     if not cfg.behind_pgbouncer:
         server_settings["statement_timeout"] = str(cfg.statement_timeout_ms)
         server_settings["idle_in_transaction_session_timeout"] = str(cfg.idle_in_transaction_timeout_ms)
-    pool = await asyncpg.create_pool(
-        host=cfg.host,
-        port=cfg.port,
-        database=cfg.name,
-        user=role_cfg.user,
-        password=password,
-        min_size=cfg.pool_min,
-        max_size=cfg.pool_max,
-        statement_cache_size=0 if cfg.behind_pgbouncer else 100,
-        server_settings=server_settings,
-    )
+    try:
+        pool = await asyncpg.create_pool(
+            host=cfg.host,
+            port=cfg.port,
+            database=cfg.name,
+            user=role_cfg.user,
+            password=password,
+            ssl=getattr(cfg, "sslmode", None),
+            min_size=cfg.pool_min,
+            max_size=cfg.pool_max,
+            statement_cache_size=0 if cfg.behind_pgbouncer else 100,
+            server_settings=server_settings,
+            timeout=cfg.connect_timeout_s,
+        )
+    except (OSError, TimeoutError, asyncpg.PostgresError) as exc:
+        logger.error(  # noqa: TRY400 - the error code is enough; a traceback adds nothing
+            "db.unreachable",
+            extra={"error_code": type(exc).__name__, "db_host": cfg.host, "db_port": cfg.port},
+        )
+        raise DatabaseUnavailableError(
+            f"database {cfg.host}:{cfg.port} is unreachable ({type(exc).__name__})"
+        ) from exc
+    _ACQUIRE_TIMEOUT[id(pool)] = (pool, cfg.acquire_timeout_s)
     if cfg.behind_pgbouncer:
         _PER_TRANSACTION[id(pool)] = (
             pool,
@@ -160,7 +204,25 @@ async def close_pool(pool: Pool) -> None:
     entry = _PER_TRANSACTION.get(id(pool))
     if entry is not None and entry[0] is pool:
         del _PER_TRANSACTION[id(pool)]
+    timeout_entry = _ACQUIRE_TIMEOUT.get(id(pool))
+    if timeout_entry is not None and timeout_entry[0] is pool:
+        del _ACQUIRE_TIMEOUT[id(pool)]
     await pool.close()
+
+
+@asynccontextmanager
+async def _acquire(pool: Pool) -> AsyncGenerator[Connection]:
+    """Acquire a pooled connection, waiting at most the pool's limit; a timeout is a 503 (AF-018)."""
+    entry = _ACQUIRE_TIMEOUT.get(id(pool))
+    timeout = entry[1] if entry is not None and entry[0] is pool else DEFAULT_ACQUIRE_TIMEOUT_S
+    stack = AsyncExitStack()
+    try:
+        conn = await stack.enter_async_context(pool.acquire(timeout=timeout))
+    except TimeoutError:
+        logger.warning("db.acquire_timeout", extra={"timeout_s": timeout})
+        raise ServiceUnavailableError("No database connection became available in time.") from None
+    async with stack:
+        yield conn
 
 
 async def _apply_transaction_settings(pool: Pool, conn: Connection, organization_id: str) -> None:
@@ -179,6 +241,43 @@ async def _apply_transaction_settings(pool: Pool, conn: Connection, organization
         await conn.execute("SELECT set_config('app.organization_id', $1, true)", organization_id)
 
 
+async def connect_direct(
+    cfg: DatabaseSettings,
+    role: DbRole,
+    resolve_secret: SecretResolver,
+    *,
+    host: str | None = None,
+    port: int | None = None,
+) -> DirectConnection:
+    """Open one dedicated connection (for LISTEN), bypassing PgBouncer when `host`/`port` are given."""
+    role_cfg = _role_settings(cfg, role)
+    password = await _resolve_password(
+        role_cfg.password,
+        role,
+        resolve_secret,
+        refuse_dev=bool(getattr(cfg, "refuse_development_passwords", False)),
+    )
+    return await asyncpg.connect(
+        host=host or cfg.host,
+        port=port or cfg.port,
+        database=cfg.name,
+        user=role_cfg.user,
+        password=password,
+        ssl=getattr(cfg, "sslmode", None),
+        server_settings={"application_name": f"assetflow-{role}-listen"},
+    )
+
+
+async def resolve_role_password(cfg: DatabaseSettings, role: DbRole, resolve_secret: SecretResolver) -> str:
+    """Resolve one role's password without opening a connection.
+
+    For a child process that must open its own connection (the job runner's memory-limited jobs,
+    §B9.3): the parent resolves the password once and passes the plain value to the child, since an
+    async secret resolver callable cannot be sent across a process boundary.
+    """
+    return await _resolve_password(_role_settings(cfg, role).password, role, resolve_secret)
+
+
 @asynccontextmanager
 async def tenant_transaction(pool: Pool, organization_id: UUID) -> AsyncGenerator[Connection]:
     """Run a block in one transaction stamped with the organization context.
@@ -188,8 +287,30 @@ async def tenant_transaction(pool: Pool, organization_id: UUID) -> AsyncGenerato
     """
     if not isinstance(organization_id, UUID):
         raise TypeError(f"organization_id must be a UUID, not {type(organization_id).__name__}")
-    async with pool.acquire() as conn, conn.transaction():
+    async with _acquire(pool) as conn, conn.transaction():
         await _apply_transaction_settings(pool, conn, str(organization_id))
+        yield conn
+
+
+@asynccontextmanager
+async def worker_context(pool: Pool, organization_id: UUID) -> AsyncGenerator[Connection]:
+    """Run worker code for one organization in one transaction (§B9.3, §C5.4 rule 3).
+
+    Same stamp as `tenant_transaction`; the name marks the call site as a worker job. Every item a
+    worker handles runs under the organization that owns it, so RLS applies exactly as for the API.
+    """
+    async with tenant_transaction(pool, organization_id) as conn:
+        yield conn
+
+
+@asynccontextmanager
+async def worker_claim_transaction(pool: Pool) -> AsyncGenerator[Connection]:
+    """Run the worker's cross-organization queue claim in one short transaction (§B9.3).
+
+    No organization is set. Only `outbox` has worker claim policies, so every other tenant table
+    reads as empty here; use it for claiming and recording results on `outbox` and nothing else.
+    """
+    async with platform_transaction(pool) as conn:
         yield conn
 
 
@@ -201,6 +322,6 @@ async def platform_transaction(pool: Pool) -> AsyncGenerator[Connection]:
     RLS-protected table reads as empty. The context is explicitly cleared for this transaction so a
     session-level value set outside these helpers cannot apply.
     """
-    async with pool.acquire() as conn, conn.transaction():
+    async with _acquire(pool) as conn, conn.transaction():
         await _apply_transaction_settings(pool, conn, "")
         yield conn

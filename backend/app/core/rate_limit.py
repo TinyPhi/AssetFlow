@@ -12,6 +12,7 @@ import asyncio
 import ipaddress
 import time
 from collections import defaultdict, deque
+from collections.abc import Iterable
 
 from fastapi import Request
 
@@ -59,27 +60,65 @@ class InMemoryRateLimitStore:
 default_rate_limit_store = InMemoryRateLimitStore()
 
 
-def get_client_identifier(request: Request) -> str:
-    """Derive client identifier from request state, forwarded headers, or client IP."""
-    # Check if request has an authenticated member or principal
+type ProxyNetworks = tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]
+
+
+def parse_proxy_cidrs(cidrs: Iterable[str]) -> ProxyNetworks:
+    """Parse configured proxy networks (`platform.trusted_proxy_cidrs`); a bad entry raises ValueError."""
+    return tuple(ipaddress.ip_network(c, strict=False) for c in cidrs)
+
+
+def _in_networks(ip: ipaddress.IPv4Address | ipaddress.IPv6Address, networks: ProxyNetworks) -> bool:
+    return any(ip in network for network in networks)
+
+
+def _forwarded_client_ip(request: Request, trusted: ProxyNetworks) -> str | None:
+    """The client IP from X-Forwarded-For, trusted only when the TCP peer is a configured proxy.
+
+    Walks the header from the right, skipping hops that are themselves trusted proxies, and returns
+    the first untrusted hop (the one a trusted proxy actually saw). Entries to its left are
+    client-controlled and never read. Returns None when the header cannot be trusted.
+    """
+    if not trusted or not request.client or not request.client.host:
+        return None
+    try:
+        peer = ipaddress.ip_address(request.client.host)
+    except ValueError:
+        return None
+    header = request.headers.get("X-Forwarded-For")
+    if not header or not _in_networks(peer, trusted):
+        return None
+    for raw in reversed(header.split(",")):
+        try:
+            hop = ipaddress.ip_address(raw.strip())
+        except ValueError:
+            return None
+        if not _in_networks(hop, trusted):
+            return str(hop)
+    return None
+
+
+def get_client_identifier(request: Request, trusted_proxies: ProxyNetworks = ()) -> str:
+    """Derive the client identifier: authenticated member, else IP (forwarded only via trusted proxies)."""
     user_id = getattr(request.state, "member_id", None) or getattr(request.state, "user_id", None)
     if user_id:
         return f"member:{user_id}"
 
-    # Forwarded headers (e.g. from nginx edge proxy)
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        try:
-            client_ip = ipaddress.ip_address(forwarded.split(",")[0].strip())
-        except ValueError:
-            client_ip = None
-        if client_ip is not None:
-            return f"ip:{client_ip}"  # nosemgrep: directly-returned-format-string (non-Flask)
+    forwarded = _forwarded_client_ip(request, trusted_proxies)
+    if forwarded is not None:
+        return f"ip:{forwarded}"  # nosemgrep: directly-returned-format-string (non-Flask)
 
     if request.client and request.client.host:
         return f"ip:{request.client.host}"
 
     return "unknown"
+
+
+def _route_template(request: Request) -> str:
+    """The matched route's path template (`/assets/{asset_id}`), so one route is one key family."""
+    route = request.scope.get("route")
+    template = getattr(route, "path", None)
+    return template if isinstance(template, str) else request.url.path
 
 
 class RateLimiter:
@@ -91,15 +130,29 @@ class RateLimiter:
         seconds: int = 60,
         store: InMemoryRateLimitStore | None = None,
         key_prefix: str = "rl",
+        trusted_proxy_cidrs: Iterable[str] | None = None,
     ) -> None:
         self.times = times
         self.seconds = seconds
         self.store = store or default_rate_limit_store
         self.key_prefix = key_prefix
+        self._trusted = parse_proxy_cidrs(trusted_proxy_cidrs) if trusted_proxy_cidrs is not None else None
+
+    def _trusted_proxies(self, request: Request) -> ProxyNetworks:
+        """Explicit constructor value, else `platform.trusted_proxy_cidrs` of the running app's config."""
+        if self._trusted is not None:
+            return self._trusted
+        config = (
+            getattr(getattr(request.app.state, "config", None), "platform", None)
+            if "app" in request.scope
+            else None
+        )
+        cidrs = getattr(config, "trusted_proxy_cidrs", None)
+        return parse_proxy_cidrs(cidrs) if cidrs else ()
 
     async def __call__(self, request: Request) -> None:
-        identifier = get_client_identifier(request)
-        key = f"{self.key_prefix}:{request.url.path}:{identifier}"
+        identifier = get_client_identifier(request, self._trusted_proxies(request))
+        key = f"{self.key_prefix}:{_route_template(request)}:{identifier}"
         allowed, retry_after = await self.store.hit(key, self.times, self.seconds)
         if not allowed:
             raise RateLimitedError(
