@@ -66,7 +66,7 @@ def registration(key: str) -> str:
     """The block that registers the channel with the shared contract suite."""
     values = names(key)
     return (
-        f"\n\n@contract_target(\"{key}\")\n"
+        f'\n\n@contract_target("{key}")\n'
         f"def _{values['@MODULE@']}() -> NotificationChannel:\n"
         f"    from app.channels.{values['@MODULE@']} import {values['@CLASS@']}Channel  # noqa: PLC0415\n\n"
         f"    return {values['@CLASS@']}Channel()\n"
@@ -76,7 +76,9 @@ def registration(key: str) -> str:
 def scaffold(key: str, root: Path) -> list[Path]:
     """Create the files under `root`; returns what was written. Raises `FileExistsError` before writing."""
     if not KEY_PATTERN.match(key):
-        raise ValueError("the channel key must be lower case letters, digits and hyphens, starting with a letter")
+        raise ValueError(
+            "the channel key must be lower case letters, digits and hyphens, starting with a letter"
+        )
     files = targets(key)
     existing = [path for path in files if (root / path).exists()]
     if existing:

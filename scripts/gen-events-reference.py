@@ -89,7 +89,9 @@ def main(argv: list[str] | None = None) -> int:
     content = render()
     if args.check:
         if not OUTPUT.is_file() or OUTPUT.read_text(encoding="utf-8").replace("\r\n", "\n") != content:
-            sys.stderr.write(f"{OUTPUT.relative_to(REPO_ROOT)} is stale; run scripts/gen-events-reference.py\n")
+            sys.stderr.write(
+                f"{OUTPUT.relative_to(REPO_ROOT)} is stale; run scripts/gen-events-reference.py\n"
+            )
             return 1
         return 0
     OUTPUT.write_text(content, encoding="utf-8", newline="\n")

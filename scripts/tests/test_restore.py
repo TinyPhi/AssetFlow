@@ -55,4 +55,4 @@ def test_restore_test_cleans_up_only_its_own_project() -> None:
     assert 'TEST_PROJECT="assetflow-restoretest"' in content
     assert 'docker compose -p "${TEST_PROJECT}"' in content
     # Teardown trap must never delete main assetflow project
-    assert 'docker compose -p assetflow down' not in content
+    assert "docker compose -p assetflow down" not in content
