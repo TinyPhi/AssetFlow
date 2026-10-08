@@ -19,7 +19,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from app.api.deps import require_platform_admin
+from app.api.deps import require_platform_admin, require_principal
 from app.core.config import load_config
 from app.core.problems import SecretsUnavailableError
 from app.main import Bootstrap, create_app
@@ -181,6 +181,44 @@ async def test_readiness_503_when_registry_health_raises(client: httpx.AsyncClie
     assert resp.json() == {"status": "unavailable"}
 
 
+async def test_provider_health_is_cached_for_five_seconds(
+    client: httpx.AsyncClient, harness: Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AF-038: provider health is probed once per 5 s window, then again after it."""
+    from app.api import health as health_module  # noqa: PLC0415 - patching the module clock
+
+    calls: list[int] = []
+    original = harness.registry.health
+
+    async def counting_health() -> Mapping[str, Any]:
+        calls.append(1)
+        return await original()
+
+    harness.registry.health = counting_health  # type: ignore[method-assign]
+    clock = [1000.0]
+    monkeypatch.setattr(health_module.time, "monotonic", lambda: clock[0])
+
+    for _ in range(3):
+        assert (await client.get("/api/health")).status_code == 200
+    assert len(calls) == 1
+
+    clock[0] += health_module.PROVIDER_HEALTH_TTL_SECONDS + 0.1
+    assert (await client.get("/api/health")).status_code == 200
+    assert len(calls) == 2
+
+
+async def test_public_readiness_is_rate_limited(client: httpx.AsyncClient) -> None:
+    """AF-038: the unauthenticated readiness probe answers 429 with Retry-After past its limit."""
+    from app.api.health import PUBLIC_HEALTH_LIMIT  # noqa: PLC0415
+
+    for _ in range(PUBLIC_HEALTH_LIMIT):
+        assert (await client.get("/api/health")).status_code == 200
+    resp = await client.get("/api/health")
+    assert resp.status_code == 429
+    assert int(resp.headers["retry-after"]) >= 1
+    assert (await client.get("/healthz")).status_code == 200
+
+
 async def test_readiness_503_before_startup() -> None:
     """Without a completed lifespan there is no pool or registry: not ready."""
     harness = make_harness()
@@ -206,6 +244,7 @@ async def test_provider_health_is_sanitized_for_admins(client: httpx.AsyncClient
         return None
 
     harness.app.dependency_overrides[require_platform_admin] = allow
+    harness.app.dependency_overrides[require_principal] = allow
     harness.registry.report = {
         "status": "degraded",
         "providers": {
