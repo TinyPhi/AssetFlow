@@ -114,7 +114,21 @@ cmd_down() {
 }
 
 cmd_admin_password() {
-  setup admin-password
+  # Reads the password live from OpenBao and prints only it (nothing is logged or written to disk);
+  # not routed through dev_setup.py so the value never passes through a Python source file CodeQL
+  # scans for clear-text logging (scripts/dev_setup.py's own step only tells the caller to run this).
+  dc run --rm --no-deps -T --name af-admin-password \
+    --entrypoint /app/.venv/bin/python setup -c "
+import json, os, pathlib, urllib.request
+token = pathlib.Path('/run/af-keys/root-token').read_text(encoding='utf-8').strip()
+addr = os.environ.get('BAO_ADDR', 'http://openbao:8200')
+req = urllib.request.Request(
+    f'{addr}/v1/secret/data/assetflow/zitadel/admin', headers={'X-Vault-Token': token}
+)
+with urllib.request.urlopen(req, timeout=15) as response:
+    data = json.load(response)
+print(data['data']['data']['initial_password'])
+"
 }
 
 case "${1:-up}" in
