@@ -8,6 +8,7 @@ Run: make test-scripts
 from __future__ import annotations
 
 import base64
+import datetime as dt
 import itertools
 import json
 import re
@@ -28,7 +29,7 @@ sys.path.insert(0, str(SCRIPTS))
 
 import bootstrap_zitadel as bz
 
-ISSUER = "http://localhost:8081"
+ISSUER = "http://localhost:19081"
 PEM = (
     rsa.generate_private_key(public_exponent=65537, key_size=2048)
     .private_bytes(
@@ -49,6 +50,7 @@ class FakeZitadel:
     def __init__(self, conflict_on_role_create: bool = False) -> None:
         self.seq = itertools.count(1000)
         self.conflict_on_role_create = conflict_on_role_create
+        self.key_expiry: dict[str, str] = {}
         self.projects: dict[str, dict[str, Any]] = {}
         self.roles: dict[tuple[str, str], dict[str, Any]] = {}
         self.apps: dict[str, dict[str, Any]] = {}
@@ -259,11 +261,18 @@ class FakeZitadel:
         return httpx.Response(200, json={"userId": uid})
 
     def key_search(self, _r: Any, _b: Any, uid: str) -> httpx.Response:
-        return httpx.Response(200, json={"result": [{"id": k} for k in sorted(self.users[uid]["keys"])]})
+        result = []
+        for k in sorted(self.users[uid]["keys"]):
+            item: dict[str, Any] = {"id": k}
+            if k in self.key_expiry:
+                item["expirationDate"] = self.key_expiry[k]
+            result.append(item)
+        return httpx.Response(200, json={"result": result})
 
-    def key_create(self, _r: Any, _b: Any, uid: str) -> httpx.Response:
+    def key_create(self, _r: Any, body: Any, uid: str) -> httpx.Response:
         kid = self.new_id()
         self.users[uid]["keys"].add(kid)
+        self.key_expiry[kid] = body["expirationDate"]
         details = base64.b64encode(_key_json(uid, kid).encode()).decode()
         return httpx.Response(200, json={"keyId": kid, "keyDetails": details})
 
@@ -388,15 +397,16 @@ def test_first_run_creates_everything_and_writes_env_local(root: Path) -> None:
     assert web["authMethodType"] == "OIDC_AUTH_METHOD_TYPE_NONE"
     assert web["accessTokenType"] == "OIDC_TOKEN_TYPE_JWT"
     assert web["accessTokenRoleAssertion"] and web["idTokenRoleAssertion"]
-    assert web["grantTypes"] == ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE", "OIDC_GRANT_TYPE_REFRESH_TOKEN"]
+    assert web["grantTypes"] == ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE"]  # AF-037: no refresh token
     assert web["redirectUris"] == ["http://localhost:5173/auth/callback"]
     assert apps["assetflow-bff"]["config"]["authMethodType"] == "OIDC_AUTH_METHOD_TYPE_BASIC"
+    assert "OIDC_GRANT_TYPE_REFRESH_TOKEN" in apps["assetflow-bff"]["config"]["grantTypes"]
     assert apps["assetflow-introspection"]["kind"] == "apiConfig"
     assert fake.members[
         next(u for u, v in fake.users.items() if v["userName"] == "assetflow-automation")
     ] == ["IAM_ORG_MANAGER"]
     # The public Host header is sent although the URL is the internal one.
-    assert fake.hosts == {"localhost:8081"}
+    assert fake.hosts == {"localhost:19081"}
 
     env = bz.EnvFile(root / ".env.local").read()
     assert env["ZITADEL_PROJECT_ID"] == project["id"]
@@ -437,6 +447,62 @@ def test_first_instance_key_is_rotated_and_deleted(root: Path) -> None:
     assert ("DELETE", "/management/v1/users/boot/keys/k0") in fake.calls
     stored = json.loads(base64.b64decode(bz.EnvFile(root / ".env.local").read()["ZITADEL_BOOTSTRAP_KEY"]))
     assert stored["userId"] == "boot" and stored["keyId"] in fake.users["boot"]["keys"]
+
+
+def _automation_user(fake: FakeZitadel) -> str:
+    return next(u for u, v in fake.users.items() if v["userName"] == "assetflow-automation")
+
+
+def _stored_automation_key_id(root: Path) -> str:
+    env = bz.EnvFile(root / ".env.local").read()
+    return json.loads(base64.b64decode(env["ZITADEL_SERVICE_ACCOUNT_KEY"]))["keyId"]
+
+
+def test_automation_key_lives_90_days(root: Path) -> None:
+    fake = FakeZitadel()
+    run(fake, settings_for(root))
+    expires = dt.datetime.fromisoformat(
+        fake.key_expiry[_stored_automation_key_id(root)].replace("Z", "+00:00")
+    )
+    days = (expires - dt.datetime.now(dt.UTC)).total_seconds() / 86400
+    assert 89 < days <= 90
+
+
+def test_automation_key_is_rotated_by_apply_when_due(root: Path) -> None:
+    fake = FakeZitadel()
+    run(fake, settings_for(root))
+    user = _automation_user(fake)
+    old = _stored_automation_key_id(root)
+    soon = (dt.datetime.now(dt.UTC) + dt.timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    fake.key_expiry[old] = soon
+
+    run(fake, settings_for(root))
+
+    new = _stored_automation_key_id(root)
+    assert new != old
+    assert old not in fake.users[user]["keys"] and new in fake.users[user]["keys"]
+
+
+def test_bootstrap_key_is_rotated_by_apply_when_due(root: Path) -> None:
+    fake = FakeZitadel()
+    run(fake, settings_for(root))
+    env = bz.EnvFile(root / ".env.local").read()
+    old = json.loads(base64.b64decode(env["ZITADEL_BOOTSTRAP_KEY"]))["keyId"]
+    fake.key_expiry[old] = (dt.datetime.now(dt.UTC) + dt.timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    run(fake, settings_for(root))
+
+    env = bz.EnvFile(root / ".env.local").read()
+    new = json.loads(base64.b64decode(env["ZITADEL_BOOTSTRAP_KEY"]))["keyId"]
+    assert new != old and old not in fake.users["boot"]["keys"]
+
+
+def test_automation_key_with_time_left_is_kept(root: Path) -> None:
+    fake = FakeZitadel()
+    run(fake, settings_for(root))
+    old = _stored_automation_key_id(root)
+    run(fake, settings_for(root))
+    assert _stored_automation_key_id(root) == old
 
 
 def test_conflict_409_counts_as_success(root: Path) -> None:

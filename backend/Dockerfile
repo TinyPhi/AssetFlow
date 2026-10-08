@@ -31,6 +31,7 @@ RUN uv sync --frozen --no-dev --no-install-project
 
 # Copy application source and database migration files
 COPY app ./app
+COPY workers ./workers
 COPY migrations ./migrations
 COPY alembic.ini ./
 

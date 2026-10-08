@@ -28,9 +28,15 @@ class FakeBao:
         self.calls: list[tuple[str, str]] = []
         self.kv_written: dict[str, dict[str, Any]] = {}
         self.lookup_valid = False
+        self.existing: dict[str, dict[str, Any]] = {}
+        self.bodies: dict[str, dict[str, Any] | None] = {}
+        self.audit_devices: dict[str, Any] = {}
 
     def ok(self, method: str, path: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
         self.calls.append((method, path))
+        self.bodies[path] = body
+        if method == "GET" and path == "sys/audit":
+            return {"data": self.audit_devices}
         if path.endswith("/role-id"):
             return {"data": {"role_id": ROLE_ID_VALUE}}
         if path.endswith("/secret-id"):
@@ -38,7 +44,7 @@ class FakeBao:
         return {}
 
     def get(self, path: str) -> dict[str, Any] | None:
-        return None
+        return self.existing.get(path)
 
     def call(self, method: str, path: str, body: dict[str, Any] | None = None) -> tuple[int, dict[str, Any]]:
         self.calls.append((method, path))
@@ -95,3 +101,45 @@ def test_generate_missing_covers_every_path_and_hides_values(
 def test_every_generated_path_has_a_generator() -> None:
     for path in apply.GENERATED_PATHS:
         assert apply._generate_value(path)
+
+
+KEY_PATH = f"transit/keys/{apply.TRANSIT_KEY}"
+
+
+def test_new_transit_key_is_derived_and_not_exportable(applier: Any) -> None:
+    applier.transit_key()
+    body = applier.bao.bodies[KEY_PATH]
+    assert body["derived"] is True
+    assert body["exportable"] is False
+    assert body["type"] == "aes256-gcm96"
+
+
+def test_existing_non_derived_transit_key_is_refused_with_a_clear_message(applier: Any) -> None:
+    applier.bao.existing[KEY_PATH] = {"data": {"derived": False, "exportable": False}}
+    with pytest.raises(apply.BaoError) as excinfo:
+        applier.transit_key()
+    message = str(excinfo.value)
+    assert "not derived" in message
+    assert "re-key" in message
+    assert applier.changes == []
+
+
+def test_existing_derived_transit_key_is_accepted(applier: Any) -> None:
+    applier.bao.existing[KEY_PATH] = {
+        "data": {"derived": True, "exportable": False, "auto_rotate_period": apply.YEAR_SECONDS}
+    }
+    applier.transit_key()
+    assert applier.changes == []
+
+
+def test_file_audit_device_is_enabled_once(applier: Any) -> None:
+    applier.audit_device()
+    body = applier.bao.bodies["sys/audit/file"]
+    assert body is not None and body["type"] == "file"
+    assert body["options"]["file_path"] == apply.DEFAULT_AUDIT_FILE
+    assert applier.changes == [f"enabled file audit device ({apply.DEFAULT_AUDIT_FILE})"]
+
+    applier.bao.audit_devices = {"file/": {"type": "file"}}
+    applier.changes.clear()
+    applier.audit_device()
+    assert applier.changes == []
