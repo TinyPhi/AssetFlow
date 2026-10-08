@@ -279,3 +279,19 @@ def test_tracker_picker() -> None:
     assert pick_next(tasks)["task_id"] == "M1.1-T2"
     tasks[1]["status"] = "◐"
     assert pick_next(tasks)["task_id"] == "M1.1-T2"
+
+
+def test_tracker_parses_part_ids_and_issue_column() -> None:
+    text = "\n".join(
+        [
+            "| P6-01a | Worker process | #60 | Worker isolation tests pass | ☑ |",
+            "| P6-01b | Job runner | #61 | Jobs stop at their time limit | ☐ |",
+            "| P10-01 | Import upload | #90 | Bad files are rejected | ☐ |",
+        ]
+    )
+    tasks = parse_tracker(text)
+    assert [t["task_id"] for t in tasks] == ["P6-01a", "P6-01b", "P10-01"]
+    assert [t["milestone"] for t in tasks] == ["P6", "P6", "P10"]
+    assert tasks[1]["title"] == "Job runner"
+    assert tasks[1]["done_when"] == "Jobs stop at their time limit"
+    assert pick_next(tasks)["task_id"] == "P6-01b"
