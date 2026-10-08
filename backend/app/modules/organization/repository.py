@@ -46,7 +46,7 @@ class OrgUnitRepository:
     ) -> asyncpg.Record | None:
         lock = " FOR UPDATE" if for_update else ""
         sql = (
-            f"SELECT id, organization_id, parent_id, path::text AS path, type, code, name, "  # noqa: S608
+            f"SELECT id, organization_id, parent_id, path::text AS path, type, code, name, "  # nosec B608  # noqa: S608
             f"manager_member_id, status, version, created_at, updated_at "
             f"FROM public.org_units WHERE organization_id = $1 AND id = $2{lock}"
         )
@@ -57,7 +57,7 @@ class OrgUnitRepository:
     ) -> asyncpg.Record | None:
         lock = " FOR UPDATE" if for_update else ""
         sql = (
-            f"SELECT id, organization_id, parent_id, path::text AS path, type, code, name, "  # noqa: S608
+            f"SELECT id, organization_id, parent_id, path::text AS path, type, code, name, "  # nosec B608  # noqa: S608
             f"manager_member_id, status, version, created_at, updated_at "
             f"FROM public.org_units WHERE organization_id = $1 AND code = $2{lock}"
         )
@@ -121,7 +121,7 @@ class OrgUnitRepository:
             sets.append(f"manager_member_id = ${len(args)}")
 
         sql = (
-            f"UPDATE public.org_units SET {', '.join(sets)} "  # noqa: S608
+            f"UPDATE public.org_units SET {', '.join(sets)} "  # nosec B608  # noqa: S608
             f"WHERE organization_id = $1 AND id = $2 AND version = $3 "
             f"RETURNING id, organization_id, parent_id, path::text AS path, type, code, name, "
             f"manager_member_id, status, version, created_at, updated_at"
@@ -253,7 +253,7 @@ class OrgUnitRepository:
             if scope_filter.org_unit_paths:
                 args.append(list(scope_filter.org_unit_paths))
                 branches.append(
-                    f"SELECT id FROM public.org_units "  # noqa: S608
+                    f"SELECT id FROM public.org_units "  # nosec B608  # noqa: S608
                     f"WHERE organization_id = $1 AND (path <@ ANY(${len(args)}::ltree[]))"
                 )
             if scope_filter.team_ids:
@@ -261,7 +261,7 @@ class OrgUnitRepository:
                 if team_uuids:
                     args.append(team_uuids)
                     branches.append(
-                        f"SELECT owning_org_unit_id AS id FROM public.teams "  # noqa: S608
+                        f"SELECT owning_org_unit_id AS id FROM public.teams "  # nosec B608  # noqa: S608
                         f"WHERE organization_id = $1 AND id = ANY(${len(args)}::uuid[]) "
                         f"AND owning_org_unit_id IS NOT NULL"
                     )
@@ -271,7 +271,7 @@ class OrgUnitRepository:
             clauses.append(f"ou.id IN ({allowed_union})")
 
         sql = (
-            f"SELECT ou.id, ou.organization_id, ou.parent_id, ou.path::text AS path, "  # noqa: S608
+            f"SELECT ou.id, ou.organization_id, ou.parent_id, ou.path::text AS path, "  # nosec B608  # noqa: S608
             f"ou.type, ou.code, ou.name, ou.manager_member_id, ou.status, ou.version, "
             f"ou.created_at, ou.updated_at "
             f"FROM public.org_units ou WHERE {' AND '.join(clauses)} "
@@ -293,7 +293,7 @@ class LocationRepository:
     ) -> asyncpg.Record | None:
         lock = " FOR UPDATE" if for_update else ""
         sql = (
-            f"SELECT id, organization_id, parent_id, path::text AS path, type, code, name, "  # noqa: S608
+            f"SELECT id, organization_id, parent_id, path::text AS path, type, code, name, "  # nosec B608  # noqa: S608
             f"address, version, created_at, updated_at "
             f"FROM public.locations WHERE organization_id = $1 AND id = $2{lock}"
         )
@@ -304,7 +304,7 @@ class LocationRepository:
     ) -> asyncpg.Record | None:
         lock = " FOR UPDATE" if for_update else ""
         sql = (
-            f"SELECT id, organization_id, parent_id, path::text AS path, type, code, name, "  # noqa: S608
+            f"SELECT id, organization_id, parent_id, path::text AS path, type, code, name, "  # nosec B608  # noqa: S608
             f"address, version, created_at, updated_at "
             f"FROM public.locations WHERE organization_id = $1 AND code = $2{lock}"
         )
@@ -364,7 +364,7 @@ class LocationRepository:
             sets.append(f"address = ${len(args)}::jsonb")
 
         sql = (
-            f"UPDATE public.locations SET {', '.join(sets)} "  # noqa: S608
+            f"UPDATE public.locations SET {', '.join(sets)} "  # nosec B608  # noqa: S608
             f"WHERE organization_id = $1 AND id = $2 AND version = $3 "
             f"RETURNING id, organization_id, parent_id, path::text AS path, type, code, name, "
             f"address, version, created_at, updated_at"
@@ -449,7 +449,7 @@ class LocationRepository:
             clauses.append(f"parent_id = ${len(args)}")
 
         sql = (
-            f"SELECT id, organization_id, parent_id, path::text AS path, type, code, name, "  # noqa: S608
+            f"SELECT id, organization_id, parent_id, path::text AS path, type, code, name, "  # nosec B608  # noqa: S608
             f"address, version, created_at, updated_at "
             f"FROM public.locations WHERE {' AND '.join(clauses)} "
             f"ORDER BY path ASC"
@@ -470,7 +470,7 @@ class TeamRepository:
     ) -> asyncpg.Record | None:
         lock = " FOR UPDATE" if for_update else ""
         sql = (
-            f"SELECT id, organization_id, code, name, owning_org_unit_id, type, skills, "  # noqa: S608
+            f"SELECT id, organization_id, code, name, owning_org_unit_id, type, skills, "  # nosec B608  # noqa: S608
             f"working_calendar_id, status, version, created_at, updated_at "
             f"FROM public.teams WHERE organization_id = $1 AND id = $2{lock}"
         )
@@ -481,7 +481,7 @@ class TeamRepository:
     ) -> asyncpg.Record | None:
         lock = " FOR UPDATE" if for_update else ""
         sql = (
-            f"SELECT id, organization_id, code, name, owning_org_unit_id, type, skills, "  # noqa: S608
+            f"SELECT id, organization_id, code, name, owning_org_unit_id, type, skills, "  # nosec B608  # noqa: S608
             f"working_calendar_id, status, version, created_at, updated_at "
             f"FROM public.teams WHERE organization_id = $1 AND code = $2{lock}"
         )
@@ -556,7 +556,7 @@ class TeamRepository:
             sets.append(f"working_calendar_id = ${len(args)}")
 
         sql = (
-            f"UPDATE public.teams SET {', '.join(sets)} "  # noqa: S608
+            f"UPDATE public.teams SET {', '.join(sets)} "  # nosec B608  # noqa: S608
             f"WHERE organization_id = $1 AND id = $2 AND version = $3 "
             f"RETURNING id, organization_id, code, name, owning_org_unit_id, type, skills, "
             f"working_calendar_id, status, version, created_at, updated_at"
@@ -625,13 +625,13 @@ class TeamRepository:
                 if team_uuids:
                     args.append(team_uuids)
                     branches.append(
-                        f"SELECT id FROM public.teams "  # noqa: S608
+                        f"SELECT id FROM public.teams "  # nosec B608  # noqa: S608
                         f"WHERE organization_id = $1 AND id = ANY(${len(args)}::uuid[])"
                     )
             if scope_filter.org_unit_paths:
                 args.append(list(scope_filter.org_unit_paths))
                 branches.append(
-                    f"SELECT t.id FROM public.teams t "  # noqa: S608
+                    f"SELECT t.id FROM public.teams t "  # nosec B608  # noqa: S608
                     f"JOIN public.org_units ou "
                     f"ON ou.id = t.owning_org_unit_id AND ou.organization_id = t.organization_id "
                     f"WHERE t.organization_id = $1 AND (ou.path <@ ANY(${len(args)}::ltree[]))"
@@ -642,7 +642,7 @@ class TeamRepository:
             clauses.append(f"t.id IN ({allowed_union})")
 
         sql = (
-            f"SELECT t.id, t.organization_id, t.code, t.name, t.owning_org_unit_id, t.type, "  # noqa: S608
+            f"SELECT t.id, t.organization_id, t.code, t.name, t.owning_org_unit_id, t.type, "  # nosec B608  # noqa: S608
             f"t.skills, t.working_calendar_id, t.status, t.version, t.created_at, t.updated_at "
             f"FROM public.teams t WHERE {' AND '.join(clauses)} "
             f"ORDER BY t.name ASC"
@@ -730,7 +730,7 @@ class TeamMemberRepository:
             sets.append(f"valid_to = ${len(args)}")
 
         sql = (
-            f"UPDATE public.team_members SET {', '.join(sets)} "  # noqa: S608
+            f"UPDATE public.team_members SET {', '.join(sets)} "  # nosec B608  # noqa: S608
             f"WHERE organization_id = $1 AND team_id = $2 AND member_id = $3 "
             f"RETURNING id, organization_id, team_id, member_id, team_role, valid_from, valid_to, "
             f"created_at, updated_at"
