@@ -9,6 +9,7 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
+from app.core.permissions import ScopeFilter
 from app.modules.organization.errors import (
     LocationConflictError,
     LocationDeleteBlockedError,
@@ -27,7 +28,7 @@ from app.modules.organization.errors import (
     TeamNotFoundError,
     TeamVersionConflictError,
 )
-from app.modules.organization.repository import to_ltree_label
+from app.modules.organization.repository import LocationRepository, to_ltree_label
 from app.modules.organization.schemas import (
     LocationCreate,
     LocationMove,
@@ -178,3 +179,21 @@ def test_error_classes() -> None:
     e16 = TeamMemberConflictError()
     assert e16.status_code == 409
     assert e16.code == "team_member.conflict"
+
+
+async def test_location_list_denies_a_non_organization_scope_without_touching_the_database() -> None:
+    """Locations have no owner_org_unit_id/team_id column, so a team- or org-unit-scoped grant
+    cannot be translated into a WHERE clause (unlike OrgUnitRepository/TeamRepository). list()
+    must fail closed for that case rather than fall through to an unfiltered, org-wide query.
+    """
+    repo = LocationRepository()
+    org_id = uuid4()
+
+    team_scoped = ScopeFilter(team_ids=("some-team",))
+    assert await repo.list(None, organization_id=org_id, scope_filter=team_scoped) == []  # type: ignore[arg-type]
+
+    org_unit_scoped = ScopeFilter(org_unit_paths=("root",))
+    assert await repo.list(None, organization_id=org_id, scope_filter=org_unit_scoped) == []  # type: ignore[arg-type]
+
+    empty = ScopeFilter()
+    assert await repo.list(None, organization_id=org_id, scope_filter=empty) == []  # type: ignore[arg-type]

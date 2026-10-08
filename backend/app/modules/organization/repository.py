@@ -441,6 +441,15 @@ class LocationRepository:
         if scope_filter.is_empty:
             return []
 
+        # Unlike org_units/teams, locations carry no owner_org_unit_id or team_id column, so a
+        # TEAM- or ORG_UNIT-scoped grant cannot be translated into a WHERE clause the way
+        # OrgUnitRepository.list() / TeamRepository.list() do. Rather than silently ignore the
+        # narrower grant and return every location in the org, fail closed: only an
+        # organization-wide grant (or SELF, which locations have no concept of either) sees
+        # results. Widening this needs a schema column and a real scope-filter translation.
+        if not scope_filter.organization:
+            return []
+
         clauses = ["organization_id = $1"]
         args: list[Any] = [organization_id]
 
