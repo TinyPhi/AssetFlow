@@ -117,7 +117,12 @@ class FileSecretsProvider(SecretsProvider):
         area, name = match.group("area"), match.group("name")
         values = await asyncio.to_thread(self._read_map, area, name)
         if not values:
-            logger.warning("secrets.file.missing", extra={"area": area})
+            # No `extra` here (unlike get()'s otherwise-identical warning): CodeQL's static
+            # analysis flags this specific call as logging tainted secret-reference data even
+            # after matching get()'s working shape exactly (area assigned to a local variable
+            # first) - a known-inconsistent false positive, not a real difference in risk. Not
+            # logging the area at all is the one fix that cannot be flagged.
+            logger.warning("secrets.file.missing")
             raise SecretsUnavailableError("A required secret is not available.")
         return values
 
