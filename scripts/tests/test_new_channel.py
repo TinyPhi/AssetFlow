@@ -66,7 +66,9 @@ def test_every_generated_file_has_an_spdx_header_and_no_placeholder_is_left(root
         "docs/guides/channels/demo-hook.md",
     ):
         text = (root / path).read_text(encoding="utf-8")
+        # REUSE-IgnoreStart - asserting against generated content, not this file's own SPDX tag
         assert "SPDX-License-Identifier: AGPL-3.0-only" in text
+        # REUSE-IgnoreEnd
         assert (
             "@KEY@" not in text and "@CLASS@" not in text and "@MODULE@" not in text and "@TITLE@" not in text
         )
