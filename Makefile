@@ -449,6 +449,9 @@ dev: ## Start the local development stack (6 containers: af-postgres, af-openbao
 dev-down: ## Stop the local development stack (data kept; RESET=1 also deletes its volumes)
 	bash scripts/dev.sh down $(if $(filter 1 yes true,$(RESET)),--reset)
 
+dev-admin-password: ## Print the first Zitadel admin's password, read live from OpenBao
+	bash scripts/dev.sh admin-password
+
 # Removes only what this project created (label com.tinyphi.project=assetflow): stopped
 # containers, dangling :dev/:local/:ci image tags, and (only when asked) its volumes. Never
 # touches another project's containers or images, and never a running container.
