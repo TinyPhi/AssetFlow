@@ -1,0 +1,5 @@
+---
+fields: [team_id, member_id, team_role]
+subject: "You were added to a team"
+---
+You were added to a team as {{ team_role }}.

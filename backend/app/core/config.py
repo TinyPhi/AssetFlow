@@ -294,6 +294,14 @@ class EmailChannelConfig(_Strict):
         default=False,
         description="Let the relay resolve to a private address (a local mail catcher); not in production",
     )
+    max_per_org_per_hour: int = Field(
+        default=200,
+        ge=1,
+        description=(
+            "Per-organization send cap (sliding hour window): a runaway automation rule or import "
+            "job in one organization must not exhaust the shared relay for every other tenant"
+        ),
+    )
 
 
 class NotificationChannelsConfig(_Strict):
