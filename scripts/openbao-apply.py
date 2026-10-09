@@ -6,7 +6,10 @@
 Applies, through the OpenBao HTTP API, and only when something differs:
 
 1. KV v2 at ``secret/`` and the transit engine at ``transit/``.
-2. Transit key ``assetflow-fields`` (aes256-gcm96, not exportable, yearly auto-rotation).
+2. Transit key ``assetflow-fields`` (aes256-gcm96, derived, not exportable, yearly auto-rotation).
+   ``derived: true`` binds every ciphertext to its organization context; an existing key that is
+   not derived cannot be changed in place and is refused (see the re-key runbook).
+   The file audit device (``sys/audit/file``), so every request leaves a record.
 3. ACL policies from ``deploy/openbao/policies/*.hcl`` (one AppRole each) and
    ``deploy/openbao/operator/*.hcl`` (operator policies, no AppRole).
 4. AppRole auth and one role per service policy: periodic tokens, short-lived secret ids,
@@ -22,10 +25,11 @@ Options:
                          exist yet (check-and-set, so existing values are never overwritten)
 
 Environment (operator shell, never a container):
-    BAO_ADDR     default https://127.0.0.1:8200
+    BAO_ADDR     default https://127.0.0.1:19200
     BAO_CACERT   default deploy/.secrets/openbao-tls/ca.pem
     BAO_TOKEN    operator token (or ~/.bao-token); the root token only for the first bootstrap
     ASSETFLOW_NET_CIDR   network range for bound CIDRs (default 172.28.0.0/24, "" disables)
+    BAO_AUDIT_FILE      audit log path inside the OpenBao container (default /openbao/file/audit/audit.log)
 """
 
 from __future__ import annotations
@@ -50,6 +54,8 @@ DEFAULT_CACERT = CREDENTIALS_DIR / "openbao-tls" / "ca.pem"
 
 TRANSIT_KEY = "assetflow-fields"
 YEAR_SECONDS = 365 * 24 * 3600
+AUDIT_DEVICE = "file"
+DEFAULT_AUDIT_FILE = "/openbao/file/audit/audit.log"
 
 # AppRole settings (https://openbao.org/docs/auth/approle/). Periodic tokens renew for as
 # long as the service renews them; the secret id is only needed at login and is short-lived.
@@ -156,9 +162,10 @@ class Bao:
 
 
 class Applier:
-    def __init__(self, bao: Bao, cidrs: list[str]) -> None:
+    def __init__(self, bao: Bao, cidrs: list[str], audit_file: str = DEFAULT_AUDIT_FILE) -> None:
         self.bao = bao
         self.cidrs = cidrs
+        self.audit_file = audit_file
         self.changes: list[str] = []
 
     def changed(self, what: str) -> None:
@@ -190,6 +197,8 @@ class Applier:
                 f"transit/keys/{TRANSIT_KEY}",
                 {
                     "type": "aes256-gcm96",
+                    # Each organization encrypts under its own derived key (context = organization).
+                    "derived": True,
                     "exportable": False,
                     "auto_rotate_period": "8760h",
                 },
@@ -197,6 +206,12 @@ class Applier:
             self.changed(f"created transit key {TRANSIT_KEY}")
             return
         data = current.get("data", {})
+        if not data.get("derived"):
+            raise BaoError(
+                f"transit key {TRANSIT_KEY} exists but is not derived (derived: false). "
+                "A key cannot be made derived afterwards: re-key it (docs/operations/openbao.md, "
+                "re-key runbook) and re-run this script. Encrypted local test data becomes unreadable."
+            )
         if data.get("exportable"):
             raise BaoError(f"transit key {TRANSIT_KEY} is exportable; that is not allowed")
         if int(data.get("auto_rotate_period") or 0) != YEAR_SECONDS or data.get("deletion_allowed"):
@@ -206,6 +221,32 @@ class Applier:
                 {"auto_rotate_period": "8760h", "deletion_allowed": False},
             )
             self.changed(f"configured transit key {TRANSIT_KEY}")
+
+    def audit_device(self) -> None:
+        payload = self.bao.ok("GET", "sys/audit")
+        devices = payload.get("data", payload)
+        if f"{AUDIT_DEVICE}/" in devices:
+            return
+        try:
+            self.bao.ok(
+                "PUT",
+                f"sys/audit/{AUDIT_DEVICE}",
+                {"type": "file", "options": {"file_path": self.audit_file}},
+            )
+        except BaoError as exc:
+            # OpenBao 2.x refuses to enable an audit device over the API ("use declarative,
+            # config-based audit device management instead"); it must then be in the server's own
+            # config file (deploy/openbao/config/openbao.hcl, deploy/openbao/dev/openbao.hcl).
+            # Not fatal here: the audit log is a defence-in-depth control, not a credential.
+            if "config-based audit device management" not in str(exc):
+                raise
+            print(
+                "  warning: could not enable the file audit device over the API; add it to the server's "
+                "own config file instead (see deploy/openbao/dev/openbao.hcl)",
+                file=sys.stderr,
+            )
+            return
+        self.changed(f"enabled file audit device ({self.audit_file})")
 
     # -- policies --------------------------------------------------------------------
     def policy(self, path: Path) -> None:
@@ -325,7 +366,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: no policy files in {POLICY_DIR}", file=sys.stderr)
         return 1
 
-    addr = os.environ.get("BAO_ADDR", "https://127.0.0.1:8200")
+    addr = os.environ.get("BAO_ADDR", "https://127.0.0.1:19200")
     cacert = os.environ.get("BAO_CACERT") or (str(DEFAULT_CACERT) if DEFAULT_CACERT.exists() else None)
     token = _token()
     if not token:
@@ -350,7 +391,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
 
-    applier = Applier(bao, cidrs)
+    applier = Applier(bao, cidrs, os.environ.get("BAO_AUDIT_FILE") or DEFAULT_AUDIT_FILE)
     try:
         self_info = bao.ok("GET", "auth/token/lookup-self").get("data", {})
         if "root" in (self_info.get("policies") or []):
@@ -361,6 +402,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"==> OpenBao at {addr}")
         applier.mounts()
         applier.transit_key()
+        applier.audit_device()
         for path in operator_policies + service_policies:
             applier.policy(path)
         applier.approle_auth()

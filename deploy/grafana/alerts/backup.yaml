@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: 2026 TinyPhi
+# SPDX-License-Identifier: AGPL-3.0-only
+# Prometheus / Grafana alert rules for AssetFlow database backup monitoring (§B13.5, M1.6-T9).
+
+groups:
+  - name: assetflow-backup-alerts
+    rules:
+      - alert: AssetFlowBackupFailed
+        expr: (time() - assetflow_backup_last_success_timestamp_seconds) > 172800
+        for: 15m
+        labels:
+          severity: critical
+          project: assetflow
+        annotations:
+          summary: "AssetFlow database backup has failed or not run for > 48 hours"
+          description: "Last successful pgBackRest backup occurred at {{ $value | humanizeTimestamp }}."
+
+      - alert: AssetFlowWalArchiveLag
+        expr: assetflow_backup_wal_archive_lag_seconds > 300
+        for: 5m
+        labels:
+          severity: critical
+          project: assetflow
+        annotations:
+          summary: "AssetFlow WAL archive lag exceeds 5 minutes (RPO breach)"
+          description: "PostgreSQL WAL archiving is {{ $value }} seconds behind (limit: 300s)."
+
+      - alert: AssetFlowRestorablePointStale
+        expr: assetflow_backup_restorable_point_age_seconds > 300
+        for: 5m
+        labels:
+          severity: critical
+          project: assetflow
+        annotations:
+          summary: "Newest restorable point is older than RPO target (5m)"
+          description: "Newest restorable recovery point age is {{ $value }}s."
+
+      - alert: AssetFlowBackupRepoNearCapacity
+        expr: assetflow_backup_repo_used_ratio > 0.80
+        for: 30m
+        labels:
+          severity: warning
+          project: assetflow
+        annotations:
+          summary: "AssetFlow backup repository storage exceeds 80% capacity"
+          description: "Backup repository disk utilization is {{ $value | humanizePercentage }}."

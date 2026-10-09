@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 from app.core.envelope import success_response
 from app.core.openapi_meta import permission_extra
 from app.core.problems import FieldError, UnauthorizedError, ValidationFailedError
+from app.core.rate_limit import InMemoryRateLimitStore, RateLimiter
 from app.core.scope import MemberContext
 from app.modules.assets import repository as repo
 from app.modules.assets import service
@@ -24,7 +25,24 @@ from app.modules.organization.modules import require_module
 
 _CUSTOM_FIELD_OPS = ("gte", "lte")
 
-router = APIRouter(prefix="/assets", tags=["assets"], dependencies=[Depends(require_module("assets"))])
+# Per-member sliding window (§B7.2, same non-negotiable as every other route: a permission and a
+# rate limit). Shared across every route below, member-keyed where a principal is present.
+_ASSETS_RATE_LIMIT_STORE = InMemoryRateLimitStore()
+_ASSETS_RATE_LIMIT = RateLimiter(times=180, seconds=60, store=_ASSETS_RATE_LIMIT_STORE, key_prefix="assets")
+
+
+async def _assets_rate_limit(request: Request) -> None:
+    member = getattr(request.state, "member", None)
+    if member is not None:
+        request.state.member_id = member.member_id
+    await _ASSETS_RATE_LIMIT(request)
+
+
+router = APIRouter(
+    prefix="/assets",
+    tags=["assets"],
+    dependencies=[Depends(require_module("assets")), Depends(_assets_rate_limit)],
+)
 
 
 def _resolve_member(request: Request) -> MemberContext:

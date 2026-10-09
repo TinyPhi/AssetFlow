@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: 2026 TinyPhi
+# SPDX-License-Identifier: AGPL-3.0-only
+"""The `@KEY@` notification channel (§C6.7).
+
+Replace this scaffold's no-op `send` and `health` with the real thing. Rules (§B6.3, §C5.8):
+
+* reach the network only through `ctx.http` (the runtime's allowlisted client) and read secrets only
+  from `ctx.credentials`; never read a secret yourself;
+* `target` is a member id, never an address: look the address up through `ctx.recipients`, keep it
+  in memory for this one send, and never log it;
+* return a `DeliveryResult`: 2xx-style success is `delivered=True`; a timeout, a connection error or
+  a 5xx is retryable, a 4xx is not (`app.channels.retry` has the helpers);
+* put secret settings in `config_schema` as `SecretStr` and list their names in `secret_fields`;
+  list every host you may call in `egress_hosts`.
+"""
+
+from __future__ import annotations
+
+from typing import Any, ClassVar
+
+from pydantic import BaseModel, ConfigDict
+
+from app.channels.base import ChannelContext, DeliveryResult, NotificationChannel, RenderedMessage
+
+__all__ = ["@CLASS@Channel", "@CLASS@Settings"]
+
+
+class @CLASS@Settings(BaseModel):
+    """Per-organization settings of the `@KEY@` channel. Add fields; use `SecretStr` for secrets."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class @CLASS@Channel(NotificationChannel):
+    """Sends a notification through `@KEY@`."""
+
+    key: ClassVar[str] = "@KEY@"
+    display_name: ClassVar[str] = "@TITLE@"
+    config_schema: ClassVar[type[BaseModel]] = @CLASS@Settings
+    secret_fields: ClassVar[tuple[str, ...]] = ()
+    egress_hosts: ClassVar[tuple[str, ...]] = ()  # for example ("api.example.org",)
+
+    async def send(
+        self, ctx: ChannelContext, target: str, message: RenderedMessage, idempotency_key: str
+    ) -> DeliveryResult:
+        """Deliver `message` to the member `target`; use `idempotency_key` as the destination's own id."""
+        return DeliveryResult(delivered=True)  # replace: call the destination through ctx.http
+
+    async def health(self, ctx: ChannelContext) -> dict[str, Any]:
+        """Report whether the channel works for this organization; send nothing surprising."""
+        return {"healthy": True}

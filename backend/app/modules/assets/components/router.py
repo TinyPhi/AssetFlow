@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, Request
 
 from app.core.envelope import success_response
 from app.core.openapi_meta import permission_extra
+from app.core.rate_limit import InMemoryRateLimitStore, RateLimiter
 from app.modules.assets.components import service
 from app.modules.assets.components.schemas import (
     ComponentAttach,
@@ -22,10 +23,27 @@ from app.modules.assets.permissions import READ_PERMISSION, UPDATE_PERMISSION
 from app.modules.assets.router import _request_id, _resolve_member
 from app.modules.organization.modules import require_module
 
+# Tighter than the main assets router: attach/detach take a per-org advisory lock
+# (components/service.py calls repository.lock_attachments), so a caller spamming this route holds
+# that lock open repeatedly at near-zero cost to themselves. Member-keyed, same pattern as
+# app.modules.assets.router.
+_COMPONENTS_RATE_LIMIT_STORE = InMemoryRateLimitStore()
+_COMPONENTS_RATE_LIMIT = RateLimiter(
+    times=60, seconds=60, store=_COMPONENTS_RATE_LIMIT_STORE, key_prefix="asset-components"
+)
+
+
+async def _components_rate_limit(request: Request) -> None:
+    member = getattr(request.state, "member", None)
+    if member is not None:
+        request.state.member_id = member.member_id
+    await _COMPONENTS_RATE_LIMIT(request)
+
+
 router = APIRouter(
     prefix="/assets/{asset_id}/components",
     tags=["assets"],
-    dependencies=[Depends(require_module("assets"))],
+    dependencies=[Depends(require_module("assets")), Depends(_components_rate_limit)],
 )
 
 

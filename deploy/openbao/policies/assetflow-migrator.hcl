@@ -8,6 +8,10 @@ path "secret/data/assetflow/migrator" {
 }
 
 # Runtime role credentials, so migrations can grant them
-path "secret/data/assetflow/database" {
+path "secret/data/assetflow/database/api" {
+  capabilities = ["read"]
+}
+
+path "secret/data/assetflow/database/worker" {
   capabilities = ["read"]
 }
