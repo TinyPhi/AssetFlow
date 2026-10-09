@@ -19,7 +19,13 @@ from typing import Any
 import pytest
 
 COMPOSE_FILE = Path(__file__).resolve().parent.parent.parent / "deploy" / "compose.full.yml"
-OVERRIDES = ("ZITADEL_EXTERNALSECURE", "ZITADEL_TLS_MODE", "API_HOST_PORT", "ZITADEL_EXTERNALPORT")
+OVERRIDES = (
+    "ZITADEL_EXTERNALSECURE",
+    "ZITADEL_TLS_MODE",
+    "API_HOST_PORT",
+    "ZITADEL_EXTERNALPORT",
+    "ASSETFLOW_VERSION",
+)
 
 
 def _render(monkeypatch: pytest.MonkeyPatch, **env: str) -> dict[str, Any]:
@@ -60,3 +66,15 @@ def test_zitadel_external_secure_defaults_to_true(monkeypatch: pytest.MonkeyPatc
 def test_external_secure_can_still_be_switched_off_for_local_http(monkeypatch: pytest.MonkeyPatch) -> None:
     config = _render(monkeypatch, ZITADEL_EXTERNALSECURE="false", ZITADEL_TLS_MODE="disabled")
     assert config["services"]["zitadel"]["environment"]["ZITADEL_EXTERNALSECURE"] == "false"
+
+
+def test_api_image_is_never_the_floating_latest_tag(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A production compose file pinned to `:latest` means `docker compose pull` (or a cache miss)
+    silently upgrades the running image. `ASSETFLOW_VERSION` must default to a fixed, deterministic
+    tag (`local`), never `latest`."""
+    default = _render(monkeypatch)["services"]["api"]["image"]
+    assert not default.endswith(":latest"), default
+    assert default.endswith(":local"), default
+
+    pinned = _render(monkeypatch, ASSETFLOW_VERSION="1.2.3")["services"]["api"]["image"]
+    assert pinned.endswith(":1.2.3"), pinned

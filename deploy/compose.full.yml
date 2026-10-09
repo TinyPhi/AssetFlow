@@ -259,7 +259,7 @@ services:
   api:
     labels:
       com.tinyphi.project: assetflow
-    image: assetflow-api:latest
+    image: assetflow-api:${ASSETFLOW_VERSION:-local}
     build:
       context: ../backend
       dockerfile: Dockerfile

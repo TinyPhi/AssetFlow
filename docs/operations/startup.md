@@ -72,6 +72,11 @@ Non-secret settings can be overridden from the shell: `ZITADEL_DOMAIN`,
 `ZITADEL_EXTERNALPORT`, `ZITADEL_EXTERNALSECURE`, `ZITADEL_TLS_MODE` (`external` behind TLS), `APP_URL`, `API_URL`, `OPENBAO_HOST_PORT`, `POSTGRES_HOST_PORT`,
 `API_HOST_PORT`, `ASSETFLOW_NET_CIDR`, `ASSETFLOW_ENV`.
 
+`ASSETFLOW_VERSION` pins the `api` image tag (default `local`, matching the `assetflow-bootstrap:local`
+convention already used for the bootstrap image). Production must set it in its `.env` to a
+deterministic release tag or digest — an unset value falls back to whatever `local` resolves to on
+that host, not a specific build.
+
 ## 3. Smoke test
 
 `scripts/smoke-full.py` (or `sh scripts/smoke-full.sh`) exits non-zero on the first failure:
