@@ -78,3 +78,14 @@ def test_forwarded_for_is_the_peer_address_not_an_appended_chain(name: str) -> N
     assert "proxy_add_x_forwarded_for" not in text
     values = re.findall(r"proxy_set_header\s+X-Forwarded-For\s+(\S+);", text)
     assert values and set(values) == {"$remote_addr"}
+
+
+@pytest.mark.parametrize("name", SERVER_FILES)
+def test_host_header_forwarded_to_the_api_is_never_the_raw_client_supplied_host(name: str) -> None:
+    """`$host` falls back to `server_name` only when the request has no Host header at all --
+    when it does, `$host` *is* that attacker-controlled value. Forwarding it to the API risks Host
+    header injection (password-reset links, OAuth redirect URIs, QR code URLs built from it).
+    `$server_name` is the configured name and is never client-controlled."""
+    text = (NGINX_DIR / name).read_text(encoding="utf-8")
+    values = re.findall(r"proxy_set_header\s+Host\s+(\S+);", text)
+    assert values and set(values) == {"$server_name"}
