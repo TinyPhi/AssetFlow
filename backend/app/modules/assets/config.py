@@ -96,6 +96,7 @@ _KEY_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 _PREFIX_RE = re.compile(r"^[A-Z][A-Z0-9]{0,9}$")
 _SEPARATORS = frozenset({"-", "_", ".", "/"})
 _SELECT_TYPES = frozenset({"select", "multi_select"})
+_NON_UNIQUE_TYPES = frozenset({"json", "multi_select"})
 
 
 class _Strict(BaseModel):
@@ -205,6 +206,10 @@ class CustomField(_Strict):
                 raise ValueError(f"regex does not compile: {exc}") from exc
         if self.is_unique and self.is_encrypted:
             raise ValueError("an encrypted field cannot be unique (encrypted values cannot be compared)")
+        if self.is_unique and self.type in _NON_UNIQUE_TYPES:
+            raise ValueError(
+                f"is_unique is not supported for {self.type} fields: values cannot be compared reliably"
+            )
         return self
 
 

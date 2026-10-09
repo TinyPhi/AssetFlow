@@ -199,6 +199,14 @@ def test_a_category_that_is_its_own_parent_is_a_cycle() -> None:
             {"key": "k", "label": "K", "type": "text", "is_unique": True, "is_encrypted": True},
             "an encrypted field cannot be unique",
         ),
+        (
+            {"key": "k", "label": "K", "type": "json", "is_unique": True},
+            "is_unique is not supported for json fields",
+        ),
+        (
+            {"key": "k", "label": "K", "type": "multi_select", "options": ["a"], "is_unique": True},
+            "is_unique is not supported for multi_select fields",
+        ),
         ({"key": "K", "label": "K", "type": "text"}, "must be lowercase letters"),
         ({"key": "k", "label": "K", "type": "color"}, "Input should be"),
     ],
