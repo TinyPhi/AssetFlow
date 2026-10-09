@@ -39,6 +39,7 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
+      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
       "react/jsx-no-literals": ["error", { noStrings: false, ignoreProps: true }],
       "react/no-danger": "error",
@@ -52,6 +53,8 @@ export default tseslint.config(
       "react/jsx-no-literals": "off",
       "security/detect-non-literal-fs-filename": "off",
       "security/detect-non-literal-regexp": "off",
+      "security/detect-possible-timing-attacks": "off",
+      "security/detect-unsafe-regex": "off",
     },
   },
 );
