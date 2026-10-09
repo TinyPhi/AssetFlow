@@ -26,15 +26,21 @@ Every error response is RFC 9457 Problem Details (`application/problem+json`, §
 | --- | :---: | --- |
 | [`auth.permission_denied`](#auth.permission_denied) | 403 | Permission denied |
 | [`auth.unauthorized`](#auth.unauthorized) | 401 | Authentication required |
+| [`channel.egress_denied`](#channel.egress_denied) | 502 | Outbound call blocked |
 | [`http.error`](#http.error) | 400 | Request could not be processed |
 | [`http.method_not_allowed`](#http.method_not_allowed) | 405 | Method not allowed |
 | [`http.not_found`](#http.not_found) | 404 | Route not found |
 | [`internal.error`](#internal.error) | 500 | Internal server error |
+| [`job.memory_limit`](#job.memory_limit) | 500 | Job memory limit exceeded |
+| [`job.time_limit`](#job.time_limit) | 504 | Job time limit exceeded |
+| [`module.dependency_not_met`](#module.dependency_not_met) | 409 | Module dependency not met |
+| [`module.not_installed`](#module.not_installed) | 404 | Module not installed |
 | [`platform.secrets_unavailable`](#platform.secrets_unavailable) | 503 | Secrets provider unavailable |
 | [`platform.unavailable`](#platform.unavailable) | 503 | Service unavailable |
 | [`rate_limit.exceeded`](#rate_limit.exceeded) | 429 | Too many requests |
 | [`resource.conflict`](#resource.conflict) | 409 | Resource conflict |
 | [`resource.not_found`](#resource.not_found) | 404 | Resource not found |
+| [`scope.denied`](#scope.denied) | 403 | Outside your scope |
 | [`validation.invalid_field`](#validation.invalid_field) | 422 | Validation failed |
 
 ## Codes
@@ -62,6 +68,18 @@ The caller is signed in but lacks the required permission.
 - **Type URI:** `https://github.com/tinyphi/assetflow/blob/main/docs/reference/error-codes.md#auth.unauthorized`
 
 No valid session or token was presented.
+
+<a id="channel.egress_denied"></a>
+
+### `channel.egress_denied`
+
+- **Status:** 502
+- **Title:** Outbound call blocked
+- **Default detail:** A notification channel tried to reach a destination that is not allowed.
+- **Error class:** `ChannelEgressDeniedError`
+- **Type URI:** `https://github.com/tinyphi/assetflow/blob/main/docs/reference/error-codes.md#channel.egress_denied`
+
+A notification channel's outbound call was refused by the egress allowlist (§B6.3 rule 2): the host is not allowed for this channel, the address is private, loopback, link-local or otherwise reserved, the scheme is not HTTPS, or the name does not resolve. The detail never contains the destination or any credential.
 
 <a id="http.error"></a>
 
@@ -110,6 +128,54 @@ The request path does not match any API endpoint.
 - **Type URI:** `https://github.com/tinyphi/assetflow/blob/main/docs/reference/error-codes.md#internal.error`
 
 An unexpected server-side failure. Details are only in the server logs, by request id.
+
+<a id="job.memory_limit"></a>
+
+### `job.memory_limit`
+
+- **Status:** 500
+- **Title:** Job memory limit exceeded
+- **Default detail:** The job exceeded its configured memory limit.
+- **Error class:** `JobMemoryLimitError`
+- **Type URI:** `https://github.com/tinyphi/assetflow/blob/main/docs/reference/error-codes.md#job.memory_limit`
+
+A worker job (§B9.3) whose handler process exceeds its registered `memory_limit_mb` (enforced by `RLIMIT_AS`, Linux only) is recorded as failed; on a platform without the memory limit, only the time limit applies.
+
+<a id="job.time_limit"></a>
+
+### `job.time_limit`
+
+- **Status:** 504
+- **Title:** Job time limit exceeded
+- **Default detail:** The job did not finish within its configured time limit.
+- **Error class:** `JobTimeLimitError`
+- **Type URI:** `https://github.com/tinyphi/assetflow/blob/main/docs/reference/error-codes.md#job.time_limit`
+
+A worker job (§B9.3) is stopped and recorded as failed once it runs longer than its registered `time_limit_seconds`; the outbox retry and dead-letter rules apply as for any other failure.
+
+<a id="module.dependency_not_met"></a>
+
+### `module.dependency_not_met`
+
+- **Status:** 409
+- **Title:** Module dependency not met
+- **Default detail:** This module cannot be installed or uninstalled yet.
+- **Error class:** `ModuleDependencyError`
+- **Type URI:** `https://github.com/tinyphi/assetflow/blob/main/docs/reference/error-codes.md#module.dependency_not_met`
+
+Installing a module needs its dependency installed first; uninstalling one needs its dependents uninstalled first (§B5.9, M1.4-T6).
+
+<a id="module.not_installed"></a>
+
+### `module.not_installed`
+
+- **Status:** 404
+- **Title:** Module not installed
+- **Default detail:** This feature requires a module your organization has not installed.
+- **Error class:** `ModuleNotInstalledError`
+- **Type URI:** `https://github.com/tinyphi/assetflow/blob/main/docs/reference/error-codes.md#module.not_installed`
+
+The route guard refuses before any handler runs, so an uninstalled module's routes behave as if they do not exist (§B5.9, M1.4-T6).
 
 <a id="platform.secrets_unavailable"></a>
 
@@ -170,6 +236,18 @@ Generic conflict; modules raise `<entity>.version_conflict` subclasses where pos
 - **Type URI:** `https://github.com/tinyphi/assetflow/blob/main/docs/reference/error-codes.md#resource.not_found`
 
 Generic not-found; modules raise `<entity>.not_found` subclasses instead where possible.
+
+<a id="scope.denied"></a>
+
+### `scope.denied`
+
+- **Status:** 403
+- **Title:** Outside your scope
+- **Default detail:** The action covers records outside your scope.
+- **Error class:** `ScopeDeniedError`
+- **Type URI:** `https://github.com/tinyphi/assetflow/blob/main/docs/reference/error-codes.md#scope.denied`
+
+The caller holds the permission, but not for this record or target: the record is outside the scope of every grant that carries it. A write answers 403; a read answers 404.
 
 <a id="validation.invalid_field"></a>
 

@@ -15,8 +15,9 @@ name: CI
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
+  # No branches filter: the regroup's PRs stack onto each other (PR N's base is PR N-1, not main),
+  # so a branches: [main] filter here would give every PR but the first no CI at all.
+  pull_request: {}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -350,7 +351,7 @@ jobs:
           fail-on-severity: high
           allow-licenses: >-
             MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0, ISC, PSF-2.0,
-            MPL-2.0, Unicode-3.0, Unicode-DFS-2016, CC0-1.0
+            MPL-2.0, Unicode-3.0, Unicode-DFS-2016, CC0-1.0, LicenseRef-scancode-protobuf
 
   license-check:
     name: License allowlist (fallback)

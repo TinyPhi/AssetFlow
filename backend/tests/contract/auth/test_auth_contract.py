@@ -8,12 +8,14 @@ import json
 from collections.abc import Callable
 from pathlib import Path
 
+import oidc_fakes
 import pytest
 
 from app.core.config import ConfigError
 from app.core.problems import UnauthorizedError
 from app.providers.auth.base import AuthProvider, Principal
 from app.providers.auth.mock import MockAuthProvider
+from app.providers.auth.oidc import OidcAuthProvider, OidcAuthSettings
 from app.providers.context import ProviderContext
 
 ORG = "0192f000-0000-7000-8000-000000000001"
@@ -35,8 +37,23 @@ def _mock_token(subject: str, organization_id: str, roles: list[str] | None) -> 
     return json.dumps(claims)
 
 
+_OIDC_KEY = oidc_fakes.make_key()
+
+
+def _oidc_provider() -> AuthProvider:
+    settings = OidcAuthSettings(
+        issuer=oidc_fakes.ISSUER, client_id=oidc_fakes.CLIENT_ID, audience="assetflow"
+    )
+    return OidcAuthProvider(settings, ctx(), transport=oidc_fakes.FakeIdp(_OIDC_KEY).transport())
+
+
+def _oidc_token(subject: str, organization_id: str, roles: list[str] | None) -> str:
+    return oidc_fakes.sign_jwt(oidc_fakes.good_claims(subject, organization_id, roles), _OIDC_KEY)
+
+
 IMPLEMENTATIONS: list[tuple[str, Factory, TokenFor]] = [
     ("mock", lambda: MockAuthProvider.from_settings({}, ctx()), _mock_token),
+    ("oidc", _oidc_provider, _oidc_token),
 ]
 
 
@@ -99,7 +116,7 @@ async def test_revoked_token_is_unauthorized(impl: tuple[AuthProvider, TokenFor]
 
 async def test_code_exchange_refresh_and_revoke(impl: tuple[AuthProvider, TokenFor]) -> None:
     provider, _ = impl
-    tokens = await provider.exchange_code("code-1", redirect_uri="http://localhost/cb")
+    tokens = await provider.exchange_code("demo-admin", redirect_uri="http://localhost/cb")
     assert {"access_token", "refresh_token", "token_type", "expires_in"} <= tokens.keys()
 
     rotated = await provider.refresh(tokens["refresh_token"])

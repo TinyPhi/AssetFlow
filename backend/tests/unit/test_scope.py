@@ -14,7 +14,7 @@ from app.core.permissions import (
     matches_permission,
     validate_permission_pattern,
 )
-from app.core.problems import PermissionDeniedError
+from app.core.problems import NotFoundError, PermissionDeniedError
 from app.core.scope import MemberContext, RoleGrant, ScopeResolver
 
 
@@ -121,9 +121,14 @@ def test_scope_resolver_org_unit_and_sub_unit() -> None:
     # Resource outside ops.west
     assert not resolver.check_access(member, "work_order.read", {"owner_org_unit_path": "ops.east"})
 
-    # Require raises PermissionDeniedError
-    with pytest.raises(PermissionDeniedError):
+    # Reading an out-of-scope record is a 404, never a 403 (§C4.5)
+    with pytest.raises(NotFoundError):
         resolver.require(member, "work_order.read", {"owner_org_unit_path": "ops.east"})
+    # An action, or a caller without the permission anywhere, stays a 403
+    with pytest.raises(PermissionDeniedError):
+        resolver.require(member, "work_order.update", {"owner_org_unit_path": "ops.east"})
+    with pytest.raises(PermissionDeniedError):
+        resolver.require(member, "asset.nonexistent_permission", {"owner_org_unit_path": "ops.east"})
 
 
 def test_scope_resolver_self_scope() -> None:

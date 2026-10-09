@@ -7,8 +7,8 @@ Supports transactional outbox events with LISTEN/NOTIFY wakeup and subscriber gr
 
 from __future__ import annotations
 
-import json
 import logging
+import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -26,7 +26,7 @@ class PostgresEventsSettings(ProviderSettings):
 
     notify_channel: str = "outbox_events"
     batch_size: int = 100
-    poll_interval_seconds: float = 1.0
+    poll_interval_seconds: float = 2.0
 
 
 @dataclass
@@ -65,31 +65,17 @@ class PostgresEventBusProvider(EventBusProvider):
         envelope = {"topic": topic, "organization_id": organization_id, "payload": event}
         self._published += 1
 
-        # 1. Attempt PostgreSQL NOTIFY if database pool is initialized
+        # 1. Wake the worker dispatcher over NOTIFY. The payload is an opaque wake-up id only: the
+        # event itself stays in the outbox, inside its tenant transaction (AF-008, §B9.3).
         pool = get_db_pool()
         if pool is not None:
             try:
-                payload_str = json.dumps(envelope)
                 async with pool.acquire() as conn:
-                    # Execute pg_notify with channel and payload (capped at 8000 bytes by PostgreSQL)
-                    if len(payload_str.encode("utf-8")) < 7900:
-                        await conn.execute(
-                            "SELECT pg_notify($1, $2)", self.settings.notify_channel, payload_str
-                        )
-                    else:
-                        await conn.execute(
-                            "SELECT pg_notify($1, $2)",
-                            self.settings.notify_channel,
-                            json.dumps(
-                                {
-                                    "topic": topic,
-                                    "organization_id": organization_id,
-                                    "event_id": event.get("event_id"),
-                                }
-                            ),
-                        )
-            except (asyncpg.PostgresError, OSError, TypeError) as exc:
-                logger.warning("Postgres NOTIFY failed: %s", exc)
+                    await conn.execute(
+                        "SELECT pg_notify($1, $2)", self.settings.notify_channel, uuid.uuid4().hex
+                    )
+            except (asyncpg.PostgresError, OSError) as exc:
+                logger.warning("Postgres NOTIFY failed: %s", type(exc).__name__)
 
         # 2. Dispatch to registered local handlers (one per group)
         failure: str | None = None

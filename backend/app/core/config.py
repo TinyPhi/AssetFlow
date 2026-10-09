@@ -16,6 +16,7 @@ CLI: ``python -m app.core.config validate <file>`` (exit 0 when valid, 1 otherwi
 
 from __future__ import annotations
 
+import importlib
 import logging
 import os
 import re
@@ -34,6 +35,8 @@ from pydantic import (
     ValidationInfo,
     model_validator,
 )
+
+from app.core.permissions import ROLE_PERMISSIONS
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +66,42 @@ DEFAULT_CONFIG_PATH = _REPO_ROOT / "config" / "assetflow.yaml"
 CONFIG_ENV_VAR = "ASSETFLOW_CONFIG"
 
 PathPart = str | int
+
+#: Environments where development conveniences are allowed. Every other value (``staging``,
+#: ``production``) is guarded (AF-004).
+UNGUARDED_ENVIRONMENTS: frozenset[str] = frozenset({"development", "test"})
+
+#: Passwords that ship in examples, compose files and docs. Refused outside development (AF-034).
+KNOWN_DEVELOPMENT_PASSWORDS: frozenset[str] = frozenset(
+    {
+        "assetflow_dev_password",
+        "assetflow_dev",
+        "assetflow",
+        "backupsecret123",
+        "changeme",
+        "change-me",
+        "password",
+        "postgres",
+        "admin",
+        "secret",
+        "dev",
+        "development",
+        "test",
+    }
+)
+
+SslMode = Literal["disable", "allow", "prefer", "require", "verify-ca", "verify-full"]
+
+
+def is_guarded_env(env: str) -> bool:
+    """True for every environment except ``development`` and ``test`` (AF-004)."""
+    return env not in UNGUARDED_ENVIRONMENTS
+
+
+def refuse_development_password(env: str, password: str, path: str) -> None:
+    """Raise :class:`ConfigError` when a guarded environment uses a known development password."""
+    if is_guarded_env(env) and password.strip().lower() in KNOWN_DEVELOPMENT_PASSWORDS:
+        raise ConfigError([(path, "a known development password is refused outside development and test")])
 
 
 class ConfigError(Exception):
@@ -114,6 +153,9 @@ class PlatformConfig(_Strict):
     allow_open_provisioning: bool = Field(default=False, description="Permit the `open` policy in production")
     public_url: str | None = Field(default=None, description="Public base URL of the web app")
     allowed_origins: list[str] = Field(default_factory=list, description="Allowed browser origins (CORS)")
+    trusted_proxy_cidrs: list[str] = Field(
+        default_factory=list, description="Proxy networks whose X-Forwarded-For is trusted (rate limit)"
+    )
 
 
 class ProviderConfig(_Strict):
@@ -170,6 +212,16 @@ class DatabaseConfig(_Strict):
     idle_in_transaction_timeout_ms: int = Field(default=30000, ge=1)
     pool_min: int = Field(default=1, ge=0)
     pool_max: int = Field(default=10, ge=1)
+    sslmode: SslMode = Field(default="prefer", description="libpq-style TLS mode; verify-full in production")
+    _guarded: bool = PrivateAttr(default=False)
+
+    @property
+    def refuse_development_passwords(self) -> bool:
+        """True when resolved passwords must not be known development passwords (AF-034)."""
+        return self._guarded
+
+    connect_timeout_s: float = Field(default=30.0, gt=0, description="Pool creation / connect timeout")
+    acquire_timeout_s: float = Field(default=10.0, gt=0, description="Wait for a pooled connection")
 
     @model_validator(mode="after")
     def _pool_bounds(self) -> DatabaseConfig:
@@ -178,13 +230,98 @@ class DatabaseConfig(_Strict):
         return self
 
 
+class OutboxWorkerConfig(_Strict):
+    """``workers.outbox``: the outbox dispatcher (§B9.3, M1.5-T1)."""
+
+    batch_size: int = Field(default=50, ge=1, le=1000, description="Outbox rows claimed per batch")
+    poll_interval_seconds: float = Field(
+        default=2.0, gt=0, description="Seconds between polls when no NOTIFY wakes the dispatcher"
+    )
+    reclaim_after_seconds: int = Field(
+        default=300, ge=1, description="A claim older than this many seconds is returned to the queue"
+    )
+    max_attempts: int = Field(
+        default=5, ge=1, description="Claims after which a failing event is dead-lettered"
+    )
+    listen_host: str | None = Field(
+        default=None,
+        description="Direct PostgreSQL host for LISTEN (not PgBouncer); defaults to database.host",
+    )
+    listen_port: int | None = Field(
+        default=None,
+        ge=1,
+        le=65535,
+        description="Direct PostgreSQL port for LISTEN; defaults to database.port",
+    )
+
+
+class WorkersConfig(_Strict):
+    """``workers.*``: settings of the separate worker process (§B9.3)."""
+
+    outbox: OutboxWorkerConfig = Field(default_factory=OutboxWorkerConfig)
+    heartbeat_file: str = Field(
+        default="/tmp/af-worker-heartbeat",  # nosec B108 # noqa: S108 - a tmpfs path inside the container
+        min_length=1,
+        description="File the worker touches every loop; the container healthcheck reads its age",
+    )
+
+
+class InAppChannelConfig(_Strict):
+    """``notifications.channels.inapp`` (§B6.3, §B13.5)."""
+
+    retention_days: int = Field(default=180, ge=1, description="How long a read or unread notice is kept")
+
+
+class EmailChannelConfig(_Strict):
+    """``notifications.channels.email``: the installation-wide SMTP relay (§B6.3, §B7.2).
+
+    Every organization uses this relay and sets only its own sender fields; the password is a
+    ``secret://`` reference, never a value.
+    """
+
+    enabled: bool = Field(default=False, description="Offer the `email` channel to organizations")
+    host: str = Field(default="localhost", min_length=1, description="SMTP relay host name")
+    port: int = Field(default=587, ge=1, le=65535, description="SMTP relay port")
+    security: Literal["starttls", "tls", "none"] = Field(
+        default="starttls",
+        description="`starttls` (port 587), `tls` (implicit, port 465) or `none` (development and test only)",
+    )
+    username: str | None = Field(default=None, description="SMTP user name, when the relay needs one")
+    password: str | None = Field(default=None, description="`secret://<area>/<name>#<key>` reference only")
+    default_from: str = Field(default="noreply@example.invalid", min_length=3, description="Default sender")
+    timeout_seconds: float = Field(default=10.0, gt=0, le=120, description="Connect and total SMTP timeout")
+    allow_private_addresses: bool = Field(
+        default=False,
+        description="Let the relay resolve to a private address (a local mail catcher); not in production",
+    )
+
+
+class NotificationChannelsConfig(_Strict):
+    """``notifications.channels.*``. `webhook` is a later plan."""
+
+    inapp: InAppChannelConfig = Field(default_factory=InAppChannelConfig)
+    email: EmailChannelConfig = Field(default_factory=EmailChannelConfig)
+
+
+class NotificationsConfig(_Strict):
+    """``notifications.*`` (§B6.3, M1.5-T3)."""
+
+    channels: NotificationChannelsConfig = Field(default_factory=NotificationChannelsConfig)
+
+
 class AppConfig(_Strict):
     """Root of ``config/assetflow.yaml``."""
 
-    env: Environment = "development"
+    env: Environment
+    session_cookie_key: str | None = Field(
+        default=None,
+        description="secret://<area>/<name>#<key> reference to the session cookie signing key",
+    )
     platform: PlatformConfig = Field(default_factory=PlatformConfig)
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
     database: DatabaseConfig
+    workers: WorkersConfig = Field(default_factory=WorkersConfig)
+    notifications: NotificationsConfig = Field(default_factory=NotificationsConfig)
     _source: Path | None = PrivateAttr(default=None)
 
     @property
@@ -196,6 +333,52 @@ class AppConfig(_Strict):
     def base_dir(self) -> Path:
         """Directory that relative paths in provider settings resolve against."""
         return self._source.parent if self._source else Path.cwd()
+
+    def _email_errors(self) -> list[tuple[str, str]]:
+        email = self.notifications.channels.email
+        base = "notifications.channels.email"
+        errors: list[tuple[str, str]] = []
+        if email.password is not None and not is_secret_ref(email.password):
+            errors.append((f"{base}.password", "must be a secret://<area>/<name>#<key> reference"))
+        if is_guarded_env(self.env) and email.enabled:
+            if email.security == "none":
+                errors.append((f"{base}.security", "plaintext SMTP is refused in production"))
+            if email.allow_private_addresses:
+                errors.append((f"{base}.allow_private_addresses", "is refused in production"))
+        return errors
+
+    def _secret_handling_errors(self) -> list[tuple[str, str]]:
+        """AF-015: OIDC client secret is a ``secret://`` reference; no static OpenBao token."""
+        errors: list[tuple[str, str]] = []
+        auth, secrets = self.providers.auth, self.providers.secrets
+        client_secret = auth.settings.get("client_secret")
+        if (
+            auth.type == "oidc"
+            and self.env != "development"
+            and client_secret is not None
+            and not (isinstance(client_secret, str) and is_secret_ref(client_secret))
+        ):
+            errors.append(
+                ("providers.auth.settings.client_secret", "must be a secret://<area>/<name>#<key> reference")
+            )
+        if secrets.type == "openbao" and self.env != "development" and secrets.settings.get("token"):
+            errors.append(
+                (
+                    "providers.secrets.settings.token",
+                    "a static token is refused outside development; use AppRole",
+                )
+            )
+        return errors
+
+    def _session_cookie_key_errors(self) -> list[tuple[str, str]]:
+        key = self.session_cookie_key
+        if key is None:
+            if self.env in {"development", "test"}:
+                return []
+            return [("session_cookie_key", "is required outside development and test")]
+        if not is_secret_ref(key):
+            return [("session_cookie_key", "must be a secret://<area>/<name>#<key> reference")]
+        return []
 
     @model_validator(mode="after")
     def _guards(self, info: ValidationInfo) -> AppConfig:
@@ -209,18 +392,29 @@ class AppConfig(_Strict):
             value = getattr(self.database, role).password
             if is_secret_ref(value):
                 continue
-            if self.env == "production":
-                errors.append((path, "must be a secret://<area>/<name>#<key> reference in production"))
+            if is_guarded_env(self.env):
+                errors.append((path, "must be a secret://<area>/<name>#<key> reference outside dev/test"))
             elif path not in env_interpolated:
                 errors.append((path, "must be a secret:// reference or a ${VAR} interpolation"))
 
-        if self.env == "production":
+        errors.extend(self._email_errors())
+        errors.extend(self._session_cookie_key_errors())
+
+        guarded = is_guarded_env(self.env)
+        self.database._guarded = guarded
+        errors.extend(self._secret_handling_errors())
+        if guarded and self.database.sslmode != "verify-full":
+            errors.append(("database.sslmode", "must be verify-full outside development and test"))
+
+        if guarded:
             if self.providers.auth.type == "mock":
-                errors.append(("providers.auth.type", "mock auth is refused in production"))
+                errors.append(("providers.auth.type", "mock auth is refused outside development and test"))
             if self.providers.secrets.type == "file":
-                errors.append(("providers.secrets.type", "file secrets are refused in production"))
+                errors.append(
+                    ("providers.secrets.type", "file secrets are refused outside development and test")
+                )
             if self.providers.telemetry.settings.get("scrub") is False:
-                errors.append(("providers.telemetry.settings.scrub", "cannot be disabled in production"))
+                errors.append(("providers.telemetry.settings.scrub", "cannot be disabled outside dev/test"))
             for source, policy in sorted(organizations.items()):
                 if policy == "open" and not self.platform.allow_open_provisioning:
                     errors.append(
@@ -338,6 +532,7 @@ def _warn(cfg: AppConfig, organizations: Mapping[str, str]) -> None:
             logger.warning(
                 "providers.%s is not configured; using the %r fallback (§B6.1 rule 5)", pillar, pcfg.type
             )
+    _warn_unknown_roles(cfg)
     if cfg.env == "production":
         if not cfg.platform.admins:
             logger.warning("platform.admins is empty; no one can administer this installation (§B5.7)")
@@ -345,9 +540,50 @@ def _warn(cfg: AppConfig, organizations: Mapping[str, str]) -> None:
             logger.warning("open provisioning is enabled in production (platform.allow_open_provisioning)")
 
 
+def _warn_unknown_roles(cfg: AppConfig) -> None:
+    """AF-041: warn for every ``granted_roles`` key of an organization file that is not a role."""
+    if cfg.source is None:
+        return
+    org_dir = cfg.source.parent / "organizations"
+    if not org_dir.is_dir():
+        return
+    for org_file in sorted(org_dir.glob("*.y*ml")):
+        try:
+            data = _read_yaml(org_file)
+        except ConfigError:
+            continue
+        idp = data.get("idp") if isinstance(data, dict) else None
+        roles = idp.get("granted_roles") if isinstance(idp, dict) else None
+        if not isinstance(roles, list):
+            continue
+        for role in roles:
+            if role not in ROLE_PERMISSIONS:
+                logger.warning(
+                    "organizations/%s: granted role %r is not a known role key and grants nothing",
+                    org_file.name,
+                    role,
+                )
+
+
 # ------------------------------------------------------------------------------------------------- CLI
 
 _USAGE = "usage: python -m app.core.config validate <file>\n"
+
+
+def _validate_domain_templates(platform_config_file: str) -> list[str]:
+    """Validate every `config/domains/*.yaml` next to `platform_config_file` (§B7.3, §B7.4).
+
+    The check needs the automation engine and the modules' event registry, which sit above core, so
+    it is loaded by name instead of imported (the layering contract allows no upward import). A tree
+    that has core but not yet the assets module (for example, an earlier PR in a stacked chain) has
+    nothing to cross-check against; skip rather than fail.
+    """
+    try:
+        check = importlib.import_module("app.modules.domain_template_check")
+    except ModuleNotFoundError:
+        return []
+    problems: list[str] = check.domain_template_problems(platform_config_file)
+    return problems
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -360,6 +596,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         cfg = load_config(args[1])
     except ConfigError as exc:
         sys.stderr.write(f"{exc}\n")
+        return 1
+    domain_problems = _validate_domain_templates(args[1])
+    if domain_problems:
+        for problem in domain_problems:
+            sys.stderr.write(f"{problem}\n")
         return 1
     sys.stdout.write(f"config valid: {args[1]} (env={cfg.env})\n")
     return 0

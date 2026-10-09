@@ -10,6 +10,9 @@ from __future__ import annotations
 
 import base64
 import logging
+import os
+import time
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -26,13 +29,14 @@ logger = logging.getLogger(__name__)
 class OpenBaoSettings(ProviderSettings):
     """``providers.secrets.settings`` for ``type: openbao``."""
 
-    address: str = "http://localhost:8200"
+    address: str = "http://localhost:19200"
     role_id: str | None = None
     secret_id_file: str | None = None
     token: str | None = None
     mount_point: str = "secret"
     transit_mount: str = "transit"
     transit_key: str = "assetflow-fields"
+    ca_cert: str | None = None  # CA bundle for a private TLS chain; falls back to BAO_CACERT
 
 
 class OpenBaoSecretsProvider(SecretsProvider):
@@ -42,6 +46,9 @@ class OpenBaoSecretsProvider(SecretsProvider):
         self.settings = settings
         self.context = context
         self._token = settings.token
+        self._token_expires_at: float | None = None  # monotonic; None = unknown or static token
+        self._token_ttl = 0.0
+        self._can_login = bool(settings.role_id and settings.secret_id_file)
 
         if context.env == "production":
             errors: list[tuple[str, str]] = []
@@ -63,33 +70,91 @@ class OpenBaoSecretsProvider(SecretsProvider):
         parsed = parse_settings(OpenBaoSettings, settings, context)
         return cls(parsed, context)
 
-    async def _ensure_token(self, client: httpx.AsyncClient) -> str:
-        """Authenticate via AppRole if token is not set."""
-        if self._token:
-            return self._token
-
-        if self.settings.role_id and self.settings.secret_id_file:
-            path = Path(self.settings.secret_id_file)
+    def _client(self, timeout: float = 10.0) -> httpx.AsyncClient:
+        """HTTP client verifying TLS against ``ca_cert`` / ``BAO_CACERT`` when set."""
+        ca = self.settings.ca_cert or os.environ.get("BAO_CACERT") or None
+        if ca:
+            path = Path(ca)
             if not path.is_absolute():
                 path = self.context.base_dir / path
-            if not path.exists():
-                raise SecretsUnavailableError("OpenBao secret_id_file not found.")
-            secret_id = path.read_text(encoding="utf-8").strip()
+            return httpx.AsyncClient(timeout=timeout, verify=str(path))
+        return httpx.AsyncClient(timeout=timeout)
 
-            login_url = f"{self.settings.address.rstrip('/')}/v1/auth/approle/login"
-            try:
-                res = await client.post(
-                    login_url, json={"role_id": self.settings.role_id, "secret_id": secret_id}
-                )
-                if res.status_code == 200:
-                    data = res.json()
-                    self._token = data.get("auth", {}).get("client_token")
-                    if self._token:
-                        return self._token
-            except Exception as exc:
-                raise SecretsUnavailableError(f"Failed to authenticate with OpenBao AppRole: {exc}") from exc
+    def _url(self, path: str) -> str:
+        return f"{self.settings.address.rstrip('/')}/v1/{path}"
 
-        raise SecretsUnavailableError("No OpenBao authentication credentials available.")
+    def _track(self, auth: object) -> None:
+        """Remember when the AppRole token expires, from the login or renew response."""
+        ttl = auth.get("lease_duration") if isinstance(auth, dict) else None
+        if isinstance(ttl, int | float) and ttl > 0:
+            self._token_ttl = float(ttl)
+            self._token_expires_at = time.monotonic() + float(ttl)
+        else:
+            self._token_expires_at = None
+
+    async def _login(self, client: httpx.AsyncClient) -> str:
+        """Fresh AppRole login."""
+        if not (self._can_login and self.settings.secret_id_file):
+            raise SecretsUnavailableError("No OpenBao authentication credentials available.")
+        path = Path(self.settings.secret_id_file)
+        if not path.is_absolute():
+            path = self.context.base_dir / path
+        if not path.exists():
+            raise SecretsUnavailableError("OpenBao secret_id_file not found.")
+        secret_id = path.read_text(encoding="utf-8").strip()
+        try:
+            res = await client.post(
+                self._url("auth/approle/login"),
+                json={"role_id": self.settings.role_id, "secret_id": secret_id},
+            )
+            if res.status_code == 200:
+                auth = res.json().get("auth", {})
+                token = auth.get("client_token")
+                if isinstance(token, str) and token:
+                    self._token = token
+                    self._track(auth)
+                    return token
+        except Exception as exc:
+            raise SecretsUnavailableError(f"Failed to authenticate with OpenBao AppRole: {exc}") from exc
+        raise SecretsUnavailableError("OpenBao AppRole login was refused.")
+
+    async def _renew(self, client: httpx.AsyncClient) -> bool:
+        """``renew-self`` the current token; False when it could not be renewed."""
+        try:
+            res = await client.post(
+                self._url("auth/token/renew-self"), headers={"X-Vault-Token": self._token or ""}
+            )
+            if res.status_code == 200:
+                auth = res.json().get("auth", {})
+                self._track(auth)
+                return True
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("OpenBao renew-self request failed: %s", type(exc).__name__)
+        return False
+
+    async def _ensure_token(self, client: httpx.AsyncClient) -> str:
+        """Return a usable token: login if none, renew-self once past 2/3 of its lease."""
+        if not self._token:
+            return await self._login(client)
+        if self._token_expires_at is not None:
+            remaining = self._token_expires_at - time.monotonic()
+            if remaining <= self._token_ttl / 3 and not await self._renew(client):
+                if self._can_login:
+                    return await self._login(client)
+                if remaining <= 0:
+                    raise SecretsUnavailableError("OpenBao token expired.")
+        return self._token
+
+    async def _send(self, client: httpx.AsyncClient, method: str, url: str, **kwargs: Any) -> httpx.Response:
+        """Authenticated request; on 403 log in afresh once and retry (token revoked or expired)."""
+        headers = dict(kwargs.pop("headers", None) or {})
+        token = await self._ensure_token(client)
+        res = await client.request(method, url, headers={**headers, "X-Vault-Token": token}, **kwargs)
+        if res.status_code == 403 and self._can_login:
+            self._token = None
+            token = await self._login(client)
+            res = await client.request(method, url, headers={**headers, "X-Vault-Token": token}, **kwargs)
+        return res
 
     async def get(self, ref: str) -> str:
         """Fetch secret value by reference `secret://<area>/<name>#<key>`."""
@@ -104,23 +169,12 @@ class OpenBaoSecretsProvider(SecretsProvider):
 
     async def get_map(self, path: str) -> dict[str, str]:
         """Fetch all key-value pairs for `secret://<area>/<name>`."""
-        prefix = "secret://"
-        if not path.startswith(prefix):
-            raise SecretsUnavailableError(f"Malformed path {path!r}; expected secret://<area>/<name>")
-
-        rem = path[len(prefix) :]
-        parts = rem.split("#")[0].split("/")
-        if len(parts) != 2 or not parts[0] or not parts[1]:
-            raise SecretsUnavailableError(f"Malformed path {path!r}; expected secret://<area>/<name>")
-
-        area, name = parts[0], parts[1]
+        area, name = self._split_path(path)
         url = f"{self.settings.address.rstrip('/')}/v1/{self.settings.mount_point}/data/{area}/{name}"
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            token = await self._ensure_token(client)
-            headers = {"X-Vault-Token": token}
+        async with self._client() as client:
             try:
-                res = await client.get(url, headers=headers)
+                res = await self._send(client, "GET", url)
                 if res.status_code == 404:
                     raise SecretsUnavailableError(f"Secret {area}/{name} not found.")
                 if res.status_code != 200:
@@ -132,6 +186,51 @@ class OpenBaoSecretsProvider(SecretsProvider):
                     raise
                 raise SecretsUnavailableError(f"OpenBao KV read error: {exc}") from exc
 
+    @staticmethod
+    def _split_path(path: str) -> tuple[str, str]:
+        """``secret://<area>/<name>``; ``name`` may hold more segments, none empty or dot-only."""
+        prefix = "secret://"
+        if not path.startswith(prefix):
+            raise SecretsUnavailableError(f"Malformed path {path!r}; expected secret://<area>/<name>")
+        parts = path[len(prefix) :].split("#", maxsplit=1)[0].split("/")
+        if len(parts) < 2 or any(not p or p in {".", ".."} for p in parts):
+            raise SecretsUnavailableError(f"Malformed path {path!r}; expected secret://<area>/<name>")
+        return parts[0], "/".join(parts[1:])
+
+    async def put(self, path: str, values: Mapping[str, str]) -> None:
+        """Write a KV v2 secret, replacing all its keys (the api role has write-only access)."""
+        area, name = self._split_path(path)
+        if not values:
+            raise SecretsUnavailableError("A secret needs at least one key.")
+        url = f"{self.settings.address.rstrip('/')}/v1/{self.settings.mount_point}/data/{area}/{name}"
+        async with self._client() as client:
+            try:
+                res = await self._send(client, "POST", url, json={"data": dict(values)})
+            except httpx.HTTPError as exc:
+                raise SecretsUnavailableError("OpenBao KV write error.") from exc
+            if res.status_code not in (200, 204):
+                raise SecretsUnavailableError("OpenBao refused the secret write.")
+
+    async def patch(self, path: str, values: Mapping[str, str | None]) -> None:
+        """KV v2 merge-patch: only the given keys change, a ``None`` removes its key."""
+        area, name = self._split_path(path)
+        if not values:
+            raise SecretsUnavailableError("A secret patch needs at least one key.")
+        url = f"{self.settings.address.rstrip('/')}/v1/{self.settings.mount_point}/data/{area}/{name}"
+        async with self._client() as client:
+            try:
+                res = await self._send(
+                    client,
+                    "PATCH",
+                    url,
+                    headers={"Content-Type": "application/merge-patch+json"},
+                    json={"data": dict(values)},
+                )
+            except httpx.HTTPError as exc:
+                raise SecretsUnavailableError("OpenBao KV patch error.") from exc
+            if res.status_code not in (200, 204):
+                raise SecretsUnavailableError("OpenBao refused the secret patch.")
+
     async def encrypt(self, context: str, plaintext: str) -> str:
         """Encrypt `plaintext` bound to `context` using transit engine."""
         url = (
@@ -141,11 +240,9 @@ class OpenBaoSecretsProvider(SecretsProvider):
         pt_b64 = base64.b64encode(plaintext.encode("utf-8")).decode("ascii")
         ctx_b64 = base64.b64encode(context.encode("utf-8")).decode("ascii")
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            token = await self._ensure_token(client)
-            headers = {"X-Vault-Token": token}
+        async with self._client() as client:
             try:
-                res = await client.post(url, headers=headers, json={"plaintext": pt_b64, "context": ctx_b64})
+                res = await self._send(client, "POST", url, json={"plaintext": pt_b64, "context": ctx_b64})
                 if res.status_code != 200:
                     raise SecretsUnavailableError("OpenBao transit encryption failed.")
                 data = res.json().get("data", {})
@@ -158,6 +255,41 @@ class OpenBaoSecretsProvider(SecretsProvider):
                     raise
                 raise SecretsUnavailableError(f"OpenBao encryption error: {exc}") from exc
 
+    async def encrypt_many(self, items: Sequence[tuple[str, str]]) -> list[str]:
+        """Encrypt many `(context, plaintext)` pairs with transit's `batch_input` (one round trip)."""
+        if not items:
+            return []
+        batch_input = [
+            {
+                "plaintext": base64.b64encode(plaintext.encode("utf-8")).decode("ascii"),
+                "context": base64.b64encode(context.encode("utf-8")).decode("ascii"),
+            }
+            for context, plaintext in items
+        ]
+        url = (
+            f"{self.settings.address.rstrip('/')}/v1/"
+            f"{self.settings.transit_mount}/encrypt/{self.settings.transit_key}"
+        )
+        async with self._client() as client:
+            try:
+                res = await self._send(client, "POST", url, json={"batch_input": batch_input})
+                if res.status_code != 200:
+                    raise SecretsUnavailableError("OpenBao transit batch encryption failed.")
+                results = res.json().get("data", {}).get("batch_results")
+                if not isinstance(results, list) or len(results) != len(items):
+                    raise SecretsUnavailableError("OpenBao transit batch result count mismatch.")
+                ciphertexts: list[str] = []
+                for result in results:
+                    ciphertext = result.get("ciphertext") if isinstance(result, dict) else None
+                    if not isinstance(ciphertext, str):
+                        raise SecretsUnavailableError("OpenBao transit batch item failed.")
+                    ciphertexts.append(ciphertext)
+                return ciphertexts
+            except Exception as exc:
+                if isinstance(exc, SecretsUnavailableError):
+                    raise
+                raise SecretsUnavailableError(f"OpenBao batch encryption error: {exc}") from exc
+
     async def decrypt(self, context: str, ciphertext: str) -> str:
         """Decrypt `ciphertext` bound to `context` using transit engine."""
         url = (
@@ -166,12 +298,10 @@ class OpenBaoSecretsProvider(SecretsProvider):
         )
         ctx_b64 = base64.b64encode(context.encode("utf-8")).decode("ascii")
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            token = await self._ensure_token(client)
-            headers = {"X-Vault-Token": token}
+        async with self._client() as client:
             try:
-                res = await client.post(
-                    url, headers=headers, json={"ciphertext": ciphertext, "context": ctx_b64}
+                res = await self._send(
+                    client, "POST", url, json={"ciphertext": ciphertext, "context": ctx_b64}
                 )
                 if res.status_code != 200:
                     raise SecretDecryptionError()
@@ -190,7 +320,7 @@ class OpenBaoSecretsProvider(SecretsProvider):
         """Return health status without exposing sensitive tokens or addresses."""
         health_url = f"{self.settings.address.rstrip('/')}/v1/sys/health"
         try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
+            async with self._client(5.0) as client:
                 res = await client.get(health_url)
                 # 200 = initialized, unsealed, and active
                 # 429 = unsealed and standby

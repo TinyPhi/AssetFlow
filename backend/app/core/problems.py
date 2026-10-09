@@ -35,6 +35,7 @@ __all__ = [
     "ProblemError",
     "RateLimitedError",
     "RouteNotFoundError",
+    "ScopeDeniedError",
     "SecretsUnavailableError",
     "ServiceUnavailableError",
     "UnauthorizedError",
@@ -138,6 +139,24 @@ class PermissionDeniedError(ProblemError):
     description = "The caller is signed in but lacks the required permission."
 
 
+class ScopeDeniedError(PermissionDeniedError):
+    """The caller holds the permission, but the record or target is outside its scope (§C4.5).
+
+    403 for writes; reads of an out-of-scope record answer 404 instead (never reveal existence)."""
+
+    status_code = 403
+    code = "scope.denied"
+    title = "Outside your scope"
+    default_detail = "The action covers records outside your scope."
+    description = (
+        "The caller holds the permission, but not for this record or target: the record is outside "
+        "the scope of every grant that carries it. A write answers 403; a read answers 404."
+    )
+
+    def __init__(self, detail: str | None = None) -> None:
+        super().__init__(detail)
+
+
 class NotFoundError(ProblemError):
     status_code = 404
     code = "resource.not_found"
@@ -208,11 +227,71 @@ class SecretsUnavailableError(ProblemError):
     )
 
 
+class ModuleNotInstalledError(ProblemError):
+    status_code = 404
+    code = "module.not_installed"
+    title = "Module not installed"
+    default_detail = "This feature requires a module your organization has not installed."
+    description = (
+        "The route guard refuses before any handler runs, so an uninstalled module's routes "
+        "behave as if they do not exist (§B5.9, M1.4-T6)."
+    )
+
+
+class ModuleDependencyError(ProblemError):
+    status_code = 409
+    code = "module.dependency_not_met"
+    title = "Module dependency not met"
+    default_detail = "This module cannot be installed or uninstalled yet."
+    description = (
+        "Installing a module needs its dependency installed first; uninstalling one needs its "
+        "dependents uninstalled first (§B5.9, M1.4-T6)."
+    )
+
+
+class JobTimeLimitError(ProblemError):
+    status_code = 504
+    code = "job.time_limit"
+    title = "Job time limit exceeded"
+    default_detail = "The job did not finish within its configured time limit."
+    description = (
+        "A worker job (§B9.3) is stopped and recorded as failed once it runs longer than its "
+        "registered `time_limit_seconds`; the outbox retry and dead-letter rules apply as for any "
+        "other failure."
+    )
+
+
+class JobMemoryLimitError(ProblemError):
+    status_code = 500
+    code = "job.memory_limit"
+    title = "Job memory limit exceeded"
+    default_detail = "The job exceeded its configured memory limit."
+    description = (
+        "A worker job (§B9.3) whose handler process exceeds its registered `memory_limit_mb` "
+        "(enforced by `RLIMIT_AS`, Linux only) is recorded as failed; on a platform without the "
+        "memory limit, only the time limit applies."
+    )
+
+
+class ChannelEgressDeniedError(ProblemError):
+    status_code = 502
+    code = "channel.egress_denied"
+    title = "Outbound call blocked"
+    default_detail = "A notification channel tried to reach a destination that is not allowed."
+    description = (
+        "A notification channel's outbound call was refused by the egress allowlist (§B6.3 rule 2): "
+        "the host is not allowed for this channel, the address is private, loopback, link-local or "
+        "otherwise reserved, the scheme is not HTTPS, or the name does not resolve. The detail "
+        "never contains the destination or any credential."
+    )
+
+
 ERROR_REGISTRY: tuple[type[ProblemError], ...] = (
     InternalError,
     ValidationFailedError,
     UnauthorizedError,
     PermissionDeniedError,
+    ScopeDeniedError,
     NotFoundError,
     RouteNotFoundError,
     MethodNotAllowedError,
@@ -221,6 +300,11 @@ ERROR_REGISTRY: tuple[type[ProblemError], ...] = (
     HttpError,
     ServiceUnavailableError,
     SecretsUnavailableError,
+    ModuleNotInstalledError,
+    ModuleDependencyError,
+    JobTimeLimitError,
+    JobMemoryLimitError,
+    ChannelEgressDeniedError,
 )
 
 _BY_STATUS: dict[int, type[ProblemError]] = {

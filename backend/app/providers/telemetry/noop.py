@@ -9,6 +9,7 @@ from typing import Any
 
 from app.providers.context import ProviderContext, ProviderSettings, parse_settings
 from app.providers.telemetry.base import TelemetryProvider
+from app.providers.telemetry.scrub import install_root_log_filter
 
 
 class NoOpTelemetrySettings(ProviderSettings):
@@ -45,7 +46,8 @@ class NoOpTelemetryProvider(TelemetryProvider):
         return cls()
 
     def init(self, app: object) -> None:
-        """Nothing to instrument."""
+        """Nothing to instrument; log records are still scrubbed."""
+        install_root_log_filter()
 
     def record_metric(self, name: str, value: float, tags: dict[str, str] | None = None) -> None:
         """Drop the measurement."""

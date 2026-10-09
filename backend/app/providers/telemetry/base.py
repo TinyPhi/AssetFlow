@@ -23,6 +23,9 @@ class TelemetryProvider(ABC):
         """Provider implementation identifier."""
         return self.__class__.__name__
 
+    async def aclose(self) -> None:  # noqa: B027 - optional hook with a no-op default
+        """Release held resources (connections, clients). The default holds none."""
+
     @property
     def logger(self) -> logging.Logger:
         """Logger for AssetFlow code (§B6.2 ``logger``)."""
