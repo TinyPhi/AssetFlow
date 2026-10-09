@@ -153,6 +153,14 @@ def _require_read_detail(caller: MemberContext, row: Any) -> None:
         raise AssetNotFoundError()
 
 
+def _require_just_written(detail: Any) -> Any:
+    """`get_detail` immediately after this same transaction wrote the row: `None` here is an
+    invariant violation, not a normal "not found" (a plain `assert` would vanish under `-O`)."""
+    if detail is None:
+        raise RuntimeError("asset row vanished immediately after its own write")
+    return detail
+
+
 # ==============================================================================
 # Domain template helpers (tag format, initial status - category defaults live in the DB row)
 # ==============================================================================
@@ -300,7 +308,10 @@ async def _to_asset_read(
     )
     encrypted_keys = {d.key for d in encrypted_defs if d.is_encrypted}
 
-    if default_scope_resolver.has_permission(caller, READ_SENSITIVE_PERMISSION) and encrypted_raw:
+    if (
+        default_scope_resolver.check_access(caller, READ_SENSITIVE_PERMISSION, _resource(row))
+        and encrypted_raw
+    ):
         decrypted: dict[str, JsonValue] = await decrypt_custom_fields(
             secrets_provider, organization_id=str(organization_id), ciphertexts=encrypted_raw
         )
@@ -401,10 +412,11 @@ async def create_asset(
                 conn, organization_id=organization_id, idempotency_key=idempotency_key
             )
             if existing is not None:
-                detail = await _asset_repo.get_detail(
-                    conn, organization_id=organization_id, asset_id=existing["id"]
+                detail = _require_just_written(
+                    await _asset_repo.get_detail(
+                        conn, organization_id=organization_id, asset_id=existing["id"]
+                    )
                 )
-                assert detail is not None  # noqa: S101
                 return await _to_asset_read(
                     conn,
                     detail,
@@ -535,8 +547,9 @@ async def create_asset(
             },
         )
 
-        detail = await _asset_repo.get_detail(conn, organization_id=organization_id, asset_id=asset_id)
-        assert detail is not None  # noqa: S101
+        detail = _require_just_written(
+            await _asset_repo.get_detail(conn, organization_id=organization_id, asset_id=asset_id)
+        )
         return await _to_asset_read(
             conn, detail, organization_id=organization_id, caller=caller, secrets_provider=secrets_provider
         )
@@ -772,8 +785,9 @@ async def update_asset(
                 request_id=request_id,
             )
 
-        detail = await _asset_repo.get_detail(conn, organization_id=organization_id, asset_id=asset_id)
-        assert detail is not None  # noqa: S101
+        detail = _require_just_written(
+            await _asset_repo.get_detail(conn, organization_id=organization_id, asset_id=asset_id)
+        )
         return await _to_asset_read(
             conn, detail, organization_id=organization_id, caller=caller, secrets_provider=secrets_provider
         )
@@ -1070,8 +1084,9 @@ async def change_status(
             },
         )
 
-        detail = await _asset_repo.get_detail(conn, organization_id=organization_id, asset_id=asset_id)
-        assert detail is not None  # noqa: S101
+        detail = _require_just_written(
+            await _asset_repo.get_detail(conn, organization_id=organization_id, asset_id=asset_id)
+        )
         return await _to_asset_read(
             conn, detail, organization_id=organization_id, caller=caller, secrets_provider=secrets_provider
         )
