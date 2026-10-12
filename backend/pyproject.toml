@@ -9,7 +9,7 @@ requires-python = ">=3.12,<3.13"
 license = "AGPL-3.0-only"
 # Runtime dependencies are pinned to a minor range (§C4.11); uv.lock pins exact versions.
 dependencies = [
-    "fastapi~=0.141.1",
+    "fastapi~=0.142.2",
     "uvicorn[standard]~=0.54.0",
     "asyncpg~=0.31.0",
     "pydantic~=2.13.5",
@@ -32,8 +32,8 @@ otel = [
 
 [dependency-groups]
 dev = [
-    "ruff>=0.6.0",
-    "mypy>=1.11.0",
+    "ruff>=0.16.10",
+    "mypy>=2.4.0",
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=5.0.0",
