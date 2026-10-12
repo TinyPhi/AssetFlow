@@ -51,7 +51,7 @@ services:
       - zitadel_bootstrap:/zitadel/bootstrap
 
   zitadel:
-    image: ghcr.io/zitadel/zitadel:v4.19.3
+    image: ghcr.io/zitadel/zitadel:v4.19.4
     restart: unless-stopped
     # One service: init + setup (first instance) + start. The masterkey is read from
     # ZITADEL_MASTERKEY (flag --masterkeyFromEnv); TLS is off on localhost.
