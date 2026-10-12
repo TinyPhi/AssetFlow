@@ -8,6 +8,7 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import {
   attachComponent,
   changeStatus,
@@ -118,8 +119,25 @@ export function useDetachComponent(
 }
 
 /** A small search over assets by name or tag, for the attach dialog's picker. */
+// The component picker searches as the user types: wait for a pause before asking the API.
+export const ASSET_SEARCH_DEBOUNCE_MS = 250;
+const ASSET_SEARCH_STALE_MS = 30_000;
+
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      setDebounced(value);
+    }, delayMs);
+    return () => {
+      clearTimeout(handle);
+    };
+  }, [value, delayMs]);
+  return debounced;
+}
+
 export function useAssetSearch(text: string): UseQueryResult<AssetListItem[]> {
-  const q = text.trim();
+  const q = useDebouncedValue(text.trim(), ASSET_SEARCH_DEBOUNCE_MS);
   return useQuery({
     queryKey: [...assetKeys.lists(), "search", q],
     queryFn: async ({ signal }) => {
@@ -127,5 +145,6 @@ export function useAssetSearch(text: string): UseQueryResult<AssetListItem[]> {
       return (await fetchAssetPage(params.toString(), signal)).items;
     },
     enabled: q.length >= 2,
+    staleTime: ASSET_SEARCH_STALE_MS,
   });
 }
