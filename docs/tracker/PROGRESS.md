@@ -119,11 +119,11 @@ Record of completed tasks, tools, and milestone verifications.
   - **OWASP ASVS 5.0 Level 2 Checklist:** Pinned ASVS 5.0 export and control mapping generating `docs/security/asvs-l2.md` across chapters V1–V14, with `--check` CI verification.
   - **Gate G1 Documentation:** Complete acceptance criteria and evidence documented in `docs/tracker/gate-g1.md`.
 - **Evidence:** Frontend tests: 10 files, 70 tests passed; `npm run lint` clean; `npm run build` succeeds (0 errors). Backend authorization matrix: 5/5 passed. Scripts test suite: 63/63 passed. Container hardening check passed. Docs link verification: 165 files passed. Gate G1 criteria 1–7 verified.
-- **Status:** ☑ Phase 1 & Gate G1 Complete (local; DO NOT RAISE PR per user constraint).
+- **Status:** ☑ Phase 1 & Gate G1 complete; in review in the regroup stack (PRs #284–#295, tracking issue #283).
 
 ### 2026-10-05 — P8-12 Acceptance, docs and evidence for M2.1 (Phase 8)
 - **Task:** P8-12
 - **What changed:** Re-verified the merged Phase 8 branch (P8-08, P8-09 and P8-10 were built in parallel worktrees and merged by hand) against a disposable PostgreSQL; aligned write refusals outside a caller's scope on `scope.denied` (master §C4.5; `ScopeDeniedError` moved to `app.core.problems`, new `modules/assets/access.py`); added the database-backed test of `GET /assets/vocabulary`; added the M2.1 acceptance run (`backend/tests/e2e_api/test_m21_catalog_acceptance.py`, one test per §B15 catalog row, for `it-assets` and `facilities`); wrote the asset user guide and the asset sections of the domain template guide; updated the ASVS rows touched by M2.1.
 - **Evidence:** isolation + scope 142 passed; acceptance 8 passed; schema snapshot roundtrip clean; frontend vitest 171/171, `tsc -b`, eslint 0 errors, build; the full backend result is in the P8-12 plan Record (planning folder), with the open items.
 - **Not done (open for the owner):** the width walk (320-2560 px), axe, keyboard-order and dialog-focus checks of `/assets`, `/assets/new`, `/assets/:id` and `/admin/asset-categories`, any run of the screens against a real backend, and the guide screenshots. `lint-imports` still reports the P5-03 break and four `app.modules.assets.* -> app.api.deps` imports from P8.
-- **Status:** Built locally on `feat/103-p8-acceptance`; not verified by a second pair of eyes; no push, no PR.
+- **Status:** In review in the regroup stack (PRs #289, #290, #293 and #295, tracking issue #283); the open items above still stand.
