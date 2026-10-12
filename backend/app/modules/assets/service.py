@@ -1105,6 +1105,8 @@ async def list_transitions(
         if not default_scope_resolver.check_access(caller, READ_PERMISSION, resource):
             raise AssetNotFoundError()
         template, snapshot = await _lifecycle_context(conn, organization_id, current)
+    # Computed from the snapshot read above, outside the transaction on purpose: this list is a
+    # hint for the UI, not authoritative. `change_status` re-reads and re-validates under lock.
     if template is None:
         return []
     out: list[TransitionRead] = []
@@ -1117,7 +1119,8 @@ async def list_transitions(
         except AssetInvalidTransitionError:
             continue
         target = template.status(transition.to)
-        assert target is not None  # noqa: S101 - validated at config load
+        if target is None:  # validated at config load
+            raise RuntimeError("transition target status missing from the domain template")
         out.append(
             TransitionRead(
                 to_status=transition.to, to_label=target.label, requires_reason=transition.requires_reason
