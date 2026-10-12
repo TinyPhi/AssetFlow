@@ -64,4 +64,37 @@ describe("session", () => {
     expect(await refreshSession()).toBeNull();
     expect(hasSession()).toBe(false);
   });
+
+  it("ends the session once a token with a known lifetime expires", () => {
+    vi.useFakeTimers();
+    try {
+      setRefreshHandler(null);
+      setAccessToken(TOKEN, 60);
+      expect(hasSession()).toBe(true);
+      vi.setSystemTime(Date.now() + 61_000);
+      expect(hasSession()).toBe(false);
+    } finally {
+      clearSession();
+      vi.useRealTimers();
+    }
+  });
+
+  it("refreshes silently shortly before the token expires and keeps the new lifetime", async () => {
+    vi.useFakeTimers();
+    try {
+      const handler = vi.fn(() => Promise.resolve({ token: "tok-next", expiresIn: 300 }));
+      setRefreshHandler(handler);
+      setAccessToken(TOKEN, 60);
+      await vi.advanceTimersByTimeAsync(29_000);
+      expect(handler).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(getAccessToken()).toBe("tok-next");
+      vi.setSystemTime(Date.now() + 120_000);
+      expect(hasSession()).toBe(true);
+    } finally {
+      clearSession();
+      vi.useRealTimers();
+    }
+  });
 });
