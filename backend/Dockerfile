@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Multi-stage secure build for AssetFlow Backend (§B13.1)
 
-FROM ghcr.io/astral-sh/uv:0.5.21 AS uv-installer
+FROM ghcr.io/astral-sh/uv:0.13.0 AS uv-installer
 FROM python:3.12-slim AS runtime
 
 # Install libpq and runtime utilities
