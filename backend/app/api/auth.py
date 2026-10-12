@@ -28,6 +28,7 @@ import secrets
 import time
 from collections import OrderedDict
 from typing import Any, Final
+from urllib.parse import urlsplit
 from uuid import UUID
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
@@ -39,11 +40,13 @@ from app.api.policy import allowed_origins, is_relaxed, mock_auth_enabled
 from app.core.cookie_crypto import decrypt_cookie, encrypt_cookie
 from app.core.db import platform_transaction, tenant_transaction
 from app.core.problems import (
+    FieldError,
     NotFoundError,
     PermissionDeniedError,
     ProblemError,
     ServiceUnavailableError,
     UnauthorizedError,
+    ValidationFailedError,
 )
 from app.core.rate_limit import InMemoryRateLimitStore, RateLimiter
 from app.modules.audit.service import record_audit_event
@@ -333,6 +336,23 @@ async def logout_session(
     return {"ok": True}
 
 
+def _require_safe_redirect_uri(redirect_uri: str) -> None:
+    """Allow only an absolute http(s) URL or a same-site path (`/auth/callback`).
+
+    `html.escape` stops attribute breakout but not a `javascript:` or `data:` scheme inside
+    `href`, and `//host/...` is protocol-relative (another site). Everything else is refused
+    before the page is built.
+    """
+    parts = urlsplit(redirect_uri)
+    absolute_web = parts.scheme in ("http", "https") and bool(parts.netloc)
+    same_site_path = not parts.scheme and not parts.netloc and redirect_uri.startswith("/")
+    if absolute_web or (same_site_path and not redirect_uri.startswith("//")):
+        return
+    raise ValidationFailedError(
+        errors=[FieldError(field="redirect_uri", message="must be an http(s) URL or a path starting with /")]
+    )
+
+
 def require_mock_auth(request: Request) -> None:
     """Defense in depth for NEW-3: 404 unless mock auth is enabled for this environment."""
     if not mock_auth_enabled(getattr(request.app.state, "config", None)):
@@ -349,6 +369,7 @@ async def mock_authorize(
     code_challenge: str = "",
 ) -> HTMLResponse:
     """Development mock login selection page."""
+    _require_safe_redirect_uri(redirect_uri)
     safe_redirect_uri = html.escape(redirect_uri, quote=True)
     safe_state = html.escape(state, quote=True)
     html_content = f"""<!DOCTYPE html>

