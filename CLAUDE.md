@@ -83,8 +83,16 @@ scripts/            bootstrap.* · check-*.sh/py · new-channel.py · demo-data.
 
 Human keywords: `approve-plan`, `approve-ship`.
 
+## Known mistakes
+
+@Mistake_Learn.md
+
 ## How rules load
 
+- `Mistake_Learn.md` is imported above, so it loads in every session: each active kind of mistake
+  agents made here, its rule, the learning and links to its traces. Check your diff against it
+  before finishing. Every trace (where, trigger, root cause, fix, verified-by) is in
+  `Mistake_Traces.md`, which is not auto-loaded.
 - `.claude/rules/agent-behaviour.md` and `.claude/rules/git-conventions.md` load in every session.
 - The other rule files have `paths:` frontmatter and load when matching files are read or edited: `python-style.md` (`backend/**/*.py`), `frontend-style.md` (`frontend/**`), `db-conventions.md` (migrations, repositories, isolation/scope tests, `*.sql`), `security.md` (§C5.8 paths), `testing.md` (tests and `loadtest/`).
 - Context files in `.claude/context/` are not auto-loaded: read the one for your area first.
