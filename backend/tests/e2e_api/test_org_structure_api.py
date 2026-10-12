@@ -497,3 +497,18 @@ async def test_member_profile_and_access_view_load_for_an_admin(
     res = await client.get(f"/api/v1/members/{admin_id}/access", headers=headers)
     assert res.status_code == 200
     assert res.json()["member_id"] == str(admin_id)
+
+
+async def test_module_routes_answer_in_the_success_envelope(
+    client: httpx.AsyncClient, make_pool: PoolFactory
+) -> None:
+    """The web client reads every /api/v1 answer through apiFetch, which needs `data` (§C4.9)."""
+    pool = await make_pool("api")
+    org_id, admin_id, _ = await _create_org(pool)
+    headers = {"x-organization-id": str(org_id), "x-member-id": str(admin_id), "x-role": "admin"}
+
+    res = await client.get("/api/v1/modules", headers=headers)
+    assert res.status_code == 200
+    modules = res.json()["data"]
+    assert {m["key"] for m in modules} >= {"assets"}
+    assert all({"key", "is_installed", "dependencies"} <= set(m) for m in modules)
