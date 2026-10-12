@@ -48,7 +48,6 @@ def _resolve_caller(request: Request) -> tuple[UUID, ScopeFilter]:
     return org_uuid, scope_filter
 
 
-@router.get("", summary="List audit events", openapi_extra=permission_extra("audit.read"))
 @router.get("/events", summary="List audit events", openapi_extra=permission_extra("audit.read"))
 async def get_audit_events(
     request: Request,

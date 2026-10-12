@@ -11,9 +11,10 @@ from uuid import UUID
 from fastapi import APIRouter, Query, Request
 
 from app.api.deps import permission_extra
+from app.api.v1.caller import request_id, resolve_member
 from app.core.db import tenant_transaction
 from app.core.envelope import success_response
-from app.core.problems import NotFoundError, UnauthorizedError
+from app.core.problems import NotFoundError, ValidationFailedError
 from app.core.scope import MemberContext, default_scope_resolver
 from app.modules.notifications import service
 
@@ -22,22 +23,9 @@ router = APIRouter(prefix="/notifications", tags=["notifications"])
 READ_PERMISSION = "notification.read"
 
 
-def _resolve_member(request: Request) -> MemberContext:
-    """The member `AuthMiddleware` authenticated for this request; anonymous requests are refused."""
-    member: MemberContext | None = getattr(request.state, "member", None)
-    if member is None:
-        raise UnauthorizedError()
-    return member
-
-
 def _require_read(member: MemberContext) -> None:
     if not default_scope_resolver.has_permission(member, READ_PERMISSION):
         raise NotFoundError()
-
-
-def _request_id(request: Request) -> str:
-    value = getattr(request.state, "request_id", "")
-    return value if isinstance(value, str) else ""
 
 
 @router.get("", summary="List the caller's own inbox", openapi_extra=permission_extra(READ_PERMISSION))
@@ -49,9 +37,14 @@ async def list_notifications(
     after: str | None = Query(default=None, description="Cursor from a previous page's next_cursor"),
     limit: int = Query(20, ge=1, le=100),
 ) -> dict[str, Any]:
-    member = _resolve_member(request)
+    member = resolve_member(request)
     _require_read(member)
-    cursor = service.decode_cursor(after) if after else None
+    cursor = None
+    if after:
+        try:
+            cursor = service.decode_cursor(after)
+        except (ValueError, TypeError) as exc:
+            raise ValidationFailedError(detail="The cursor is not valid.") from exc
     pool = request.app.state.pool
     async with tenant_transaction(pool, UUID(member.organization_id)) as conn:
         rows, next_cursor = await service.list_inbox(
@@ -63,7 +56,7 @@ async def list_notifications(
             limit=limit,
         )
     data = {"items": [_serialize(row) for row in rows], "next_cursor": next_cursor}
-    return success_response(data=data, request_id=_request_id(request))
+    return success_response(data=data, request_id=request_id(request))
 
 
 @router.get(
@@ -72,12 +65,12 @@ async def list_notifications(
     openapi_extra=permission_extra(READ_PERMISSION),
 )
 async def get_unread_count(request: Request) -> dict[str, Any]:
-    member = _resolve_member(request)
+    member = resolve_member(request)
     _require_read(member)
     pool = request.app.state.pool
     async with tenant_transaction(pool, UUID(member.organization_id)) as conn:
         count = await service.unread_count(conn, member_id=UUID(member.member_id))
-    return success_response(data={"unread": count}, request_id=_request_id(request))
+    return success_response(data={"unread": count}, request_id=request_id(request))
 
 
 @router.post(
@@ -86,9 +79,9 @@ async def get_unread_count(request: Request) -> dict[str, Any]:
     openapi_extra=permission_extra(READ_PERMISSION),
 )
 async def mark_read(request: Request, notification_id: UUID) -> dict[str, Any]:
-    member = _resolve_member(request)
+    member = resolve_member(request)
     _require_read(member)
-    req_id = _request_id(request)
+    req_id = request_id(request)
     pool = request.app.state.pool
     async with tenant_transaction(pool, UUID(member.organization_id)) as conn:
         changed = await service.mark_read(
@@ -107,9 +100,9 @@ async def mark_read(request: Request, notification_id: UUID) -> dict[str, Any]:
     openapi_extra=permission_extra(READ_PERMISSION),
 )
 async def mark_all_read(request: Request) -> dict[str, Any]:
-    member = _resolve_member(request)
+    member = resolve_member(request)
     _require_read(member)
-    req_id = _request_id(request)
+    req_id = request_id(request)
     pool = request.app.state.pool
     async with tenant_transaction(pool, UUID(member.organization_id)) as conn:
         count = await service.mark_all_read(

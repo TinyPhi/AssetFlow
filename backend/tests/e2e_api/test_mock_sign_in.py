@@ -44,7 +44,9 @@ def _mock_provider(idp_org: str, env: str = "development") -> MockAuthProvider:
 def _mock_app(provider: MockAuthProvider, pool: object) -> FastAPI:
     app = create_app()
     app.state.config = SimpleNamespace(
-        env="development", providers=SimpleNamespace(auth=SimpleNamespace(type="mock"))
+        env="development",
+        providers=SimpleNamespace(auth=SimpleNamespace(type="mock")),
+        platform=SimpleNamespace(allowed_origins=["http://localhost:5173"]),
     )
     app.state.registry = Registry(provider)
     app.state.pool = pool
@@ -129,6 +131,10 @@ def test_mock_stays_refused_outside_development_and_test() -> None:
         "//evil.example/auth/callback",
         "evil.example/auth/callback",
         "https:///no-host",
+        "/\\evil.example/auth/callback",
+        "/\t/evil.example/auth/callback",
+        "/\n/evil.example",
+        "/auth/callback\x00",
     ],
 )
 async def test_mock_authorize_refuses_a_non_web_redirect_uri(redirect_uri: str) -> None:
