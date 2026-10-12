@@ -5,74 +5,36 @@ import { RotateCcw } from "lucide-react";
 import type React from "react";
 import { useEffect, useState } from "react";
 import { DataTable, EmptyState, ErrorState, Skeleton, type Column } from "@/components/ui";
+import { ProblemError, apiFetch } from "@/lib/api";
 
+// One row of `GET /api/v1/notification-channels/deliveries` (a page: `items` + `next_cursor`).
 interface DeliveryLogItem {
   id: string;
   channel_key: string;
-  event_type: string;
+  target: string;
   status: string;
   attempts: number;
+  error_code: string | null;
   created_at: string;
-  error_message?: string | null;
 }
+
+const DEAD_LETTERED = "dead_lettered";
 
 export const DeliveryLogPage: React.FC = () => {
   const [logs, setLogs] = useState<DeliveryLogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const loadLogs = () => {
     setLoading(true);
     setError(null);
-    fetch("/api/v1/notification-channels/deliveries")
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to load delivery logs");
-        return res.json() as Promise<{ data?: DeliveryLogItem[] }>;
-      })
-      .then((body) => {
-        const items = body.data ?? [];
-        setLogs(
-          items.length > 0
-            ? items
-            : [
-                {
-                  id: "del-1",
-                  channel_key: "email",
-                  event_type: "member.invited",
-                  status: "delivered",
-                  attempts: 1,
-                  created_at: new Date().toISOString(),
-                },
-                {
-                  id: "del-2",
-                  channel_key: "webhook",
-                  event_type: "org_unit.created",
-                  status: "delivered",
-                  attempts: 1,
-                  created_at: new Date().toISOString(),
-                },
-              ],
-        );
+    apiFetch<{ items: DeliveryLogItem[] }>("/notification-channels/deliveries")
+      .then((page) => {
+        setLogs(page.items);
       })
       .catch(() => {
-        setLogs([
-          {
-            id: "del-1",
-            channel_key: "email",
-            event_type: "member.invited",
-            status: "delivered",
-            attempts: 1,
-            created_at: new Date().toISOString(),
-          },
-          {
-            id: "del-2",
-            channel_key: "webhook",
-            event_type: "org_unit.created",
-            status: "delivered",
-            attempts: 1,
-            created_at: new Date().toISOString(),
-          },
-        ]);
+        setError("Failed to load delivery logs");
       })
       .finally(() => {
         setLoading(false);
@@ -83,13 +45,25 @@ export const DeliveryLogPage: React.FC = () => {
     loadLogs();
   }, []);
 
+  const handleRequeue = async (id: string) => {
+    setActionError(null);
+    try {
+      await apiFetch(`/notification-channels/deliveries/${id}/requeue`, { method: "POST" });
+      loadLogs();
+    } catch (err: unknown) {
+      setActionError(
+        err instanceof ProblemError && err.detail ? err.detail : "Failed to requeue the delivery",
+      );
+    }
+  };
+
   const columns: Column<DeliveryLogItem>[] = [
     {
-      id: "event",
-      header: "Event",
+      id: "target",
+      header: "Target",
       cell: (row) => (
         <div className="flex flex-col">
-          <span className="font-mono text-xs font-semibold text-foreground">{row.event_type}</span>
+          <span className="font-mono text-xs font-semibold text-foreground">{row.target}</span>
           <span className="text-xs text-muted">{`Channel: ${row.channel_key}`}</span>
         </div>
       ),
@@ -98,15 +72,20 @@ export const DeliveryLogPage: React.FC = () => {
       id: "status",
       header: "Status",
       cell: (row) => (
-        <span
-          className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
-            row.status === "delivered"
-              ? "border border-success bg-success-surface text-success"
-              : "border border-danger bg-danger-surface text-danger"
-          }`}
-        >
-          {`${row.status} (${String(row.attempts)}x)`}
-        </span>
+        <div className="flex flex-col gap-1">
+          <span
+            className={`inline-flex w-fit rounded-full px-2.5 py-0.5 text-xs font-medium ${
+              row.status === "delivered"
+                ? "border border-success bg-success-surface text-success"
+                : row.status === DEAD_LETTERED
+                  ? "border border-danger bg-danger-surface text-danger"
+                  : "border border-border bg-surface text-muted"
+            }`}
+          >
+            {`${row.status} (${String(row.attempts)}x)`}
+          </span>
+          {row.error_code && <span className="font-mono text-xs text-muted">{row.error_code}</span>}
+        </div>
       ),
     },
     {
@@ -118,9 +97,12 @@ export const DeliveryLogPage: React.FC = () => {
       id: "actions",
       header: "Actions",
       cell: (row) =>
-        row.status === "failed" ? (
+        row.status === DEAD_LETTERED ? (
           <button
             type="button"
+            onClick={() => {
+              void handleRequeue(row.id);
+            }}
             className="flex items-center gap-1 text-xs font-medium text-primary hover:underline"
           >
             <RotateCcw className="h-3 w-3" />
@@ -138,6 +120,8 @@ export const DeliveryLogPage: React.FC = () => {
         <h1 className="text-2xl font-bold tracking-tight">{"Notification Delivery Log"}</h1>
         <p className="text-sm text-muted">{"Audit and inspect outbound notification egress events"}</p>
       </div>
+
+      {actionError && <ErrorState message={actionError} />}
 
       {loading ? (
         <Skeleton rows={4} />
