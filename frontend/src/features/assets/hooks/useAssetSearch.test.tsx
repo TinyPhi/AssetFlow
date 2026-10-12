@@ -28,11 +28,11 @@ describe("useAssetSearch", () => {
       wrapper,
       initialProps: { text: "" },
     });
-    for (const text of ["la", "lap", "lapt", "lapto", "laptop"]) rerender({ text });
+    for (const text of ["al", "alp", "alph", "alpha"]) rerender({ text });
 
     await waitFor(() => {
       expect(result.current.isSuccess).toBe(true);
     });
-    expect(queries).toEqual(["laptop"]);
+    expect(queries).toEqual(["alpha"]);
   });
 });
