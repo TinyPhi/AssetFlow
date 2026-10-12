@@ -59,3 +59,26 @@ async def test_components_router_rate_limits_a_single_member() -> None:
         await _components_rate_limit(req)
     with pytest.raises(RateLimitedError):
         await _components_rate_limit(req)
+
+
+async def test_component_budget_is_shared_across_assets_and_routes() -> None:
+    """Spreading calls over many asset ids and over list/attach/detach must not multiply the
+    budget: the attach/detach lock is per organization, so the limit has to be per member."""
+    paths = [
+        f"/api/v1/assets/00000000-0000-0000-0000-{i:012d}/components"
+        + ("" if i % 2 else f"/00000000-0000-0000-0000-{i + 1:012d}/detach")
+        for i in range(60)
+    ]
+    for path in paths:  # 60 calls over 60 different asset ids and two route shapes
+        await _components_rate_limit(_request("member-e", path=path))
+    with pytest.raises(RateLimitedError):
+        other_asset = "/api/v1/assets/11111111-1111-1111-1111-111111111111/components"
+        await _components_rate_limit(_request("member-e", path=other_asset))
+
+
+async def test_asset_budget_is_shared_across_asset_ids() -> None:
+    for i in range(180):
+        path = f"/api/v1/assets/00000000-0000-0000-0000-{i:012d}"
+        await _assets_rate_limit(_request("member-f", path=path))
+    with pytest.raises(RateLimitedError):
+        await _assets_rate_limit(_request("member-f", path="/api/v1/assets/vocabulary"))

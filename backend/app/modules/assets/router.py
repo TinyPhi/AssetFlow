@@ -28,7 +28,13 @@ _CUSTOM_FIELD_OPS = ("gte", "lte")
 # Per-member sliding window (§B7.2, same non-negotiable as every other route: a permission and a
 # rate limit). Shared across every route below, member-keyed where a principal is present.
 _ASSETS_RATE_LIMIT_STORE = InMemoryRateLimitStore()
-_ASSETS_RATE_LIMIT = RateLimiter(times=180, seconds=60, store=_ASSETS_RATE_LIMIT_STORE, key_prefix="assets")
+_ASSETS_RATE_LIMIT = RateLimiter(
+    times=180,
+    seconds=60,
+    store=_ASSETS_RATE_LIMIT_STORE,
+    key_prefix="assets",
+    bucket="asset-ops",  # one budget per member across every asset route and every asset id
+)
 
 
 async def _assets_rate_limit(request: Request) -> None:

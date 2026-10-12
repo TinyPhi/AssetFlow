@@ -29,7 +29,11 @@ from app.modules.organization.modules import require_module
 # app.modules.assets.router.
 _COMPONENTS_RATE_LIMIT_STORE = InMemoryRateLimitStore()
 _COMPONENTS_RATE_LIMIT = RateLimiter(
-    times=60, seconds=60, store=_COMPONENTS_RATE_LIMIT_STORE, key_prefix="asset-components"
+    times=60,
+    seconds=60,
+    store=_COMPONENTS_RATE_LIMIT_STORE,
+    key_prefix="asset-components",
+    bucket="component-ops",  # one budget per member across list/attach/detach and every asset
 )
 
 
