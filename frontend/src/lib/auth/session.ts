@@ -5,9 +5,20 @@
 // in localStorage or sessionStorage, so a script injected into the page cannot read it from storage.
 // Sign-in, silent refresh and logout are wired in by P7-02b through the hooks below.
 
-export type RefreshHandler = () => Promise<string | null>;
+/** A new access token, optionally with its lifetime in seconds (`expires_in` from the BFF). */
+export interface IssuedToken {
+  token: string;
+  expiresIn?: number;
+}
+
+export type RefreshHandler = () => Promise<string | IssuedToken | null>;
+
+// Refresh this long before the token expires, so a request never goes out with an expired token.
+const REFRESH_LEAD_MS = 30_000;
 
 let accessToken: string | null = null;
+let expiresAt: number | null = null;
+let expiryTimer: ReturnType<typeof setTimeout> | null = null;
 let refreshHandler: RefreshHandler | null = null;
 let inFlight: Promise<string | null> | null = null;
 const listeners = new Set<() => void>();
@@ -20,19 +31,40 @@ export function getAccessToken(): string | null {
   return accessToken;
 }
 
-export function setAccessToken(token: string | null): void {
+function clearExpiryTimer(): void {
+  if (expiryTimer !== null) clearTimeout(expiryTimer);
+  expiryTimer = null;
+}
+
+/**
+ * Store the access token. With `expiresInSeconds`, the session counts as gone once the token expires,
+ * and a silent refresh is started shortly before that; without it the token never expires locally.
+ */
+export function setAccessToken(token: string | null, expiresInSeconds?: number): void {
+  clearExpiryTimer();
   accessToken = token;
+  expiresAt = token !== null && expiresInSeconds !== undefined ? Date.now() + expiresInSeconds * 1000 : null;
+  if (expiresAt !== null) {
+    const refreshIn = Math.max(0, expiresAt - Date.now() - REFRESH_LEAD_MS);
+    expiryTimer = setTimeout(() => {
+      expiryTimer = null;
+      void refreshSession();
+    }, refreshIn);
+  }
   notify();
 }
 
 export function clearSession(): void {
+  clearExpiryTimer();
   accessToken = null;
+  expiresAt = null;
   inFlight = null;
   notify();
 }
 
+/** A token is held and, when its lifetime is known, has not expired yet. */
 export function hasSession(): boolean {
-  return accessToken !== null;
+  return accessToken !== null && (expiresAt === null || Date.now() < expiresAt);
 }
 
 /** Register how a new access token is obtained (P7-02b: the BFF refresh endpoint). */
@@ -48,9 +80,13 @@ export function setRefreshHandler(handler: RefreshHandler | null): void {
 export function refreshSession(): Promise<string | null> {
   if (refreshHandler === null) return Promise.resolve(null);
   inFlight ??= refreshHandler()
-    .then((token) => {
-      setAccessToken(token);
-      return token;
+    .then((issued) => {
+      if (issued === null || typeof issued === "string") {
+        setAccessToken(issued);
+        return issued;
+      }
+      setAccessToken(issued.token, issued.expiresIn);
+      return issued.token;
     })
     .catch(() => {
       clearSession();

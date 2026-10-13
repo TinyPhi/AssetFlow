@@ -121,7 +121,8 @@ async def move_descendants(
             version=row["version"],
             sets=sets,
         )
-        assert updated is not None  # noqa: S101 - the row is locked and its version was just read
+        if updated is None:  # the row is locked and its version was just read
+            raise RuntimeError("asset row vanished while locked for the cascade update")
         await record_audit_event(
             conn,
             organization_id=organization_id,

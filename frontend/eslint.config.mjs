@@ -47,7 +47,9 @@ export default tseslint.config(
     },
   },
   {
-    // Tests may use literal strings and read their own source tree (theme-regression scan).
+    // Tests may use literal strings and read their own source tree (theme-regression scan). They also
+    // compare fixture tokens with `===` (no secret is at stake, so no timing-attack risk) and use
+    // fixed test regexes on short fixture strings (no untrusted input, so no ReDoS risk).
     files: ["**/*.test.{ts,tsx}", "src/test/**"],
     rules: {
       "react/jsx-no-literals": "off",

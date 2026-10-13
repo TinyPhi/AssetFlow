@@ -13,28 +13,16 @@ from uuid import UUID
 from fastapi import APIRouter, Request
 
 from app.api.deps import permission_extra
+from app.api.v1.caller import request_id, resolve_member
 from app.core.db import tenant_transaction
 from app.core.envelope import success_response
-from app.core.problems import PermissionDeniedError, UnauthorizedError
-from app.core.scope import MemberContext, default_scope_resolver
+from app.core.problems import PermissionDeniedError
+from app.core.scope import default_scope_resolver
 from app.modules.organization.bulk_import import ImportRequest, run_import
 
 router = APIRouter(prefix="/import", tags=["import"])
 
 MANAGE_PERMISSION = "member.manage"
-
-
-def _resolve_member(request: Request) -> MemberContext:
-    """The member `AuthMiddleware` authenticated for this request; anonymous requests are refused."""
-    member: MemberContext | None = getattr(request.state, "member", None)
-    if member is None:
-        raise UnauthorizedError()
-    return member
-
-
-def _request_id(request: Request) -> str:
-    value = getattr(request.state, "request_id", "")
-    return value if isinstance(value, str) else ""
 
 
 @router.post(
@@ -43,14 +31,14 @@ def _request_id(request: Request) -> str:
     openapi_extra=permission_extra(MANAGE_PERMISSION),
 )
 async def preview_import(request: Request, body: ImportRequest) -> dict[str, Any]:
-    member = _resolve_member(request)
+    member = resolve_member(request)
     if not default_scope_resolver.has_permission(member, MANAGE_PERMISSION):
         raise PermissionDeniedError()
     pool = request.app.state.pool
     org_id = UUID(member.organization_id)
     async with tenant_transaction(pool, org_id) as conn:
         result = await run_import(conn, organization_id=org_id, data=body, dry_run=True)
-    return success_response(data=result.as_dict(), request_id=_request_id(request))
+    return success_response(data=result.as_dict(), request_id=request_id(request))
 
 
 @router.post(
@@ -59,7 +47,7 @@ async def preview_import(request: Request, body: ImportRequest) -> dict[str, Any
     openapi_extra=permission_extra(MANAGE_PERMISSION),
 )
 async def commit_import(request: Request, body: ImportRequest) -> dict[str, Any]:
-    member = _resolve_member(request)
+    member = resolve_member(request)
     if not default_scope_resolver.has_permission(member, MANAGE_PERMISSION):
         raise PermissionDeniedError()
     pool = request.app.state.pool
@@ -72,9 +60,9 @@ async def commit_import(request: Request, body: ImportRequest) -> dict[str, Any]
             data=body,
             dry_run=False,
             actor_member_id=actor_id,
-            request_id=_request_id(request),
+            request_id=request_id(request),
         )
-    return success_response(data=result.as_dict(), request_id=_request_id(request))
+    return success_response(data=result.as_dict(), request_id=request_id(request))
 
 
 def _is_uuid(value: str) -> bool:

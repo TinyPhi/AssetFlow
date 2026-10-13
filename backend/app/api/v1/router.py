@@ -11,6 +11,7 @@ from fastapi import APIRouter, Request
 from app.api.deps import public_extra
 from app.api.v1.audit import router as audit_router
 from app.api.v1.bulk_import import router as bulk_import_router
+from app.api.v1.caller import request_id
 from app.api.v1.locations import router as locations_router
 from app.api.v1.me import router as me_router
 from app.api.v1.members import router as members_router
@@ -48,18 +49,13 @@ router.include_router(me_router)
 router.include_router(notification_preferences_router)
 
 
-def _request_id(request: Request) -> str:
-    value = getattr(request.state, "request_id", "")
-    return value if isinstance(value, str) else ""
-
-
 @router.get("/ping", tags=["system"], summary="Connectivity check", openapi_extra=public_extra())
 async def ping(request: Request) -> dict[str, Any]:
     """Lightweight connectivity check."""
-    return success_response(data={"pong": True}, request_id=_request_id(request))
+    return success_response(data={"pong": True}, request_id=request_id(request))
 
 
 @router.get("/info", tags=["system"], summary="Public API information", openapi_extra=public_extra())
 async def info(request: Request) -> dict[str, Any]:
     """Public API identity. Environment and build versions are not disclosed anonymously."""
-    return success_response(data={"name": "AssetFlow", "api_version": "v1"}, request_id=_request_id(request))
+    return success_response(data={"name": "AssetFlow", "api_version": "v1"}, request_id=request_id(request))

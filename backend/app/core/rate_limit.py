@@ -131,12 +131,17 @@ class RateLimiter:
         store: InMemoryRateLimitStore | None = None,
         key_prefix: str = "rl",
         trusted_proxy_cidrs: Iterable[str] | None = None,
+        *,
+        bucket: str | None = None,
     ) -> None:
         self.times = times
         self.seconds = seconds
         self.store = store or default_rate_limit_store
         self.key_prefix = key_prefix
         self._trusted = parse_proxy_cidrs(trusted_proxy_cidrs) if trusted_proxy_cidrs is not None else None
+        # A fixed bucket name makes every route using this limiter share one budget per caller,
+        # instead of one budget per route template (the default).
+        self._bucket = bucket
 
     def _trusted_proxies(self, request: Request) -> ProxyNetworks:
         """Explicit constructor value, else `platform.trusted_proxy_cidrs` of the running app's config."""
@@ -152,7 +157,8 @@ class RateLimiter:
 
     async def __call__(self, request: Request) -> None:
         identifier = get_client_identifier(request, self._trusted_proxies(request))
-        key = f"{self.key_prefix}:{_route_template(request)}:{identifier}"
+        scope = self._bucket if self._bucket is not None else _route_template(request)
+        key = f"{self.key_prefix}:{scope}:{identifier}"
         allowed, retry_after = await self.store.hit(key, self.times, self.seconds)
         if not allowed:
             raise RateLimitedError(
