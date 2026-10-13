@@ -11,10 +11,11 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.deps import permission_extra
+from app.api.v1.caller import request_id, resolve_member
 from app.core.db import tenant_transaction
 from app.core.envelope import success_response
-from app.core.problems import NotFoundError, PermissionDeniedError, UnauthorizedError
-from app.core.scope import MemberContext, default_scope_resolver
+from app.core.problems import NotFoundError, PermissionDeniedError
+from app.core.scope import default_scope_resolver
 from app.modules.organization.settings import get_settings, update_settings
 
 router = APIRouter(prefix="/organizations/settings", tags=["organization-settings"])
@@ -35,35 +36,22 @@ class OrganizationSettingsUpdate(BaseModel):
     default_calendar_id: UUID | None = None
 
 
-def _resolve_member(request: Request) -> MemberContext:
-    """The member `AuthMiddleware` authenticated for this request; anonymous requests are refused."""
-    member: MemberContext | None = getattr(request.state, "member", None)
-    if member is None:
-        raise UnauthorizedError()
-    return member
-
-
-def _request_id(request: Request) -> str:
-    value = getattr(request.state, "request_id", "")
-    return value if isinstance(value, str) else ""
-
-
 @router.get("", summary="Read organization settings", openapi_extra=permission_extra(READ_PERMISSION))
 async def get_organization_settings(request: Request) -> dict[str, Any]:
-    member = _resolve_member(request)
+    member = resolve_member(request)
     if not default_scope_resolver.has_permission(member, READ_PERMISSION):
         raise NotFoundError()
     pool = request.app.state.pool
     async with tenant_transaction(pool, UUID(member.organization_id)) as conn:
         settings = await get_settings(conn, UUID(member.organization_id))
-    return success_response(data=settings, request_id=_request_id(request))
+    return success_response(data=settings, request_id=request_id(request))
 
 
 @router.patch("", summary="Change organization settings", openapi_extra=permission_extra(MANAGE_PERMISSION))
 async def patch_organization_settings(
     request: Request, body: Annotated[OrganizationSettingsUpdate, Field()]
 ) -> dict[str, Any]:
-    member = _resolve_member(request)
+    member = resolve_member(request)
     if not default_scope_resolver.has_permission(member, MANAGE_PERMISSION):
         raise PermissionDeniedError()
     changes = body.model_dump(exclude_unset=True)
@@ -72,4 +60,4 @@ async def patch_organization_settings(
         settings = await update_settings(
             conn, UUID(member.organization_id), changes, actor_member_id=UUID(member.member_id)
         )
-    return success_response(data=settings, request_id=_request_id(request))
+    return success_response(data=settings, request_id=request_id(request))

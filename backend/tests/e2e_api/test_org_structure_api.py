@@ -460,3 +460,55 @@ async def test_member_list_applies_the_callers_scope_filter(
     res = await client.get("/api/v1/members", headers=team_headers)
     assert res.status_code == 200
     assert [m["display_name"] for m in res.json()["data"]] == ["In Team"]
+
+    # The detail routes use the same rule: a member outside the caller's scope is a 404, not a leak.
+    for headers, inside, outside in (
+        (org_unit_headers, in_branch_id, out_branch_id),
+        (team_headers, in_team_id, out_team_id),
+    ):
+        res = await client.get(f"/api/v1/members/{inside}", headers=headers)
+        assert res.status_code == 200
+        assert res.json()["id"] == str(inside)
+        assert (await client.get(f"/api/v1/members/{outside}", headers=headers)).status_code == 404
+
+    team_admin_headers = {**team_headers, "x-role": "admin"}
+    assert (
+        await client.get(f"/api/v1/members/{in_team_id}/access", headers=team_admin_headers)
+    ).status_code == 200
+    res = await client.get(f"/api/v1/members/{out_team_id}/access", headers=team_admin_headers)
+    assert res.status_code == 404
+
+
+async def test_member_profile_and_access_view_load_for_an_admin(
+    client: httpx.AsyncClient, make_pool: PoolFactory
+) -> None:
+    """Both detail routes read real columns (`status`, not a missing `is_suspended`/`phone`) and the
+    access view loads the member's real grants (`role_key`)."""
+    pool = await make_pool("api")
+    org_id, admin_id, _ = await _create_org(pool)
+    headers = {"x-organization-id": str(org_id), "x-member-id": str(admin_id), "x-role": "admin"}
+
+    res = await client.get(f"/api/v1/members/{admin_id}", headers=headers)
+    assert res.status_code == 200
+    body = res.json()
+    assert body["id"] == str(admin_id)
+    assert body["is_suspended"] is False
+
+    res = await client.get(f"/api/v1/members/{admin_id}/access", headers=headers)
+    assert res.status_code == 200
+    assert res.json()["member_id"] == str(admin_id)
+
+
+async def test_module_routes_answer_in_the_success_envelope(
+    client: httpx.AsyncClient, make_pool: PoolFactory
+) -> None:
+    """The web client reads every /api/v1 answer through apiFetch, which needs `data` (§C4.9)."""
+    pool = await make_pool("api")
+    org_id, admin_id, _ = await _create_org(pool)
+    headers = {"x-organization-id": str(org_id), "x-member-id": str(admin_id), "x-role": "admin"}
+
+    res = await client.get("/api/v1/modules", headers=headers)
+    assert res.status_code == 200
+    modules = res.json()["data"]
+    assert {m["key"] for m in modules} >= {"assets"}
+    assert all({"key", "is_installed", "dependencies"} <= set(m) for m in modules)
