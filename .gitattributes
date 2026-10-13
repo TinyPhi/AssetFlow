@@ -9,3 +9,9 @@
 *.ico binary
 *.jpg binary
 *.woff2 binary
+
+# Mistake log: keep both sides of a merge. `check` (make lint) flags anything a merge doubled, and
+# `python scripts/check-mistakes-log.py sync` rebuilds the generated tables from the traces.
+Mistake_Learn.md merge=union
+Mistake_Traces.md merge=union
+Mistake_Traces_archive/*.md merge=union

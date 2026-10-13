@@ -10,7 +10,7 @@ Always loaded. How an AI agent works in this repository. The human is the lead e
 
 ## Startup (every session, in this order)
 
-1. Read `CLAUDE.md`.
+1. Read `CLAUDE.md` (it imports `Mistake_Learn.md`; read every active row).
 2. Read `docs/tracker/PROGRESS.md` and `docs/tracker/BLOCKERS.md` (if they exist).
 3. Run `python .claude/hooks/af.py status` to see the branch, the plan and every open gate.
 4. Run `git status` and `git log --oneline -5`.
@@ -22,6 +22,10 @@ Always loaded. How an AI agent works in this repository. The human is the lead e
 - Do not start a second task until the current one is committed, or written to `BLOCKERS.md`.
 - Keep the diff inside the plan's `scope_paths`. Out-of-scope edits make the review gate fail.
 - At the end of the unit, append a short entry to `docs/tracker/PROGRESS.md` (task id, what changed, evidence, next step).
+- Before finishing, check the diff against every active row in `Mistake_Learn.md`. When a review or
+  CI catches a mistake, run `python scripts/check-mistakes-log.py find <words>`: add a trace to the
+  matching kind with `seen M-NNN` (where, trigger, root cause, fix, verified-by), or a new kind with
+  `new`, in the same unit of work. Traces land in `Mistake_Traces.md`.
 
 ## Proceed autonomously
 
