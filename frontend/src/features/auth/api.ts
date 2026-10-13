@@ -4,8 +4,8 @@
 import type { LoginTransaction } from "@/lib/auth";
 import type { PublicConfig, SessionResponse } from "./types";
 
-// Cookie-bound endpoints (refresh, logout) require this marker besides an allowed Origin, which the
-// browser adds itself (§B11.2): a cross-site form post cannot set a custom header.
+// Cookie-bound endpoints (session, refresh, logout) require this marker besides an allowed Origin, which
+// the browser adds itself (§B11.2): a cross-site form post cannot set a custom header.
 const COOKIE_REQUEST_HEADERS = { "X-Requested-With": "AssetFlow" } as const;
 
 export async function fetchPublicConfig(): Promise<PublicConfig> {
@@ -21,7 +21,7 @@ export async function exchangeSession(
 ): Promise<SessionResponse> {
   const res = await fetch("/api/auth/session", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...COOKIE_REQUEST_HEADERS },
     body: JSON.stringify({
       code,
       redirect_uri: redirectUri,

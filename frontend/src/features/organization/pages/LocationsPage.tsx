@@ -5,6 +5,7 @@ import { Plus } from "lucide-react";
 import type React from "react";
 import { useEffect, useState } from "react";
 import { EmptyState, ErrorState, Skeleton, TreeView, type TreeNode } from "@/components/ui";
+import { apiFetch } from "@/lib/api";
 import { can, useMe } from "@/lib/permissions";
 
 interface RawLocation {
@@ -23,14 +24,8 @@ export const LocationsPage: React.FC = () => {
   const loadLocations = () => {
     setLoading(true);
     setError(null);
-    fetch("/api/v1/locations")
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to load locations");
-        return res.json() as Promise<{ data?: RawLocation[] }>;
-      })
-      .then((body) => {
-        const rawItems: RawLocation[] = body.data ?? [];
-
+    apiFetch<RawLocation[]>("/locations")
+      .then((rawItems) => {
         const map = new Map<string, TreeNode>();
         const roots: TreeNode[] = [];
 
@@ -53,40 +48,10 @@ export const LocationsPage: React.FC = () => {
           }
         }
 
-        setNodes(
-          roots.length > 0
-            ? roots
-            : [
-                {
-                  id: "site-main",
-                  name: "Main Campus",
-                  children: [
-                    {
-                      id: "building-a",
-                      name: "Building A",
-                      children: [{ id: "floor-1", name: "Floor 1", children: [] }],
-                    },
-                    { id: "building-b", name: "Building B", children: [] },
-                  ],
-                },
-              ],
-        );
+        setNodes(roots);
       })
       .catch(() => {
-        setNodes([
-          {
-            id: "site-main",
-            name: "Main Campus",
-            children: [
-              {
-                id: "building-a",
-                name: "Building A",
-                children: [{ id: "floor-1", name: "Floor 1", children: [] }],
-              },
-              { id: "building-b", name: "Building B", children: [] },
-            ],
-          },
-        ]);
+        setError("Failed to load locations");
       })
       .finally(() => {
         setLoading(false);

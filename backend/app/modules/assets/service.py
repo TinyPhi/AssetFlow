@@ -670,19 +670,26 @@ async def _apply_custom_field_update(
     sets["encrypted_fields"] = {**current_encrypted, **new_ciphertexts}
 
 
+# Never copied into an audit row: encrypted values are recorded by field name only (§B8.1), so the
+# audit log holds no ciphertext that would outlive a re-key or the value's deletion.
+_AUDIT_VALUE_EXCLUDED = ("custom_fields", "encrypted_fields")
+
+
 def _update_audit_states(current: Any, sets: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Before/after audit states of an edit. Both sides leave out the custom field maps; encrypted
+    fields appear only as the names that changed (`encrypted_fields_changed`)."""
     before_state = {
         key: str(value) if isinstance(value, UUID) else value
         for key, value in dict(current).items()
-        if key in sets
+        if key in sets and key not in _AUDIT_VALUE_EXCLUDED
     }
     after_state = {
         key: str(value) if isinstance(value, UUID) else value
         for key, value in sets.items()
-        if key not in ("custom_fields", "encrypted_fields")
+        if key not in _AUDIT_VALUE_EXCLUDED
     }
     if "encrypted_fields" in sets:
-        after_state["encrypted_fields_changed"] = list(sets["encrypted_fields"].keys())
+        after_state["encrypted_fields_changed"] = sorted(sets["encrypted_fields"].keys())
     return before_state, after_state
 
 
@@ -1105,6 +1112,8 @@ async def list_transitions(
         if not default_scope_resolver.check_access(caller, READ_PERMISSION, resource):
             raise AssetNotFoundError()
         template, snapshot = await _lifecycle_context(conn, organization_id, current)
+    # Computed from the snapshot read above, outside the transaction on purpose: this list is a
+    # hint for the UI, not authoritative. `change_status` re-reads and re-validates under lock.
     if template is None:
         return []
     out: list[TransitionRead] = []
@@ -1117,7 +1126,8 @@ async def list_transitions(
         except AssetInvalidTransitionError:
             continue
         target = template.status(transition.to)
-        assert target is not None  # noqa: S101 - validated at config load
+        if target is None:  # validated at config load
+            raise RuntimeError("transition target status missing from the domain template")
         out.append(
             TransitionRead(
                 to_status=transition.to, to_label=target.label, requires_reason=transition.requires_reason

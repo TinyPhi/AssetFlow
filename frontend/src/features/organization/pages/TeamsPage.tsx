@@ -5,6 +5,7 @@ import { Plus, Users } from "lucide-react";
 import type React from "react";
 import { useEffect, useState } from "react";
 import { EmptyState, ErrorState, Skeleton } from "@/components/ui";
+import { apiFetch } from "@/lib/api";
 import { t } from "@/lib/i18n";
 import { can, useMe } from "@/lib/permissions";
 
@@ -26,47 +27,12 @@ export const TeamsPage: React.FC = () => {
   const loadTeams = () => {
     setLoading(true);
     setError(null);
-    fetch("/api/v1/teams")
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to load teams");
-        return res.json() as Promise<{ data?: TeamItem[] }>;
-      })
-      .then((body) => {
-        const items: TeamItem[] = body.data ?? [];
-        setTeams(
-          items.length > 0
-            ? items
-            : [
-                {
-                  id: "team-1",
-                  name: "Core Infrastructure",
-                  description: "Main electrical and HVAC maintenance",
-                  member_count: 5,
-                },
-                {
-                  id: "team-2",
-                  name: "Field Technicians",
-                  description: "Mobile rapid response team",
-                  member_count: 8,
-                },
-              ],
-        );
+    apiFetch<TeamItem[]>("/teams")
+      .then((items) => {
+        setTeams(items);
       })
       .catch(() => {
-        setTeams([
-          {
-            id: "team-1",
-            name: "Core Infrastructure",
-            description: "Main electrical and HVAC maintenance",
-            member_count: 5,
-          },
-          {
-            id: "team-2",
-            name: "Field Technicians",
-            description: "Mobile rapid response team",
-            member_count: 8,
-          },
-        ]);
+        setError("Failed to load teams");
       })
       .finally(() => {
         setLoading(false);

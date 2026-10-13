@@ -12,8 +12,9 @@ services:
     restart: unless-stopped
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
-      MINIO_ROOT_USER: ${BACKUP_S3_KEY:-backupadmin}
-      MINIO_ROOT_PASSWORD: ${BACKUP_S3_SECRET:-backupsecret123}
+      # Same names as the backup service; no built-in credentials even for the test store.
+      MINIO_ROOT_USER: ${BACKUP_S3_KEY:?set BACKUP_S3_KEY (see .env.example)}
+      MINIO_ROOT_PASSWORD: ${BACKUP_S3_SECRET:?set BACKUP_S3_SECRET (see .env.example)}
     ports:
       - "127.0.0.1:19000:9000"
       - "127.0.0.1:19001:9001"

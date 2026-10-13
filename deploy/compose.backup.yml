@@ -20,12 +20,13 @@ services:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_USER: ${DATABASE_USER:-assetflow_app}
-      BACKUP_CIPHER_PASS: ${BACKUP_CIPHER_PASS:-assetflow-default-backup-passphrase-2026}
+      # No defaults for credentials: a known passphrase would encrypt real backups (ASVS V14.1.1).
+      BACKUP_CIPHER_PASS: ${BACKUP_CIPHER_PASS:?set BACKUP_CIPHER_PASS (see .env.example)}
       BACKUP_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:-af-objectstore:9000}
       BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-assetflow-backups}
       BACKUP_S3_REGION: ${BACKUP_S3_REGION:-us-east-1}
-      BACKUP_S3_KEY: ${BACKUP_S3_KEY:-backupadmin}
-      BACKUP_S3_SECRET: ${BACKUP_S3_SECRET:-backupsecret123}
+      BACKUP_S3_KEY: ${BACKUP_S3_KEY:?set BACKUP_S3_KEY (see .env.example)}
+      BACKUP_S3_SECRET: ${BACKUP_S3_SECRET:?set BACKUP_S3_SECRET (see .env.example)}
     volumes:
       - ./backup/pgbackrest.conf.template:/etc/pgbackrest/pgbackrest.conf:ro
       - wal_archive:/var/lib/postgresql/archive

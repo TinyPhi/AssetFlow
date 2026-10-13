@@ -1,0 +1,312 @@
+{
+  "version": "5.0.0",
+  "license": "CC-BY-SA-4.0",
+  "requirements": [
+    {
+      "id": "V1.1.1",
+      "chapter": "V1: Architecture, Design and Threat Modeling",
+      "level": 1,
+      "description": "Verify the use of a secure software development lifecycle that addresses security in all stages of development."
+    },
+    {
+      "id": "V1.1.2",
+      "chapter": "V1: Architecture, Design and Threat Modeling",
+      "level": 2,
+      "description": "Verify the use of threat modeling for every design change or sprint planning session to identify security threats."
+    },
+    {
+      "id": "V1.2.1",
+      "chapter": "V1: Architecture, Design and Threat Modeling",
+      "level": 1,
+      "description": "Verify that all components of the application, including third-party libraries, are identified and kept up to date."
+    },
+    {
+      "id": "V1.2.2",
+      "chapter": "V1: Architecture, Design and Threat Modeling",
+      "level": 2,
+      "description": "Verify that third-party components come from trusted repositories and their integrity is verified (e.g., checksums, lockfiles)."
+    },
+    {
+      "id": "V1.4.1",
+      "chapter": "V1: Architecture, Design and Threat Modeling",
+      "level": 1,
+      "description": "Verify that access control architecture enforces least privilege across tenants, roles, and administrative functions."
+    },
+    {
+      "id": "V1.4.2",
+      "chapter": "V1: Architecture, Design and Threat Modeling",
+      "level": 2,
+      "description": "Verify that tenant isolation and separation mechanisms prevent access to data belonging to other tenants."
+    },
+    {
+      "id": "V1.5.1",
+      "chapter": "V1: Architecture, Design and Threat Modeling",
+      "level": 1,
+      "description": "Verify that input validation and sanitization architecture enforces a fail-closed strategy."
+    },
+    {
+      "id": "V1.8.1",
+      "chapter": "V1: Architecture, Design and Threat Modeling",
+      "level": 2,
+      "description": "Verify that sensitive operations are protected against transaction replay and race conditions."
+    },
+    {
+      "id": "V1.14.1",
+      "chapter": "V1: Architecture, Design and Threat Modeling",
+      "level": 1,
+      "description": "Verify that the application architecture enforces separation between presentation, application logic, and data storage."
+    },
+    {
+      "id": "V2.1.1",
+      "chapter": "V2: Authentication",
+      "level": 1,
+      "description": "Verify that user passwords are at least 12 characters in length (or 8 characters with MFA)."
+    },
+    {
+      "id": "V2.1.2",
+      "chapter": "V2: Authentication",
+      "level": 2,
+      "description": "Verify that passwords are checked against a list of compromised passwords."
+    },
+    {
+      "id": "V2.2.1",
+      "chapter": "V2: Authentication",
+      "level": 1,
+      "description": "Verify that credentials are protected against automated brute-force attacks via rate limiting or lockout."
+    },
+    {
+      "id": "V2.4.1",
+      "chapter": "V2: Authentication",
+      "level": 1,
+      "description": "Verify that passwords are stored using salted modern adaptive hashing functions such as Argon2id or bcrypt."
+    },
+    {
+      "id": "V2.8.1",
+      "chapter": "V2: Authentication",
+      "level": 2,
+      "description": "Verify that single sign-on (SSO) and OIDC tokens are cryptographically verified and validated for issuer, audience, and expiration."
+    },
+    {
+      "id": "V3.1.1",
+      "chapter": "V3: Session Management",
+      "level": 1,
+      "description": "Verify that session tokens are generated using a cryptographically secure pseudo-random number generator."
+    },
+    {
+      "id": "V3.2.1",
+      "chapter": "V3: Session Management",
+      "level": 1,
+      "description": "Verify that session tokens are transmitted with Secure, HttpOnly, and SameSite attributes in cookies."
+    },
+    {
+      "id": "V3.2.2",
+      "chapter": "V3: Session Management",
+      "level": 2,
+      "description": "Verify that session tokens are encrypted or signed if they contain state or claims."
+    },
+    {
+      "id": "V3.3.1",
+      "chapter": "V3: Session Management",
+      "level": 1,
+      "description": "Verify that session timeout terminates sessions after a defined idle timeout period."
+    },
+    {
+      "id": "V3.3.2",
+      "chapter": "V3: Session Management",
+      "level": 2,
+      "description": "Verify that logout invalidates the session server-side and clears client cookies."
+    },
+    {
+      "id": "V4.1.1",
+      "chapter": "V4: Access Control",
+      "level": 1,
+      "description": "Verify that the principle of least privilege exists and users only have access to functions necessary for their role."
+    },
+    {
+      "id": "V4.1.2",
+      "chapter": "V4: Access Control",
+      "level": 2,
+      "description": "Verify that access control cannot be bypassed by modifying request parameters, paths, or headers."
+    },
+    {
+      "id": "V4.2.1",
+      "chapter": "V4: Access Control",
+      "level": 1,
+      "description": "Verify that sensitive resources prevent unauthorized read or write across different tenant boundaries."
+    },
+    {
+      "id": "V4.2.2",
+      "chapter": "V4: Access Control",
+      "level": 2,
+      "description": "Verify that direct object references (IDOR) are protected by server-side authorization checks against current tenant context."
+    },
+    {
+      "id": "V4.3.1",
+      "chapter": "V4: Access Control",
+      "level": 1,
+      "description": "Verify that every administrative interface and privileged endpoint enforces authorization."
+    },
+    {
+      "id": "V5.1.1",
+      "chapter": "V5: Validation, Sanitization and Encoding",
+      "level": 1,
+      "description": "Verify that input validation is performed on the server tier before processing."
+    },
+    {
+      "id": "V5.1.2",
+      "chapter": "V5: Validation, Sanitization and Encoding",
+      "level": 2,
+      "description": "Verify that structured data (such as JSON) is strictly validated against a schema defining type, length, and allowed characters."
+    },
+    {
+      "id": "V5.2.1",
+      "chapter": "V5: Validation, Sanitization and Encoding",
+      "level": 1,
+      "description": "Verify that output encoding is applied before rendering untrusted input into HTML, attributes, JavaScript, or CSS."
+    },
+    {
+      "id": "V5.3.1",
+      "chapter": "V5: Validation, Sanitization and Encoding",
+      "level": 1,
+      "description": "Verify that database queries use parameterized interfaces or ORM/query builders to prevent SQL injection."
+    },
+    {
+      "id": "V6.1.1",
+      "chapter": "V6: Stored Cryptography",
+      "level": 1,
+      "description": "Verify that sensitive data at rest is encrypted using industry-standard authenticated encryption (e.g., AES-GCM, ChaCha20-Poly1305)."
+    },
+    {
+      "id": "V6.2.1",
+      "chapter": "V6: Stored Cryptography",
+      "level": 2,
+      "description": "Verify that cryptographic keys are stored in a dedicated key management system or secrets vault, separate from encrypted data."
+    },
+    {
+      "id": "V6.4.1",
+      "chapter": "V6: Stored Cryptography",
+      "level": 2,
+      "description": "Verify that cryptographic key rotation mechanisms exist and keys can be replaced without data loss."
+    },
+    {
+      "id": "V7.1.1",
+      "chapter": "V7: Error Handling and Logging",
+      "level": 1,
+      "description": "Verify that error messages do not reveal sensitive information, internal implementation details, or stack traces."
+    },
+    {
+      "id": "V7.2.1",
+      "chapter": "V7: Error Handling and Logging",
+      "level": 2,
+      "description": "Verify that security events (authentication success/failure, access denial, permission changes) are logged with timestamp and user id."
+    },
+    {
+      "id": "V7.3.1",
+      "chapter": "V7: Error Handling and Logging",
+      "level": 2,
+      "description": "Verify that sensitive data (passwords, tokens, personal PII) is redacted or excluded from logs."
+    },
+    {
+      "id": "V8.1.1",
+      "chapter": "V8: Data Protection",
+      "level": 1,
+      "description": "Verify that sensitive data is not exposed in URL parameters or query strings."
+    },
+    {
+      "id": "V8.2.1",
+      "chapter": "V8: Data Protection",
+      "level": 2,
+      "description": "Verify that personal data handling adheres to privacy principles, allowing deletion and export."
+    },
+    {
+      "id": "V8.3.1",
+      "chapter": "V8: Data Protection",
+      "level": 1,
+      "description": "Verify that HTTP response headers instruct browsers not to cache sensitive pages (Cache-Control: no-store)."
+    },
+    {
+      "id": "V9.1.1",
+      "chapter": "V9: Communications",
+      "level": 1,
+      "description": "Verify that TLS is enforced for all client connections and insecure protocols are disabled."
+    },
+    {
+      "id": "V9.2.1",
+      "chapter": "V9: Communications",
+      "level": 2,
+      "description": "Verify that HTTP Strict Transport Security (HSTS) is enabled with an appropriate max-age."
+    },
+    {
+      "id": "V10.1.1",
+      "chapter": "V10: Malicious Code",
+      "level": 1,
+      "description": "Verify that code repositories enforce code review and integrity checks before merging."
+    },
+    {
+      "id": "V10.3.1",
+      "chapter": "V10: Malicious Code",
+      "level": 2,
+      "description": "Verify that automated dependency vulnerability scanning runs as part of the build pipeline."
+    },
+    {
+      "id": "V11.1.1",
+      "chapter": "V11: Business Logic",
+      "level": 1,
+      "description": "Verify that business logic flows (such as approvals, transitions, imports) execute sequentially and cannot be bypassed."
+    },
+    {
+      "id": "V11.2.1",
+      "chapter": "V11: Business Logic",
+      "level": 2,
+      "description": "Verify that batch imports and bulk operations execute atomically and validate all items before commit."
+    },
+    {
+      "id": "V12.1.1",
+      "chapter": "V12: File and Resources",
+      "level": 1,
+      "description": "Verify that file path manipulation (directory traversal) is prevented when resolving resource paths."
+    },
+    {
+      "id": "V12.4.1",
+      "chapter": "V12: File and Resources",
+      "level": 2,
+      "description": "Verify that resource limits (memory, execution timeout, request body size) are enforced to prevent DoS."
+    },
+    {
+      "id": "V13.1.1",
+      "chapter": "V13: API and Web Service",
+      "level": 1,
+      "description": "Verify that APIs validate request Content-Type and reject unexpected or spoofed media types."
+    },
+    {
+      "id": "V13.2.1",
+      "chapter": "V13: API and Web Service",
+      "level": 1,
+      "description": "Verify that rate limiting is enforced on all API endpoints to protect against abuse and credential stuffing."
+    },
+    {
+      "id": "V13.3.1",
+      "chapter": "V13: API and Web Service",
+      "level": 2,
+      "description": "Verify that cross-origin resource sharing (CORS) strictly restricts origins to trusted domains."
+    },
+    {
+      "id": "V14.1.1",
+      "chapter": "V14: Configuration",
+      "level": 1,
+      "description": "Verify that production configurations do not contain default passwords, demo accounts, or debug settings."
+    },
+    {
+      "id": "V14.2.1",
+      "chapter": "V14: Configuration",
+      "level": 2,
+      "description": "Verify that container workloads run as non-root users with read-only root filesystems and dropped capabilities."
+    },
+    {
+      "id": "V14.3.1",
+      "chapter": "V14: Configuration",
+      "level": 1,
+      "description": "Verify that Content Security Policy (CSP), X-Content-Type-Options, and Frame-Options headers are enforced."
+    }
+  ]
+}

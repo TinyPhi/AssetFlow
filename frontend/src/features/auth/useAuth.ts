@@ -17,7 +17,7 @@ import { exchangeSession, logoutSession, refreshSessionToken } from "./api";
 setRefreshHandler(async () => {
   try {
     const res = await refreshSessionToken();
-    return res.access_token;
+    return { token: res.access_token, expiresIn: res.expires_in };
   } catch {
     return null;
   }
@@ -29,7 +29,7 @@ export function useAuth() {
 
   const login = useCallback(async (code: string, redirectUri: string, txn: LoginTransaction) => {
     const res = await exchangeSession(code, redirectUri, txn);
-    setAccessToken(res.access_token);
+    setAccessToken(res.access_token, res.expires_in);
     return res;
   }, []);
 

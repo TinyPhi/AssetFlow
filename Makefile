@@ -137,6 +137,7 @@ up-minimal: check-python ## Start the minimal profile
 up-full: check-python ## Start the full profile: OpenBao, unseal (manual), openbao-apply, Zitadel, AssetFlow
 	@test -f $(COMPOSE_FULL) || $(call not_implemented,P2-12,the full profile ($(COMPOSE_FULL)))
 	@$(PYTHON) scripts/check-ports.py full
+	@! $(COMPOSE) $(COMPOSE_FILES_FULL) config --images | grep -q '^assetflow-api:.*latest' || { echo "make up-full: ASSETFLOW_VERSION must be a release tag or digest, not latest (docs/operations/startup.md)." >&2; exit 1; }
 	@test -f $(OPENBAO_CA) || { echo "make up-full: no OpenBao TLS files in deploy/.secrets/openbao-tls/. Run: sh deploy/openbao/gen-dev-tls.sh (docs/operations/openbao.md section 2)." >&2; exit 1; }
 	@echo "==> 1/5 OpenBao"
 	$(COMPOSE) $(COMPOSE_FILES_FULL) up -d openbao

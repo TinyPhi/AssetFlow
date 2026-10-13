@@ -244,7 +244,8 @@ class AssetRepository:
             notes,
             idempotency_key,
         )
-        assert row is not None  # noqa: S101 - INSERT ... RETURNING always returns exactly one row
+        if row is None:  # INSERT ... RETURNING always returns exactly one row
+            raise RuntimeError("INSERT ... RETURNING returned no asset row")
         return row
 
     async def update(
