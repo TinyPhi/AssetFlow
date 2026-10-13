@@ -213,7 +213,8 @@ async def list_categories(
             limit=limit,
         )
     items = [CategoryRead.model_validate(dict(row)).model_dump(mode="json") for row in rows]
-    next_cursor = repo.encode_cursor(rows[-1]["code"], rows[-1]["id"]) if len(rows) == limit else None
+    has_more = bool(rows) and len(rows) == limit
+    next_cursor = repo.encode_cursor(rows[-1]["code"], rows[-1]["id"]) if has_more else None
     return CursorPage(items=items, next_cursor=next_cursor)
 
 
@@ -573,7 +574,7 @@ async def list_custom_field_definitions(
     ]
     next_cursor = (
         repo.encode_field_cursor(rows[-1]["position"], rows[-1]["key"], rows[-1]["id"])
-        if len(rows) == limit
+        if rows and len(rows) == limit
         else None
     )
     return CursorPage(items=items, next_cursor=next_cursor)
@@ -839,7 +840,8 @@ async def _list_reference(
             limit=limit,
         )
     items = [read_cls.model_validate(_reference_dict(row)).model_dump(mode="json") for row in rows]
-    next_cursor = repo.encode_cursor(rows[-1]["name"], rows[-1]["id"]) if len(rows) == limit else None
+    has_more = bool(rows) and len(rows) == limit
+    next_cursor = repo.encode_cursor(rows[-1]["name"], rows[-1]["id"]) if has_more else None
     return CursorPage(items=items, next_cursor=next_cursor)
 
 
