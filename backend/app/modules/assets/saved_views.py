@@ -217,7 +217,8 @@ class SavedViewRepository:
             data.sort,
             data.columns,
         )
-        assert row is not None  # noqa: S101 - INSERT ... RETURNING always returns one row
+        if row is None:  # INSERT ... RETURNING always returns one row
+            raise RuntimeError("INSERT ... RETURNING returned no saved view")
         return row
 
     async def update(

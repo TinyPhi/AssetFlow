@@ -125,6 +125,21 @@ async def test_rate_limit_key_uses_route_template_not_concrete_path() -> None:
         await limiter(request_for("c"))
 
 
+async def test_a_fixed_bucket_shares_one_budget_across_different_routes() -> None:
+    store = InMemoryRateLimitStore()
+    limiter = RateLimiter(times=2, seconds=60, store=store, bucket="ops")
+
+    def request_for(template: str) -> Request:
+        request = _request(None, "192.0.2.1", path=template)
+        request.scope["route"] = SimpleNamespace(path=template)
+        return request
+
+    await limiter(request_for("/a/{id}"))
+    await limiter(request_for("/b/{id}/detach"))
+    with pytest.raises(RateLimitedError):
+        await limiter(request_for("/c"))
+
+
 async def test_client_identifier_ignores_invalid_forwarded_ip() -> None:
     scope = {
         "type": "http",
