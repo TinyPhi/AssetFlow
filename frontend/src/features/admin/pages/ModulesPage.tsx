@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { Boxes, CheckCircle2, Download, Trash2, Wrench } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import type React from "react";
 import { useEffect, useState } from "react";
 import { EmptyState, ErrorState, Skeleton } from "@/components/ui";
+import { ProblemError, apiFetch, queryKeys } from "@/lib/api";
 import { can, useMe } from "@/lib/permissions";
 
 interface ModuleData {
@@ -19,31 +21,18 @@ export const ModulesPage: React.FC = () => {
   const [modules, setModules] = useState<ModuleData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
   const loadModules = () => {
     setLoading(true);
     setError(null);
-    fetch("/api/v1/modules")
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to load modules");
-        return res.json() as Promise<{ data?: ModuleData[] } | ModuleData[]>;
-      })
-      .then((data) => {
-        const list = Array.isArray(data) ? data : (data.data ?? []);
-        setModules(
-          list.length > 0
-            ? list
-            : [
-                { key: "assets", is_installed: true, dependencies: [] },
-                { key: "maintenance", is_installed: true, dependencies: ["assets"] },
-              ],
-        );
+    apiFetch<ModuleData[]>("/modules")
+      .then((list) => {
+        setModules(list);
       })
       .catch(() => {
-        setModules([
-          { key: "assets", is_installed: true, dependencies: [] },
-          { key: "maintenance", is_installed: true, dependencies: ["assets"] },
-        ]);
+        setError("Failed to load modules");
       })
       .finally(() => {
         setLoading(false);
@@ -56,12 +45,14 @@ export const ModulesPage: React.FC = () => {
 
   const handleToggle = async (mod: ModuleData) => {
     const action = mod.is_installed ? "uninstall" : "install";
+    setActionError(null);
     try {
-      const res = await fetch(`/api/v1/modules/${mod.key}/${action}`, { method: "POST" });
-      if (!res.ok) throw new Error(`Failed to ${action} module`);
+      await apiFetch(`/modules/${mod.key}/${action}`, { method: "POST" });
+      // Navigation and module guards read the installed modules from /me.
+      await queryClient.invalidateQueries({ queryKey: queryKeys.me() });
       loadModules();
-    } catch {
-      // Ignore or log error
+    } catch (err: unknown) {
+      setActionError(err instanceof ProblemError && err.detail ? err.detail : `Failed to ${action} module`);
     }
   };
 
@@ -73,6 +64,8 @@ export const ModulesPage: React.FC = () => {
           <p className="text-sm text-muted">{"Install and manage modular platform extensions"}</p>
         </div>
       </div>
+
+      {actionError && <ErrorState message={actionError} />}
 
       {loading ? (
         <Skeleton rows={2} />

@@ -6,33 +6,20 @@ import type React from "react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
 import { useOnlineStatus } from "@/app/useOnlineStatus";
-
-interface NotificationItem {
-  id: string;
-  title: string;
-  body?: string;
-  is_read: boolean;
-  created_at: string;
-}
+import { fetchNotifications, fetchUnreadCount, type NotificationItem } from "../api";
 
 export const NotificationBell: React.FC = () => {
   const isOnline = useOnlineStatus();
   const [unreadCount, setUnreadCount] = useState<number>(0);
   const [open, setOpen] = useState(false);
   const [recent, setRecent] = useState<NotificationItem[]>([]);
+  const [recentError, setRecentError] = useState(false);
 
   const fetchUnread = useCallback(() => {
     if (!isOnline) return;
-    fetch("/api/v1/notifications/unread-count")
-      .then((res) => {
-        if (!res.ok) return null;
-        return res.json() as Promise<{ count?: number }>;
-      })
-      .then((data) => {
-        if (data && typeof data.count === "number") {
-          setUnreadCount(data.count);
-        }
-      })
+    // A failed poll keeps the last known count.
+    fetchUnreadCount()
+      .then(setUnreadCount)
       .catch(() => {});
   }, [isOnline]);
 
@@ -47,21 +34,12 @@ export const NotificationBell: React.FC = () => {
   const handleOpen = () => {
     setOpen((prev) => !prev);
     if (!open) {
-      fetch("/api/v1/notifications?limit=5")
-        .then((res) => res.json() as Promise<{ data?: { items?: NotificationItem[] } }>)
-        .then((body) => {
-          setRecent(body.data?.items ?? []);
-        })
+      setRecentError(false);
+      fetchNotifications({ limit: 5 })
+        .then(setRecent)
         .catch(() => {
-          setRecent([
-            {
-              id: "1",
-              title: "Welcome to AssetFlow",
-              body: "Your account is active.",
-              is_read: false,
-              created_at: new Date().toISOString(),
-            },
-          ]);
+          setRecent([]);
+          setRecentError(true);
         });
     }
   };
@@ -99,18 +77,19 @@ export const NotificationBell: React.FC = () => {
           </div>
 
           <div className="divide-y divide-border py-2 text-xs">
-            {recent.length === 0 ? (
+            {recentError ? (
+              <p className="py-4 text-center text-danger">{"Could not load notifications"}</p>
+            ) : recent.length === 0 ? (
               <p className="py-4 text-center text-muted">{"No unread notifications"}</p>
             ) : (
               recent.map((item) => (
                 <div key={item.id} className="py-2.5 space-y-1">
                   <div className="flex items-start justify-between gap-1">
-                    <p className={`font-medium ${!item.is_read ? "text-foreground" : "text-muted"}`}>
+                    <p className={`font-medium ${!item.isRead ? "text-foreground" : "text-muted"}`}>
                       {item.title}
                     </p>
-                    {!item.is_read && <span className="h-2 w-2 shrink-0 rounded-full bg-primary" />}
+                    {!item.isRead && <span className="h-2 w-2 shrink-0 rounded-full bg-primary" />}
                   </div>
-                  {item.body && <p className="text-muted line-clamp-2">{item.body}</p>}
                 </div>
               ))
             )}

@@ -4,6 +4,7 @@
 import type React from "react";
 import { useEffect, useState } from "react";
 import { ErrorState, Skeleton } from "@/components/ui";
+import { ProblemError, apiFetch } from "@/lib/api";
 import { can, useMe } from "@/lib/permissions";
 
 interface OrgSettings {
@@ -16,30 +17,30 @@ interface OrgSettings {
 export const OrganizationSettingsPage: React.FC = () => {
   const { data: me } = useMe();
   const canManage = can(me, "organization.settings_manage") || can(me, "organization.manage");
-  const [settings, setSettings] = useState<OrgSettings>({
-    provisioning: "invite_only",
-    locale: "en",
-    timezone: "UTC",
-    currency: "USD",
-  });
+  const [settings, setSettings] = useState<OrgSettings>({});
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetch("/api/v1/organizations/settings")
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to load settings");
-        return res.json() as Promise<{ data?: OrgSettings }>;
+  const loadSettings = () => {
+    setLoading(true);
+    setLoadError(null);
+    apiFetch<OrgSettings>("/organizations/settings")
+      .then((data) => {
+        setSettings(data);
       })
-      .then((body) => {
-        if (body.data) setSettings(body.data);
+      .catch(() => {
+        setLoadError("Failed to load organization settings");
       })
-      .catch(() => {})
       .finally(() => {
         setLoading(false);
       });
+  };
+
+  useEffect(() => {
+    loadSettings();
   }, []);
 
   const handleSubmit = async (e: React.SyntheticEvent) => {
@@ -49,21 +50,25 @@ export const OrganizationSettingsPage: React.FC = () => {
     setSaved(false);
     setError(null);
     try {
-      const res = await fetch("/api/v1/organizations/settings", {
+      // Only the fields this form edits: the API refuses unknown keys.
+      const { provisioning, locale, timezone, currency } = settings;
+      const updated = await apiFetch<OrgSettings>("/organizations/settings", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(settings),
+        body: { provisioning, locale, timezone, currency },
       });
-      if (!res.ok) throw new Error("Failed to update organization settings");
+      setSettings(updated);
       setSaved(true);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Save failed");
+      setError(
+        err instanceof ProblemError && err.detail ? err.detail : "Failed to update organization settings",
+      );
     } finally {
       setSaving(false);
     }
   };
 
   if (loading) return <Skeleton rows={4} />;
+  if (loadError) return <ErrorState message={loadError} onRetry={loadSettings} />;
 
   return (
     <div className="space-y-6 max-w-2xl">

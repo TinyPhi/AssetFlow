@@ -1,20 +1,44 @@
 // SPDX-FileCopyrightText: 2026 TinyPhi
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { Mail, Plus, ShieldAlert, Webhook } from "lucide-react";
+import { Mail, Plus, ShieldAlert, ShieldCheck, Webhook } from "lucide-react";
 import type React from "react";
 import { useEffect, useState } from "react";
 import { SchemaForm } from "@/components/forms/schema/SchemaForm";
 import type { JSONSchemaRoot } from "@/components/forms/schema/jsonSchemaToZod";
 import { EmptyState, ErrorState, Skeleton } from "@/components/ui";
+import { ProblemError, apiFetch } from "@/lib/api";
 import { can, useMe } from "@/lib/permissions";
 
+// One row of `GET /api/v1/notification-channels/installations`.
 interface ChannelInstallation {
   id: string;
   channel_key: string;
-  name: string;
+  display_name: string;
   enabled: boolean;
-  kill_switch: boolean;
+}
+
+const BASE = "/notification-channels";
+
+function problemText(err: unknown, fallback: string): string {
+  return err instanceof ProblemError && err.detail ? err.detail : fallback;
+}
+
+/** Split the form values by the schema: secret fields go to `secrets` (write-only), the rest to `settings`. */
+function splitValues(
+  schema: JSONSchemaRoot,
+  values: Record<string, unknown>,
+): { settings: Record<string, unknown>; secrets: Record<string, string> } {
+  const properties = new Map(Object.entries(schema.properties ?? {}));
+  const settings = new Map<string, unknown>();
+  const secrets = new Map<string, string>();
+  for (const [key, value] of Object.entries(values)) {
+    const prop = properties.get(key);
+    const isSecret = prop?.["x-assetflow-secret"] === true || prop?.format === "password";
+    if (!isSecret) settings.set(key, value);
+    else if (typeof value === "string" && value !== "") secrets.set(key, value);
+  }
+  return { settings: Object.fromEntries(settings), secrets: Object.fromEntries(secrets) };
 }
 
 export const NotificationChannelsPage: React.FC = () => {
@@ -23,57 +47,17 @@ export const NotificationChannelsPage: React.FC = () => {
   const [channels, setChannels] = useState<ChannelInstallation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [addingKey, setAddingKey] = useState<string | null>(null);
   const [schema, setSchema] = useState<JSONSchemaRoot | null>(null);
 
   const loadChannels = () => {
     setLoading(true);
     setError(null);
-    fetch("/api/v1/notification-channels")
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to load notification channels");
-        return res.json() as Promise<{ data?: ChannelInstallation[] }>;
-      })
-      .then((body) => {
-        const items = body.data ?? [];
-        setChannels(
-          items.length > 0
-            ? items
-            : [
-                {
-                  id: "ch-1",
-                  channel_key: "email",
-                  name: "Corporate Email Relay",
-                  enabled: true,
-                  kill_switch: false,
-                },
-                {
-                  id: "ch-2",
-                  channel_key: "webhook",
-                  name: "SIEM Audit Webhook",
-                  enabled: true,
-                  kill_switch: false,
-                },
-              ],
-        );
-      })
+    apiFetch<ChannelInstallation[]>(`${BASE}/installations`)
+      .then(setChannels)
       .catch(() => {
-        setChannels([
-          {
-            id: "ch-1",
-            channel_key: "email",
-            name: "Corporate Email Relay",
-            enabled: true,
-            kill_switch: false,
-          },
-          {
-            id: "ch-2",
-            channel_key: "webhook",
-            name: "SIEM Audit Webhook",
-            enabled: true,
-            kill_switch: false,
-          },
-        ]);
+        setError("Failed to load notification channels");
       })
       .finally(() => {
         setLoading(false);
@@ -84,45 +68,47 @@ export const NotificationChannelsPage: React.FC = () => {
     loadChannels();
   }, []);
 
+  const closeForm = () => {
+    setAddingKey(null);
+    setSchema(null);
+  };
+
   const handleOpenAdd = async (key: string) => {
+    setActionError(null);
     setAddingKey(key);
+    setSchema(null);
     try {
-      const res = await fetch(`/api/v1/notification-channels/${key}/schema`);
-      if (res.ok) {
-        const s = (await res.json()) as { data?: JSONSchemaRoot };
-        setSchema(s.data ?? null);
-      } else {
-        // Fallback schema for key
-        setSchema({
-          type: "object",
-          title: `${key.toUpperCase()} Settings`,
-          required: key === "email" ? ["smtp_host", "smtp_port"] : ["endpoint_url"],
-          properties:
-            key === "email"
-              ? {
-                  smtp_host: { type: "string", title: "SMTP Host", description: "Mail server hostname" },
-                  smtp_port: { type: "integer", title: "SMTP Port", minimum: 1, maximum: 65535 },
-                  use_tls: { type: "boolean", title: "Use TLS" },
-                }
-              : {
-                  endpoint_url: { type: "string", title: "Endpoint URL", format: "uri" },
-                  secret_token: {
-                    type: "string",
-                    title: "Signing Secret",
-                    format: "password",
-                    "x-assetflow-secret": true,
-                  },
-                },
-        });
-      }
-    } catch {
-      setSchema({
-        type: "object",
-        title: `${key.toUpperCase()} Settings`,
-        properties: {
-          name: { type: "string", title: "Channel Name" },
-        },
+      setSchema(await apiFetch<JSONSchemaRoot>(`${BASE}/${key}/schema`));
+    } catch (err: unknown) {
+      setAddingKey(null);
+      setActionError(problemText(err, `Failed to load the ${key} settings form`));
+    }
+  };
+
+  const handleCreate = async (key: string, values: Record<string, unknown>) => {
+    if (schema === null) return;
+    setActionError(null);
+    try {
+      await apiFetch(`${BASE}/installations`, {
+        method: "POST",
+        body: { channel_key: key, ...splitValues(schema, values) },
       });
+      closeForm();
+      loadChannels();
+    } catch (err: unknown) {
+      setActionError(problemText(err, `Failed to install the ${key} channel`));
+    }
+  };
+
+  const handleSwitch = async (ch: ChannelInstallation) => {
+    setActionError(null);
+    try {
+      await apiFetch(`${BASE}/installations/${ch.id}/${ch.enabled ? "disable" : "enable"}`, {
+        method: "POST",
+      });
+      loadChannels();
+    } catch (err: unknown) {
+      setActionError(problemText(err, "Failed to change the channel"));
     }
   };
 
@@ -159,27 +145,20 @@ export const NotificationChannelsPage: React.FC = () => {
         )}
       </div>
 
+      {actionError && <ErrorState message={actionError} />}
+
       {addingKey && schema && (
         <div className="rounded-xl border border-primary/40 bg-surface p-6 shadow-md space-y-4">
           <div className="flex items-center justify-between border-b border-border pb-3">
             <h2 className="text-lg font-semibold text-foreground">{`Configure ${addingKey} Channel`}</h2>
-            <button
-              type="button"
-              onClick={() => {
-                setAddingKey(null);
-                setSchema(null);
-              }}
-              className="text-xs text-muted hover:text-foreground"
-            >
+            <button type="button" onClick={closeForm} className="text-xs text-muted hover:text-foreground">
               {"Cancel"}
             </button>
           </div>
           <SchemaForm
             schema={schema}
-            onSubmit={(_values) => {
-              setAddingKey(null);
-              setSchema(null);
-              loadChannels();
+            onSubmit={async (values) => {
+              await handleCreate(addingKey, values);
             }}
           />
         </div>
@@ -198,45 +177,49 @@ export const NotificationChannelsPage: React.FC = () => {
               key={ch.id}
               className="flex flex-col justify-between rounded-xl border border-border bg-surface p-5 shadow-sm"
             >
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                      {ch.channel_key === "email" ? (
-                        <Mail className="h-5 w-5" />
-                      ) : (
-                        <Webhook className="h-5 w-5" />
-                      )}
-                    </div>
-                    <div>
-                      <h2 className="text-base font-semibold text-foreground">{ch.name}</h2>
-                      <span className="text-xs font-mono text-muted">{ch.channel_key}</span>
-                    </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    {ch.channel_key === "email" ? (
+                      <Mail className="h-5 w-5" />
+                    ) : (
+                      <Webhook className="h-5 w-5" />
+                    )}
                   </div>
-
-                  <span
-                    className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                      ch.enabled
-                        ? "border border-success bg-success-surface text-success"
-                        : "border border-border bg-surface text-muted"
-                    }`}
-                  >
-                    {ch.enabled ? "Active" : "Disabled"}
-                  </span>
+                  <div>
+                    <h2 className="text-base font-semibold text-foreground">{ch.display_name}</h2>
+                    <span className="text-xs font-mono text-muted">{ch.channel_key}</span>
+                  </div>
                 </div>
+
+                <span
+                  className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                    ch.enabled
+                      ? "border border-success bg-success-surface text-success"
+                      : "border border-border bg-surface text-muted"
+                  }`}
+                >
+                  {ch.enabled ? "Active" : "Disabled"}
+                </span>
               </div>
 
               {canManage && (
-                <div className="mt-4 flex items-center justify-between border-t border-border pt-3 text-xs">
+                <div className="mt-4 border-t border-border pt-3 text-xs">
                   <button
                     type="button"
-                    className="font-medium text-danger hover:underline flex items-center gap-1"
+                    onClick={() => {
+                      void handleSwitch(ch);
+                    }}
+                    className={`flex items-center gap-1 font-medium hover:underline ${
+                      ch.enabled ? "text-danger" : "text-primary"
+                    }`}
                   >
-                    <ShieldAlert className="h-3.5 w-3.5" />
-                    <span>{"Emergency Kill-Switch"}</span>
-                  </button>
-                  <button type="button" className="font-medium text-primary hover:underline">
-                    {"Edit Settings"}
+                    {ch.enabled ? (
+                      <ShieldAlert className="h-3.5 w-3.5" />
+                    ) : (
+                      <ShieldCheck className="h-3.5 w-3.5" />
+                    )}
+                    <span>{ch.enabled ? "Emergency Kill-Switch" : "Resume Sending"}</span>
                   </button>
                 </div>
               )}

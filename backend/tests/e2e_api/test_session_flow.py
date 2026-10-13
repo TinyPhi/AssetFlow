@@ -350,3 +350,60 @@ async def test_refresh_is_rate_limited_per_client(anonymous_app: FastAPI) -> Non
         limited = await client.post("/api/auth/refresh")
     assert limited.status_code == 429
     assert "retry-after" in {h.lower() for h in limited.headers}
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [{}, {"Origin": ORIGIN}, MARKER, {"Origin": OTHER_ORIGIN, **MARKER}],
+)
+async def test_exchange_requires_an_allowed_origin_and_the_marker(
+    anonymous_app: FastAPI, headers: dict[str, str]
+) -> None:
+    """PR #291 review: the code exchange sets the refresh cookie, so it gets the same guard as refresh."""
+    async with _client(anonymous_app, headers=headers) as client:
+        res = await client.post("/api/auth/session", json=_pkce())
+    assert res.status_code == 403
+    assert "set-cookie" not in res.headers
+
+
+@pytest.mark.parametrize(
+    "redirect_uri",
+    [
+        "https://evil.example/auth/callback",
+        f"{ORIGIN}/somewhere-else",
+        f"{ORIGIN}/auth/callback?next=https://evil.example",
+        f"{ORIGIN}/auth/callback#x",
+        "/elsewhere",
+    ],
+)
+async def test_exchange_refuses_a_redirect_uri_outside_the_allowlist(
+    anonymous_app: FastAPI, redirect_uri: str
+) -> None:
+    """PR #291 review: redirect_uri is checked here before it is forwarded to the IdP."""
+    async with _client(anonymous_app) as client:
+        res = await client.post("/api/auth/session", json=_pkce(redirect_uri=redirect_uri))
+    assert res.status_code == 422
+    assert "set-cookie" not in res.headers
+
+
+async def test_exchange_accepts_the_callback_on_an_allowed_origin(
+    db_client: tuple[httpx.AsyncClient, FastAPI, str],
+) -> None:
+    """What the SPA actually sends: ``window.location.origin + "/auth/callback"``."""
+    client, _, _ = db_client
+    res = await client.post("/api/auth/session", json=_pkce(redirect_uri=f"{ORIGIN}/auth/callback"))
+    assert res.status_code == 200
+
+
+async def test_refresh_cookie_is_secure_outside_development_even_over_http(make_pool: PoolFactory) -> None:
+    """Behind the proxy the app may see ``http`` (uvicorn trusts X-Forwarded-Proto only from
+    127.0.0.1), so production must not rely on the scheme to set ``Secure``."""
+    pool = await make_pool("api")
+    idp_org = await _create_org(pool)
+    app = _app(ClaimsAuth(idp_org, id_token_nonce=None), pool, env="production")
+    body = _pkce()
+    app.state.registry.auth.id_token_nonce = body["nonce"]
+    async with _client(app) as client:
+        res = await client.post("/api/auth/session", json=body)
+    assert res.status_code == 200
+    assert "secure" in res.headers["set-cookie"].lower()

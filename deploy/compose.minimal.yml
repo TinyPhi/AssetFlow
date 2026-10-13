@@ -3,9 +3,12 @@
 # AssetFlow minimal profile (§B13.1, M1.6-T7).
 #
 # Minimal development & demo stack:
-#   - postgres: database with RLS and schema
+#   - postgres: database (roles and logins applied by db-roles, not postgres's own init)
+#   - db-roles: one-shot, applies roles/logins/passwords (ADR-0019) on every start
+#   - migrate: one-shot Alembic migration as the migrator login
 #   - mailpit: local email testing & inbox
 #   - api: FastAPI backend (mock auth, file secrets, inmemory events)
+#   - worker: background jobs (outbox dispatcher, scheduler, automation, notifications)
 #   - web: Nginx web shell & reverse proxy to API
 #
 # Non-root, read-only containers with tmpfs and strict resource bounds.
@@ -14,6 +17,9 @@ name: assetflow-minimal
 
 services:
   postgres:
+    labels:
+      com.tinyphi.project: assetflow
+    container_name: af-postgres
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
@@ -21,7 +27,7 @@ services:
       POSTGRES_USER: ${DATABASE_USER:-assetflow_app}
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-assetflow_dev_password}
     ports:
-      - "127.0.0.1:${DATABASE_PORT:-5432}:5432"
+      - "127.0.0.1:${DATABASE_PORT:-15432}:5432"
     volumes:
       - postgres_minimal_data:/var/lib/postgresql/data
     healthcheck:
@@ -32,34 +38,73 @@ services:
     networks:
       - assetflow_minimal_net
 
-  mailpit:
-    image: axllent/mailpit:v1.21.8
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:1025:1025"
-      - "127.0.0.1:8025:8025"
-    networks:
-      - assetflow_minimal_net
-
-  api:
-    build:
-      context: ../backend
-      dockerfile: Dockerfile
-    restart: unless-stopped
+  # One-shot: applies roles, logins and passwords (deploy/postgres/init-minimal.sh) on every start,
+  # so an existing database follows ADR-0019 too, not only a freshly created one. Idempotent.
+  db-roles:
+    labels:
+      com.tinyphi.project: assetflow
+    container_name: af-db-roles
+    image: postgres:16-alpine
+    restart: "no"
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      ASSETFLOW_ENV: development
-      ASSETFLOW_AUTH_PROVIDER: mock
+      PGHOST: postgres
+      POSTGRES_USER: ${DATABASE_USER:-assetflow_app}
+      POSTGRES_DB: ${DATABASE_NAME:-assetflow}
+      PGPASSWORD: ${DATABASE_PASSWORD:-assetflow_dev_password}
+    volumes:
+      - ./postgres/init-minimal.sh:/opt/assetflow/init-minimal.sh:ro
+      - ../.secrets/database:/run/secrets/database:ro
+    entrypoint: ["/bin/sh", "/opt/assetflow/init-minimal.sh"]
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - assetflow_minimal_net
+
+  mailpit:
+    container_name: af-mailpit
+    labels:
+      com.tinyphi.project: assetflow
+    image: axllent/mailpit:v1.21.8
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${MAILPIT_SMTP_PORT:-11025}:1025"
+      - "127.0.0.1:${MAILPIT_WEB_PORT:-18025}:8025"
+    networks:
+      - assetflow_minimal_net
+
+  api:
+    container_name: af-api
+    labels:
+      com.tinyphi.project: assetflow
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    # `make up-minimal` runs `migrate` (a `tools`-profile one-shot) to completion before this `up`,
+    # so api only waits on db-roles here; depending on a not-activated profile's service would be
+    # a startup error.
+    depends_on:
+      db-roles:
+        condition: service_completed_successfully
+    environment:
+      ASSETFLOW_ENV: ${ASSETFLOW_ENV:-development}
+      ASSETFLOW_AUTH_PROVIDER: ${ASSETFLOW_AUTH_PROVIDER:-mock}
       ASSETFLOW_SECRETS_PROVIDER: file
       ASSETFLOW_TELEMETRY_PROVIDER: noop
       ASSETFLOW_EVENTS_PROVIDER: inmemory
-      DATABASE_HOST: postgres
-      DATABASE_PORT: 5432
-      DATABASE_NAME: ${DATABASE_NAME:-assetflow}
-      DATABASE_USER: ${DATABASE_USER:-assetflow_app}
-      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-assetflow_dev_password}
+      ASSETFLOW_DB_HOST: postgres
+      ASSETFLOW_DB_PORT: "5432"
+      ASSETFLOW_DB_NAME: ${DATABASE_NAME:-assetflow}
+      ASSETFLOW_DB_API_USER: assetflow_api_login
+    # Only the api's own database password and the field-encryption key are mounted (not the
+    # superuser, worker or migrator secrets).
+    volumes:
+      - ../config:/config:ro
+      - ../.secrets/database/api:/run/secrets/database/api:ro
+      - ../.secrets/transit:/run/secrets/transit:ro
     security_opt:
       - no-new-privileges:true
     tmpfs:
@@ -73,7 +118,52 @@ services:
     networks:
       - assetflow_minimal_net
 
+  worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: af-worker
+    labels:
+      com.tinyphi.project: assetflow
+    restart: unless-stopped
+    depends_on:
+      db-roles:
+        condition: service_completed_successfully
+    entrypoint: ["/app/.venv/bin/python", "-m", "workers.main"]
+    environment:
+      ASSETFLOW_ENV: ${ASSETFLOW_ENV:-development}
+      ASSETFLOW_AUTH_PROVIDER: ${ASSETFLOW_AUTH_PROVIDER:-mock}
+      ASSETFLOW_CONFIG: /config/assetflow.yaml
+      ASSETFLOW_SECRETS_DIR: /run/secrets
+      ASSETFLOW_DB_HOST: postgres
+      ASSETFLOW_DB_PORT: 5432
+      ASSETFLOW_DB_NAME: ${DATABASE_NAME:-assetflow}
+      ASSETFLOW_DB_WORKER_USER: assetflow_worker_login
+    # Only the worker's own database password is mounted; no other secret reaches this container.
+    volumes:
+      - ../config:/config:ro
+      - ../.secrets/database/worker/password:/run/secrets/database/worker/password:ro
+    read_only: true
+    user: "10001:10001"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "/app/.venv/bin/python", "-m", "workers.main", "--healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - assetflow_minimal_net
+
   web:
+    container_name: af-web
+    labels:
+      com.tinyphi.project: assetflow
     build:
       context: ../frontend
       dockerfile: Dockerfile
@@ -82,10 +172,11 @@ services:
       api:
         condition: service_healthy
     ports:
-      - "127.0.0.1:${WEB_PORT:-8080}:8080"
+      - "127.0.0.1:${WEB_PORT:-18080}:8080"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/security-headers.conf:/etc/nginx/snippets/security-headers.conf:ro
     security_opt:
       - no-new-privileges:true
     tmpfs:
@@ -94,6 +185,36 @@ services:
       - /var/run
     networks:
       - assetflow_minimal_net
+
+  migrate:
+    container_name: af-migrate
+    labels:
+      com.tinyphi.project: assetflow
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: "no"
+    depends_on:
+      db-roles:
+        condition: service_completed_successfully
+    environment:
+      ASSETFLOW_ENV: ${ASSETFLOW_ENV:-development}
+      ASSETFLOW_AUTH_PROVIDER: ${ASSETFLOW_AUTH_PROVIDER:-mock}
+      ASSETFLOW_DB_NAME: ${DATABASE_NAME:-assetflow}
+    # The migrator password only (not the superuser, api or worker secrets).
+    volumes:
+      - ../.secrets/database/migrator:/run/secrets/database/migrator:ro
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        MIGRATOR_PW=$$(cat /run/secrets/database/migrator/password)
+        export ASSETFLOW_MIGRATION_DATABASE_URL="postgresql://assetflow_migrator_login:$${MIGRATOR_PW}@postgres:5432/$${ASSETFLOW_DB_NAME:-assetflow}"
+        exec uv run --no-sync alembic upgrade head
+    networks:
+      - assetflow_minimal_net
+    profiles:
+      - tools
 
 volumes:
   postgres_minimal_data:

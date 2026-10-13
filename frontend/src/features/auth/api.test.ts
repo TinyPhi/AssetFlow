@@ -32,6 +32,17 @@ describe("cookie-bound auth requests", () => {
     expect(sentHeaders().get("X-Requested-With")).toBe("AssetFlow");
   });
 
+  it("sends X-Requested-With: AssetFlow on the code exchange", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ access_token: "t", expires_in: 60 }));
+    await exchangeSession("code", "http://localhost:5173/auth/callback", {
+      codeVerifier: "v".repeat(43),
+      state: "s".repeat(32),
+      nonce: "n".repeat(32),
+    });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/auth/session");
+    expect(sentHeaders().get("X-Requested-With")).toBe("AssetFlow");
+  });
+
   it("sends X-Requested-With: AssetFlow on logout", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ ok: true }));
     await logoutSession();

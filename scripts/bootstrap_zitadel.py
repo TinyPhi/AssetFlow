@@ -26,7 +26,8 @@ Steps, in order:
  3. project ``AssetFlow`` (role assertion, role check, project check) in the platform org;
  4. project roles (``rbac.roles`` of ``config/assetflow.yaml``, else the §B7.2 defaults);
  5. ``assetflow-web``: public user-agent client, code + PKCE, no secret, JWT access tokens;
- 6. ``assetflow-bff``: confidential web client (client secret basic, refresh tokens);
+ 6. ``assetflow-bff``: confidential web client (client secret basic, refresh tokens; the public
+    ``assetflow-web`` client has no refresh-token grant);
  7. ``assetflow-introspection``: API application with a client secret (token introspection);
  8. ``assetflow-automation``: machine user (IAM_ORG_MANAGER) with a JSON key, for the
     runtime Management API calls (``assetflow org create --create-idp-org``, §B5.7);
@@ -40,6 +41,8 @@ Secret store:
     ASSETFLOW_ENV=production    OpenBao KV ``secret/assetflow/idp`` and
                                 ``secret/assetflow/zitadel/*`` (BAO_ADDR, BAO_CACERT,
                                 BAO_TOKEN = operator token); never a file
+    ASSETFLOW_SECRET_STORE=openbao   the same OpenBao store in the development environment (the
+                                local stack, scripts/dev_setup.py); the login policy stays relaxed
 
 Commands:
     apply [--dry-run]   the steps above (default command); --dry-run only reads and prints
@@ -60,6 +63,7 @@ from __future__ import annotations
 import argparse
 import base64
 import contextlib
+import datetime as dt
 import hashlib
 import json
 import os
@@ -78,13 +82,40 @@ import yaml
 
 # ---------------------------------------------------------------- constants
 
+
+def key_expiration(now: dt.datetime | None = None) -> str:
+    """Expiry timestamp for a new machine key: now plus KEY_LIFETIME_DAYS."""
+    moment = (now or dt.datetime.now(dt.UTC)) + dt.timedelta(days=KEY_LIFETIME_DAYS)
+    return moment.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def key_due(expiration: str | None, now: dt.datetime | None = None) -> bool:
+    """True when a key must be replaced: unknown expiry, under KEY_ROTATE_BEFORE_DAYS left, or an
+    expiry beyond the policy lifetime (a key made before the 90-day rule)."""
+    if not expiration:
+        return True
+    try:
+        expires = dt.datetime.fromisoformat(expiration.replace("Z", "+00:00"))
+    except ValueError:
+        return True
+    moment = now or dt.datetime.now(dt.UTC)
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=dt.UTC)
+    return expires - moment < dt.timedelta(days=KEY_ROTATE_BEFORE_DAYS) or expires - moment > dt.timedelta(
+        days=KEY_LIFETIME_DAYS + 1
+    )
+
+
 PROJECT_NAME = "AssetFlow"
 WEB_APP = "assetflow-web"
 BFF_APP = "assetflow-bff"
 INTROSPECTION_APP = "assetflow-introspection"
 AUTOMATION_USER = "assetflow-automation"
 AUTOMATION_ROLES = ["IAM_ORG_MANAGER"]
-KEY_EXPIRATION = "2030-01-01T00:00:00Z"
+# Machine keys live 90 days (AF-037). Every run replaces a key that has less than
+# KEY_ROTATE_BEFORE_DAYS left (or that outlives the policy), so `make zitadel-apply` rotates them.
+KEY_LIFETIME_DAYS = 90
+KEY_ROTATE_BEFORE_DAYS = 30
 
 # Default project roles, master plan §B7.2 (used when config/assetflow.yaml has no rbac.roles).
 DEFAULT_ROLES: dict[str, str] = {
@@ -149,10 +180,10 @@ class Settings:
     env_file: Path | None = None
     bootstrap_url: str = ""
     domain: str = "localhost"
-    port: str = "8081"
+    port: str = "19081"
     secure: bool = False
     app_url: str = "http://localhost:5173"
-    api_url: str = "http://localhost:8080"
+    api_url: str = "http://localhost:18080"
     key_file: Path = Path("/zitadel/bootstrap/bootstrap-key.json")
     pat_file: Path = Path("/zitadel/bootstrap/bootstrap.pat")
     admin_username: str = "admin"
@@ -168,7 +199,7 @@ class Settings:
             s.root = Path(e["ASSETFLOW_ROOT"])
         s.env_file = Path(e["ASSETFLOW_ENV_FILE"]) if e.get("ASSETFLOW_ENV_FILE") else s.root / ".env.local"
         s.domain = e.get("ZITADEL_DOMAIN") or e.get("ZITADEL_EXTERNALDOMAIN") or "localhost"
-        s.port = e.get("ZITADEL_EXTERNALPORT") or "8081"
+        s.port = e.get("ZITADEL_EXTERNALPORT") or "19081"
         s.secure = _bool(e.get("ZITADEL_EXTERNALSECURE"))
         s.bootstrap_url = (e.get("ZITADEL_BOOTSTRAP_URL") or f"http://localhost:{s.port}").rstrip("/")
         s.app_url = (e.get("APP_URL") or s.app_url).rstrip("/")
@@ -369,9 +400,11 @@ def _parse_org_map(value: str) -> dict[str, str]:
 
 def make_store(settings: Settings, environ: dict[str, str] | None = None) -> SecretStore:
     e = dict(os.environ if environ is None else environ)
-    if settings.production:
+    # ASSETFLOW_SECRET_STORE=openbao keeps the development behaviour (relaxed login policy) but stores
+    # the results in OpenBao, as the local stack does (deploy/compose.dev.yml, scripts/dev_setup.py).
+    if settings.production or (e.get("ASSETFLOW_SECRET_STORE") or "").strip().lower() == "openbao":
         return OpenBaoStore(
-            e.get("BAO_ADDR", "https://127.0.0.1:8200"),
+            e.get("BAO_ADDR", "https://127.0.0.1:19200"),
             e.get("BAO_TOKEN", "").strip(),
             e.get("BAO_CACERT") or None,
         )
@@ -613,6 +646,7 @@ class Bootstrap:
             try:
                 self.z.token = self.z.token_from_key(stored_key)
                 self.ok("authenticated with the stored bootstrap key (JWT profile grant)")
+                self.rotate_bootstrap_key_if_due(stored_key)
                 return
             except (BootstrapError, ValueError, KeyError) as exc:
                 self.out(f"  warning: stored bootstrap key rejected ({exc}); trying the first-instance key")
@@ -636,16 +670,27 @@ class Bootstrap:
             f"{self.s.key_file} / {self.s.pat_file}. See docs/operations/zitadel.md (recovery)."
         )
 
-    def rotate_first_key(self, old: dict[str, Any], pat: bool = False) -> None:
+    def rotate_bootstrap_key_if_due(self, stored_key: str) -> None:
+        """AF-037: the stored bootstrap key also has a 90-day life; replace it when it is due."""
+        try:
+            old = json.loads(stored_key)
+            expirations = self.key_expirations(old["userId"])
+        except (ValueError, KeyError, ZitadelError):
+            return
+        if old.get("keyId") in expirations and key_due(expirations[old["keyId"]]):
+            self.rotate_first_key(old, stored=True)
+
+    def rotate_first_key(self, old: dict[str, Any], pat: bool = False, stored: bool = False) -> None:
         """Replace the credential Zitadel wrote to the volume: store a new key, revoke the old one."""
         user_id = old["userId"]
-        what = "first-instance PAT" if pat else f"first-instance key {old.get('keyId')}"
+        kind = "bootstrap key (90-day lifetime)" if stored else "first-instance key"
+        what = "first-instance PAT" if pat else f"{kind} {old.get('keyId')}"
         if self.s.dry_run:
             self.act("changed", f"rotate the {what} into the secret store and delete the file")
             return
         created = self.z.post(
             f"/management/v1/users/{user_id}/keys",
-            {"type": "KEY_TYPE_JSON", "expirationDate": KEY_EXPIRATION},
+            {"type": "KEY_TYPE_JSON", "expirationDate": key_expiration()},
         )
         new_key = base64.b64decode(created["keyDetails"]).decode("utf-8")
         self.persist({"ZITADEL_BOOTSTRAP_KEY": new_key})
@@ -656,8 +701,9 @@ class Bootstrap:
             self.s.pat_file.unlink(missing_ok=True)
         else:
             self.z.delete(f"/management/v1/users/{user_id}/keys/{old['keyId']}")
-            self.s.key_file.unlink(missing_ok=True)
-        self.act("changed", f"rotated the {what}: new key stored, old credential revoked and file deleted")
+            if not stored:
+                self.s.key_file.unlink(missing_ok=True)
+        self.act("changed", f"rotated the {what}: new key stored, old credential revoked")
 
     def project(self) -> str:
         body = {
@@ -750,12 +796,22 @@ class Bootstrap:
         )
         return next((a for a in found.get("result", []) if a.get("name") == name), None)
 
-    def _oidc(self, app_type: str, auth: str, redirects: list[str], logouts: list[str]) -> dict[str, Any]:
+    def _oidc(
+        self,
+        app_type: str,
+        auth: str,
+        redirects: list[str],
+        logouts: list[str],
+        refresh: bool = False,
+    ) -> dict[str, Any]:
+        grants = ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE"]
+        if refresh:
+            grants.append("OIDC_GRANT_TYPE_REFRESH_TOKEN")
         return {
             "redirectUris": redirects,
             "postLogoutRedirectUris": logouts,
             "responseTypes": ["OIDC_RESPONSE_TYPE_CODE"],
-            "grantTypes": ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE", "OIDC_GRANT_TYPE_REFRESH_TOKEN"],
+            "grantTypes": grants,
             "appType": app_type,
             "authMethodType": auth,
             # http:// redirect URIs are allowed only outside production.
@@ -799,6 +855,7 @@ class Bootstrap:
             "OIDC_AUTH_METHOD_TYPE_BASIC",
             [f"{self.s.api_url}/api/v1/auth/callback"],
             [f"{self.s.api_url}/"],
+            refresh=True,
         )
         app, created = self._app(project_id, BFF_APP, config)
         if self.s.dry_run:
@@ -885,6 +942,11 @@ class Bootstrap:
             {"ZITADEL_INTROSPECTION_CLIENT_ID": client_id, "ZITADEL_INTROSPECTION_CLIENT_SECRET": secret}
         )
 
+    def key_expirations(self, user_id: str) -> dict[str, str | None]:
+        """Key id -> expiration date (None when Zitadel reports none) of one machine user."""
+        found = self.z.post(f"/management/v1/users/{user_id}/keys/_search").get("result", [])
+        return {k["id"]: k.get("expirationDate") for k in found}
+
     def automation_user(self) -> None:
         user_id, created = self.machine_user(
             AUTOMATION_USER,
@@ -913,16 +975,18 @@ class Bootstrap:
         stored_id = ""
         with contextlib.suppress(ValueError, KeyError):
             stored_id = json.loads(stored)["keyId"] if stored else ""
-        keys = {
-            k["id"] for k in self.z.post(f"/management/v1/users/{user_id}/keys/_search").get("result", [])
-        }
-        if created or not stored_id or stored_id not in keys:
+        keys = self.key_expirations(user_id)
+        rotating = bool(stored_id) and stored_id in keys and key_due(keys[stored_id])
+        if created or not stored_id or stored_id not in keys or rotating:
             res = self.z.post(
                 f"/management/v1/users/{user_id}/keys",
-                {"type": "KEY_TYPE_JSON", "expirationDate": KEY_EXPIRATION},
+                {"type": "KEY_TYPE_JSON", "expirationDate": key_expiration()},
             )
             stored = base64.b64decode(res["keyDetails"]).decode("utf-8")
             self.act("created", f"JSON key {res['keyId']} for {AUTOMATION_USER}")
+            if rotating:
+                self.z.delete(f"/management/v1/users/{user_id}/keys/{stored_id}")
+                self.act("changed", f"rotated the {AUTOMATION_USER} key (90-day lifetime): old key revoked")
         self.persist({"ZITADEL_SERVICE_ACCOUNT_KEY": stored})
 
     def organizations(self, project_id: str, orgs: list[OrgSpec]) -> dict[str, str]:

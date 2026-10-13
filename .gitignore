@@ -52,3 +52,6 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# Local verification evidence (JUnit reports of acceptance runs)
+reports/

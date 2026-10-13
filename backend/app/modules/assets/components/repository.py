@@ -99,7 +99,8 @@ class ComponentRepository:
             parent_asset_id,
             child_asset_id,
         )
-        assert row is not None  # noqa: S101 - INSERT ... RETURNING always returns one row
+        if row is None:  # INSERT ... RETURNING always returns one row
+            raise RuntimeError("INSERT ... RETURNING returned no component link")
         return row
 
     async def detach(self, conn: DbConn, *, organization_id: UUID, component_id: UUID) -> asyncpg.Record:
@@ -110,7 +111,8 @@ class ComponentRepository:
             organization_id,
             component_id,
         )
-        assert row is not None  # noqa: S101 - the link was just read under lock
+        if row is None:  # the link was just read under lock
+            raise RuntimeError("component link vanished while locked for detach")
         return row
 
     async def list_children(

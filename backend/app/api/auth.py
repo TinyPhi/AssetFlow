@@ -13,9 +13,12 @@ rotation, and secure logout.
   (an exchange without an ``id_token`` is accepted only in development and test);
 * the access token must verify into a principal, or the exchange fails closed: 401, no cookie.
 
-``POST /api/auth/refresh`` and ``/api/auth/logout`` ride on the refresh cookie, so they also require
-an ``Origin`` listed in ``platform.allowed_origins`` and the header ``X-Requested-With: AssetFlow``;
-otherwise 403 (§B11.2, CSRF defence in depth beside ``SameSite=Strict``).
+* ``redirect_uri`` must be the configured ``auth.redirect_uri`` or that callback path on an origin in
+  ``platform.allowed_origins``, checked here before it is forwarded to the IdP (which checks it too).
+
+``POST /api/auth/session``, ``/api/auth/refresh`` and ``/api/auth/logout`` set or ride on the refresh
+cookie, so they also require an ``Origin`` listed in ``platform.allowed_origins`` and the header
+``X-Requested-With: AssetFlow``; otherwise 403 (§B11.2, CSRF defence in depth beside ``SameSite=Strict``).
 """
 
 from __future__ import annotations
@@ -28,6 +31,7 @@ import secrets
 import time
 from collections import OrderedDict
 from typing import Any, Final
+from urllib.parse import urlsplit
 from uuid import UUID
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
@@ -35,15 +39,17 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.deps import public_extra
-from app.api.policy import allowed_origins, is_relaxed, mock_auth_enabled
+from app.api.policy import allowed_origins, is_relaxed, mock_auth_enabled, setting
 from app.core.cookie_crypto import decrypt_cookie, encrypt_cookie
 from app.core.db import platform_transaction, tenant_transaction
 from app.core.problems import (
+    FieldError,
     NotFoundError,
     PermissionDeniedError,
     ProblemError,
     ServiceUnavailableError,
     UnauthorizedError,
+    ValidationFailedError,
 )
 from app.core.rate_limit import InMemoryRateLimitStore, RateLimiter
 from app.modules.audit.service import record_audit_event
@@ -111,15 +117,61 @@ CSRF_HEADER: Final = "x-requested-with"
 CSRF_HEADER_VALUE: Final = "AssetFlow"
 
 
+def _origin_allowed(config: Any, origin: str | None) -> bool:
+    """``origin`` is listed in ``platform.allowed_origins`` (``*`` only counts in development/test)."""
+    origins = allowed_origins(config) if config is not None else []
+    return origin is not None and (origin in origins or ("*" in origins and is_relaxed(config)))
+
+
 def require_cookie_request_guard(request: Request) -> None:
     """403 unless the request names an allowed ``Origin`` and carries ``X-Requested-With: AssetFlow``."""
     config = getattr(request.app.state, "config", None)
-    origins = allowed_origins(config) if config is not None else []
-    origin = request.headers.get("origin")
-    origin_allowed = origin is not None and (origin in origins or ("*" in origins and is_relaxed(config)))
     marker = request.headers.get(CSRF_HEADER)
-    if not origin_allowed or marker != CSRF_HEADER_VALUE:
+    if not _origin_allowed(config, request.headers.get("origin")) or marker != CSRF_HEADER_VALUE:
         raise PermissionDeniedError("The request origin is not allowed.")
+
+
+DEFAULT_REDIRECT_URI: Final = "/auth/callback"
+
+
+def _require_allowed_redirect_uri(request: Request, redirect_uri: str) -> None:
+    """Refuse a ``redirect_uri`` the web app would never send, before it is forwarded to the IdP.
+
+    Allowed: the configured ``auth.redirect_uri`` itself, or its callback path on an allowed origin
+    (the web app sends ``window.location.origin + "/auth/callback"``). No query or fragment.
+    """
+    config = getattr(request.app.state, "config", None)
+    configured = setting(config, "auth", "redirect_uri", default=DEFAULT_REDIRECT_URI)
+    configured = configured if isinstance(configured, str) and configured else DEFAULT_REDIRECT_URI
+    if redirect_uri == configured:
+        return
+    parts = urlsplit(redirect_uri)
+    origin = f"{parts.scheme}://{parts.netloc}"
+    if (
+        parts.scheme in ("http", "https")
+        and parts.netloc
+        and not parts.query
+        and not parts.fragment
+        and parts.path == urlsplit(configured).path
+        and _origin_allowed(config, origin)
+    ):
+        return
+    raise ValidationFailedError(
+        errors=[FieldError(field="redirect_uri", message="is not an allowed redirect URI")]
+    )
+
+
+def _cookie_secure(request: Request) -> bool:
+    """``Secure`` is always set outside development and test.
+
+    The scheme the app sees is not enough: behind the reverse proxy uvicorn only trusts
+    ``X-Forwarded-Proto`` from ``--forwarded-allow-ips`` (default 127.0.0.1), and nginx runs in
+    another container, so an HTTPS deployment would see ``http`` and drop ``Secure``. Development
+    and test follow the scheme, so sign-in still works on plain ``http://localhost``.
+    """
+    if not is_relaxed(getattr(request.app.state, "config", None)):
+        return True
+    return request.url.scheme == "https"
 
 
 class TokenResponse(BaseModel):
@@ -181,7 +233,7 @@ def _check_nonce(request: Request, token_data: dict[str, Any], nonce: str) -> No
 @router.post(
     "/session",
     response_model=TokenResponse,
-    dependencies=[Depends(session_exchange_rate_limit)],
+    dependencies=[Depends(require_cookie_request_guard), Depends(session_exchange_rate_limit)],
     responses={429: {"description": "Rate limited"}},
     openapi_extra=public_extra(),
 )
@@ -196,6 +248,7 @@ async def exchange_session(
     if not registry or not pool:
         raise HTTPException(status_code=503, detail="Platform services unavailable")
 
+    _require_allowed_redirect_uri(request, body.redirect_uri)
     _consume_state(request, body.state)
     try:
         token_data = await registry.auth.exchange_code(
@@ -259,7 +312,7 @@ async def exchange_session(
             path=COOKIE_PATH,
             httponly=True,
             samesite="strict",
-            secure=request.url.scheme == "https",
+            secure=_cookie_secure(request),
         )
 
     return TokenResponse(access_token=access_token, expires_in=expires_in)
@@ -306,7 +359,7 @@ async def refresh_session(
             path=COOKIE_PATH,
             httponly=True,
             samesite="strict",
-            secure=request.url.scheme == "https",
+            secure=_cookie_secure(request),
         )
 
     return TokenResponse(access_token=new_access_token, expires_in=expires_in)
@@ -333,6 +386,31 @@ async def logout_session(
     return {"ok": True}
 
 
+def _require_safe_redirect_uri(redirect_uri: str) -> None:
+    r"""Allow only an absolute http(s) URL or a same-site path (`/auth/callback`).
+
+    `html.escape` stops attribute breakout but not a `javascript:` or `data:` scheme inside
+    `href`, and `//host/...` is protocol-relative (another site). Browsers also read `\` as `/`
+    and drop tabs and newlines, so `/\evil.example` means `//evil.example`: any backslash,
+    whitespace or control character is refused too. Everything else is refused before the page
+    is built.
+    """
+    if any(ch == "\\" or ch.isspace() or ord(ch) < 0x20 or ord(ch) == 0x7F for ch in redirect_uri):
+        raise ValidationFailedError(
+            errors=[
+                FieldError(field="redirect_uri", message="must not contain backslashes, spaces or controls")
+            ]
+        )
+    parts = urlsplit(redirect_uri)
+    absolute_web = parts.scheme in ("http", "https") and bool(parts.netloc)
+    same_site_path = not parts.scheme and not parts.netloc and redirect_uri.startswith("/")
+    if absolute_web or (same_site_path and not redirect_uri.startswith("//")):
+        return
+    raise ValidationFailedError(
+        errors=[FieldError(field="redirect_uri", message="must be an http(s) URL or a path starting with /")]
+    )
+
+
 def require_mock_auth(request: Request) -> None:
     """Defense in depth for NEW-3: 404 unless mock auth is enabled for this environment."""
     if not mock_auth_enabled(getattr(request.app.state, "config", None)):
@@ -349,6 +427,7 @@ async def mock_authorize(
     code_challenge: str = "",
 ) -> HTMLResponse:
     """Development mock login selection page."""
+    _require_safe_redirect_uri(redirect_uri)
     safe_redirect_uri = html.escape(redirect_uri, quote=True)
     safe_state = html.escape(state, quote=True)
     html_content = f"""<!DOCTYPE html>
