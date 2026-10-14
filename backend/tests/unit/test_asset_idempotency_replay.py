@@ -5,7 +5,8 @@
 The replay used to return the stored asset before the `asset.create` check and without a scope
 check, so a key worked like a bearer token for reading someone else's asset. Now: no `asset.create`
 means 403 before any lookup; an asset outside the caller's read scope is a 404; a key reused with a
-different body is a 422; a malformed or over-long key is a 422 before any lookup.
+different body is a 422; a malformed or over-long key is a 422 before any lookup; and a key belongs
+to the member who sent it, so another member's same key is a new request, never a replay.
 """
 
 from __future__ import annotations
@@ -27,10 +28,13 @@ from app.modules.assets.schemas import AssetCreate
 ORG = uuid4()
 CATEGORY = uuid4()
 UNIT = uuid4()
+CREATOR = uuid4()
 SENTINEL: Any = object()
 
 
-def _caller(role: str, scope: ScopeType = ScopeType.ORGANIZATION, path: str | None = None) -> MemberContext:
+def _caller(
+    role: str, scope: ScopeType = ScopeType.ORGANIZATION, path: str | None = None, member: UUID = CREATOR
+) -> MemberContext:
     grant = RoleGrant(
         id="g",
         organization_id=str(ORG),
@@ -39,7 +43,7 @@ def _caller(role: str, scope: ScopeType = ScopeType.ORGANIZATION, path: str | No
         scope_id=None if scope == ScopeType.ORGANIZATION else str(uuid4()),
         org_unit_path=path,
     )
-    return MemberContext(member_id=str(uuid4()), organization_id=str(ORG), grants=(grant,))
+    return MemberContext(member_id=str(member), organization_id=str(ORG), grants=(grant,))
 
 
 def _body(name: str = "Pump 7") -> AssetCreate:
@@ -51,9 +55,11 @@ class _Repo:
         self.row = row
         self.lookups = 0
 
-    async def get_by_idempotency_key(self, conn: Any, *, organization_id: UUID, idempotency_key: str) -> Any:
+    async def get_by_idempotency_key(
+        self, conn: Any, *, organization_id: UUID, member_id: UUID, idempotency_key: str
+    ) -> Any:
         self.lookups += 1
-        return self.row
+        return self.row if member_id == CREATOR else None
 
     async def get_detail(self, conn: Any, *, organization_id: UUID, asset_id: UUID) -> Any:
         return self.row
@@ -119,6 +125,19 @@ async def test_a_key_reused_with_a_different_body_is_422(repo: _Repo) -> None:
 
 async def test_the_same_request_from_a_caller_who_may_read_it_is_replayed(repo: _Repo) -> None:
     assert await _create(_caller("admin"), "replay-key-1") is SENTINEL
+
+
+async def test_the_same_key_from_another_member_is_a_new_request_not_a_replay(repo: _Repo) -> None:
+    other_admin = _caller("admin", member=uuid4())
+    replayed = await service._replay_create(
+        object(),  # type: ignore[arg-type]
+        organization_id=ORG,
+        caller=other_admin,
+        secrets_provider=object(),  # type: ignore[arg-type]
+        data=_body(),
+        idempotency_key="replay-key-1",
+    )
+    assert replayed is None and repo.lookups == 1
 
 
 @pytest.mark.parametrize("key", ["", "x" * 256, "has space", "non-ascii-é"])
