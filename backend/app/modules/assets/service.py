@@ -432,11 +432,15 @@ async def _replay_create(
     data: AssetCreate,
     idempotency_key: str,
 ) -> AssetRead | None:
-    """The asset an earlier create with this `Idempotency-Key` made, or None for a new request."""
+    """The asset this caller's earlier create with this `Idempotency-Key` made, or None for a new
+    request. A key belongs to the member who sent it: another member's key never matches."""
     _check_idempotency_key(idempotency_key)
+    member_id = _actor_id(caller)
+    if member_id is None:
+        return None
     async with tenant_transaction(pool, organization_id) as conn:
         existing = await _asset_repo.get_by_idempotency_key(
-            conn, organization_id=organization_id, idempotency_key=idempotency_key
+            conn, organization_id=organization_id, member_id=member_id, idempotency_key=idempotency_key
         )
         if existing is not None:
             # A replay returns the stored asset only to a caller who may read it (else 404, so a
@@ -490,6 +494,7 @@ async def create_asset(
         )
         if replayed is not None:
             return replayed
+    key_member_id = _actor_id(caller) if idempotency_key is not None else None
 
     async with tenant_transaction(pool, organization_id) as conn:
         owner_path = await _org_unit_path(conn, organization_id, data.owner_org_unit_id)
@@ -581,7 +586,9 @@ async def create_asset(
             custom_fields=clean.plain,
             encrypted_fields=encrypted_fields,
             notes=data.notes,
-            idempotency_key=idempotency_key,
+            # Stored only with the member it belongs to (0019 CHECK): no member, no key.
+            idempotency_key=idempotency_key if key_member_id is not None else None,
+            idempotency_member_id=key_member_id,
         )
 
         await record_audit_event(
