@@ -2,12 +2,9 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """The file secrets provider logs a missing secret without its name or reserved LogRecord keys.
 
-NEW-4: `name` collides with the reserved `LogRecord.name` attribute. A later CodeQL finding showed
-logging the secret's name at all is unnecessary (its area is enough to locate it); only the area is
-logged now. `get_map()`'s warning doesn't log even the area: CodeQL kept flagging it as tainted
-secret-reference data regardless of how the value reached the log call (a known-inconsistent false
-positive, not a real difference in risk from `get()`'s otherwise-identical warning, which does still
-log the area).
+NEW-4: `name` collides with the reserved `LogRecord.name` attribute. CodeQL then flagged logging any
+part of a secret reference (py/clear-text-logging-sensitive-data), first the name, later even the
+area, so neither `get()` nor `get_map()` logs any part of the reference now (PR #351 review).
 """
 
 from __future__ import annotations
@@ -33,8 +30,6 @@ async def test_a_missing_secret_logs_and_raises_the_domain_error(
             await provider.get_map("secret://area/missing")
     records = [r for r in caplog.records if r.getMessage() == "secrets.file.missing"]
     assert len(records) == 2
-    get_record, get_map_record = records
-    assert get_record.area == "area"
     for record in records:
+        assert not hasattr(record, "area")
         assert not hasattr(record, "key_name") and not hasattr(record, "secret_name")
-    assert not hasattr(get_map_record, "area")
