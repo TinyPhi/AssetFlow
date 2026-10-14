@@ -199,6 +199,7 @@ lint-backend: check-python
 	cd $(BACKEND) && $(UV) run lint-imports
 	$(PYTHON) scripts/check-domain-terms.py
 	$(PYTHON) scripts/check-no-header-identity.py
+	$(PYTHON) scripts/check-mistakes-log.py
 	$(PYTHON) scripts/check-migrations.py
 
 lint-scripts:
