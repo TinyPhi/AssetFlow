@@ -20,6 +20,7 @@ from app.modules.assets.custom_fields import (
     validate_custom_fields,
 )
 from app.modules.assets.errors import CustomFieldValidationError
+from app.modules.assets.field_regex import compile_field_regex
 
 
 def _def(**kwargs: object) -> CustomFieldDefinition:
@@ -153,10 +154,14 @@ def test_a_catastrophic_pattern_cannot_stall_validation() -> None:
     assert time.perf_counter() - started < 1.0
 
 
-@pytest.mark.parametrize("pattern", [r"(?=a)b", r"(a)"])
-def test_a_pattern_re2_cannot_run_is_refused_not_run_on_backtracking_re(pattern: str) -> None:
+@pytest.mark.parametrize(("pattern", "value"), [(r"(?=a)a", "a"), (r"(a)\1", "aa")])
+def test_a_pattern_re2_cannot_run_is_refused_not_run_on_backtracking_re(pattern: str, value: str) -> None:
+    """A look-ahead and a back-reference: Python `re` would accept each value, so a refusal here can
+    only come from RE2 rejecting the pattern, never from a plain mismatch."""
+    with pytest.raises(ValueError, match="regex is not supported"):
+        compile_field_regex(pattern)
     with pytest.raises(CustomFieldValidationError):
-        validate_custom_fields([_def(rules={"regex": pattern})], {"f": "ab"})
+        validate_custom_fields([_def(rules={"regex": pattern})], {"f": value})
 
 
 # ---------------------------------------------------------------------------------------- number
