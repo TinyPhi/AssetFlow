@@ -72,6 +72,17 @@ Non-secret settings can be overridden from the shell: `ZITADEL_DOMAIN`,
 `ZITADEL_EXTERNALPORT`, `ZITADEL_EXTERNALSECURE`, `ZITADEL_TLS_MODE` (`external` behind TLS), `APP_URL`, `API_URL`, `OPENBAO_HOST_PORT`, `POSTGRES_HOST_PORT`,
 `API_HOST_PORT`, `ASSETFLOW_NET_CIDR`, `ASSETFLOW_ENV`.
 
+`ASSETFLOW_VERSION` pins the `api` image tag (default `local`, matching the `assetflow-bootstrap:local`
+convention already used for the bootstrap image). Production must set it in its `.env` to a
+deterministic release tag or digest — an unset value falls back to whatever `local` resolves to on
+that host, not a specific build. `make up-full` refuses to start when the rendered `api` image is
+tagged `latest`.
+
+The backup overlay (`deploy/compose.backup.yml`) has no built-in credentials: set
+`BACKUP_CIPHER_PASS`, `BACKUP_S3_KEY` and `BACKUP_S3_SECRET` (names in `.env.example`), or
+`docker compose` refuses to render it. Keep the passphrase with the keys backup; without it no
+backup can be restored.
+
 ## 3. Smoke test
 
 `scripts/smoke-full.py` (or `sh scripts/smoke-full.sh`) exits non-zero on the first failure:

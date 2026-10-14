@@ -36,7 +36,8 @@ Closes #
 ## 4. Security Notes
 
 <!-- Detail tenancy/scope impact, new inputs, new outbound network calls, or write "None". -->
-None
+- [ ] Are the affected ASVS Level 2 requirements updated in `docs/security/asvs-l2.md`?
+
 
 ## 5. How to Verify
 
