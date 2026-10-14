@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import time
+
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
@@ -138,6 +140,23 @@ def test_text_regex_pattern_over_definition_cap_is_refused_at_value_time_too() -
     defn = _def(rules={"regex": "a" * 201})
     with pytest.raises(CustomFieldValidationError):
         validate_custom_fields([defn], {"f": "a"})
+
+
+def test_a_catastrophic_pattern_cannot_stall_validation() -> None:
+    """ReDoS (PR #351 review): `^(a+)+$` against `a...a!` backtracks for minutes on Python `re`.
+    Patterns run on RE2, which is linear in the input, so the check finishes at once."""
+    defn = _def(rules={"regex": r"^(a+)+$"})
+    value = "a" * (MAX_TEXT_LENGTH - 1) + "!"
+    started = time.perf_counter()
+    with pytest.raises(CustomFieldValidationError):
+        validate_custom_fields([defn], {"f": value})
+    assert time.perf_counter() - started < 1.0
+
+
+@pytest.mark.parametrize("pattern", [r"(?=a)b", r"(a)"])
+def test_a_pattern_re2_cannot_run_is_refused_not_run_on_backtracking_re(pattern: str) -> None:
+    with pytest.raises(CustomFieldValidationError):
+        validate_custom_fields([_def(rules={"regex": pattern})], {"f": "ab"})
 
 
 # ---------------------------------------------------------------------------------------- number

@@ -69,7 +69,7 @@ CREATE TABLE public.asset_categories (
             REFERENCES public.asset_categories (organization_id, id) ON DELETE RESTRICT,
     CONSTRAINT fk_asset_categories__responsible_team_id__teams
         FOREIGN KEY (organization_id, responsible_team_id)
-            REFERENCES public.teams (organization_id, id) ON DELETE SET NULL,
+            REFERENCES public.teams (organization_id, id) ON DELETE SET NULL (responsible_team_id),
     CONSTRAINT ck_asset_categories__status CHECK (status IN ('active', 'archived')),
     CONSTRAINT ck_asset_categories__version CHECK (version >= 1)
 )
