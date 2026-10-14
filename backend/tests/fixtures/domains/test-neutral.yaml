@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2026 TinyPhi
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# A neutral, test-only domain template (§B7.3) exercising the automations section this plan adds.
+# Not a real domain template: config/domains/ has no production templates until master Phase 2.
+domain_key: test-neutral
+
+automations:
+  - when: team_member.added
+    then:
+      recipients:
+        - holder
+      channels:
+        - inapp
+      template: team-member-added

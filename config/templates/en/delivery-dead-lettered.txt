@@ -1,0 +1,5 @@
+---
+fields: [channel_key, error_code, attempts]
+subject: "A notification could not be delivered"
+---
+A notification could not be delivered through {{ channel_key }} after {{ attempts }} attempts (reason: {{ error_code }}).
