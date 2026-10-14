@@ -187,6 +187,7 @@ lint-backend: check-python
 	cd $(BACKEND) && $(UV) run ruff check . && $(UV) run ruff format --check .
 	cd $(BACKEND) && $(UV) run lint-imports
 	$(PYTHON) scripts/check-domain-terms.py
+	$(PYTHON) scripts/check-mistakes-log.py
 	$(PYTHON) scripts/check-migrations.py
 
 lint-scripts:
