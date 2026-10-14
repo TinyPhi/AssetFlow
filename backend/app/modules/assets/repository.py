@@ -175,12 +175,14 @@ class AssetRepository:
         )
 
     async def get_by_idempotency_key(
-        self, conn: DbConn, *, organization_id: UUID, idempotency_key: str
+        self, conn: DbConn, *, organization_id: UUID, member_id: UUID, idempotency_key: str
     ) -> asyncpg.Record | None:
+        """The asset this member created with this key; a key never matches another member's."""
         return await conn.fetchrow(
             f"SELECT {_ASSET_COLUMNS} FROM public.assets "  # nosec B608  # noqa: S608
-            "WHERE organization_id = $1 AND idempotency_key = $2",
+            "WHERE organization_id = $1 AND idempotency_member_id = $2 AND idempotency_key = $3",
             organization_id,
+            member_id,
             idempotency_key,
         )
 
@@ -214,14 +216,16 @@ class AssetRepository:
         encrypted_fields: Mapping[str, str],
         notes: str | None,
         idempotency_key: str | None,
+        idempotency_member_id: UUID | None,
     ) -> asyncpg.Record:
         row = await conn.fetchrow(
             "INSERT INTO public.assets "  # nosec B608  # noqa: S608
             "(id, organization_id, tag, name, category_id, model, manufacturer_id, supplier_id, "
             "serial_number, owner_org_unit_id, location_id, status, criticality, purchase_date, "
-            "purchase_cost, warranty_end, custom_fields, encrypted_fields, notes, idempotency_key, version) "
+            "purchase_cost, warranty_end, custom_fields, encrypted_fields, notes, idempotency_key, "
+            "idempotency_member_id, version) "
             "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, "
-            "$17::jsonb, $18::jsonb, $19, $20, 1) "
+            "$17::jsonb, $18::jsonb, $19, $20, $21, 1) "
             f"RETURNING {_ASSET_COLUMNS}",
             asset_id,
             organization_id,
@@ -243,6 +247,7 @@ class AssetRepository:
             json.dumps(encrypted_fields),
             notes,
             idempotency_key,
+            idempotency_member_id,
         )
         if row is None:  # INSERT ... RETURNING always returns exactly one row
             raise RuntimeError("INSERT ... RETURNING returned no asset row")
