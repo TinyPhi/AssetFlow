@@ -71,7 +71,6 @@ from app.modules.assets.catalog.schemas import (
 )
 from app.modules.assets.config import CustomField as TemplateCustomField
 from app.modules.assets.config import parse_assets_section
-from app.modules.assets.custom_fields import MAX_REGEX_PATTERN_LENGTH, compile_field_regex
 from app.modules.assets.events import (
     ASSET_CATEGORY_ARCHIVED,
     ASSET_CATEGORY_CREATED,
@@ -88,6 +87,7 @@ from app.modules.assets.events import (
     SUPPLIER_CREATED,
     SUPPLIER_UPDATED,
 )
+from app.modules.assets.field_regex import MAX_REGEX_PATTERN_LENGTH, compile_field_regex
 from app.modules.audit.service import record_audit_event
 
 __all__ = [

@@ -294,3 +294,71 @@ async def test_org_unit_move_rewrites_owner_org_unit_path_of_its_assets_only(
     assert child_row is not None and other_row is not None
     assert child_row["path"] == f"{new_root_path}.{child_path.rsplit('.', 1)[-1]}"
     assert other_row["path"] == other_path
+
+
+async def test_deleting_a_referenced_location_team_or_member_only_clears_that_link(
+    make_pool: PoolFactory, isolation_db: IsolationDb
+) -> None:
+    """A composite `(organization_id, x_id)` FK with a bare `ON DELETE SET NULL` would also null
+    `organization_id` (NOT NULL), so deleting a referenced row failed with not_null_violation.
+    `SET NULL (x_id)` clears only the link (PR #348 review)."""
+    api = await make_pool("api")
+    owner = await make_pool("migrator")
+    org = isolation_db.org_a
+    category = await _make_category(api, org)
+    unit, _ = await _make_org_unit(api, org)
+    location = await _make_location(api, org)
+    team = await _make_team(api, org)
+    member = await _make_member(api, org)
+    by_location, by_team, by_member = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    async with tenant_transaction(api, org) as conn:
+        await conn.execute(
+            "INSERT INTO public.assets (id, organization_id, tag, name, category_id, owner_org_unit_id, "
+            "location_id, holder_location_id) VALUES ($1, $2, $3, $3, $4, $5, $6, $6)",
+            by_location,
+            org,
+            token(),
+            category,
+            unit,
+            location,
+        )
+        await conn.execute(
+            "INSERT INTO public.assets (id, organization_id, tag, name, category_id, owner_org_unit_id, "
+            "holder_team_id) VALUES ($1, $2, $3, $3, $4, $5, $6)",
+            by_team,
+            org,
+            token(),
+            category,
+            unit,
+            team,
+        )
+        await conn.execute(
+            "INSERT INTO public.assets (id, organization_id, tag, name, category_id, owner_org_unit_id, "
+            "holder_member_id) VALUES ($1, $2, $3, $3, $4, $5, $6)",
+            by_member,
+            org,
+            token(),
+            category,
+            unit,
+            member,
+        )
+
+    async with tenant_transaction(owner, org) as conn:
+        await conn.execute("DELETE FROM public.locations WHERE id = $1", location)
+        await conn.execute("DELETE FROM public.teams WHERE id = $1", team)
+        await conn.execute("DELETE FROM public.members WHERE id = $1", member)
+
+    async with tenant_transaction(api, org) as conn:
+        rows = {
+            r["id"]: r
+            for r in await conn.fetch(
+                "SELECT id, organization_id, location_id, holder_location_id, holder_team_id, "
+                "holder_member_id FROM public.assets WHERE id = ANY($1::uuid[])",
+                [by_location, by_team, by_member],
+            )
+        }
+    assert set(rows) == {by_location, by_team, by_member}
+    assert all(r["organization_id"] == org for r in rows.values())
+    assert rows[by_location]["location_id"] is None and rows[by_location]["holder_location_id"] is None
+    assert rows[by_team]["holder_team_id"] is None
+    assert rows[by_member]["holder_member_id"] is None
