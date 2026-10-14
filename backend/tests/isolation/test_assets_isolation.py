@@ -362,3 +362,34 @@ async def test_deleting_a_referenced_location_team_or_member_only_clears_that_li
     assert rows[by_location]["location_id"] is None and rows[by_location]["holder_location_id"] is None
     assert rows[by_team]["holder_team_id"] is None
     assert rows[by_member]["holder_member_id"] is None
+
+
+async def test_an_idempotency_key_is_unique_per_member_and_bounded(
+    make_pool: PoolFactory, isolation_db: IsolationDb
+) -> None:
+    """A key belongs to the member who sent it (PR #348/#352 review): the same key from two members
+    is two assets, the same member reusing it is refused, a key needs its member, and it is bounded."""
+    api = await make_pool("api")
+    org = isolation_db.org_a
+    category = await _make_category(api, org)
+    unit, _ = await _make_org_unit(api, org)
+    alice, bob = await _make_member(api, org), await _make_member(api, org)
+    insert = (
+        "INSERT INTO public.assets (id, organization_id, tag, name, category_id, owner_org_unit_id, "
+        "idempotency_key, idempotency_member_id) VALUES ($1, $2, $3, $3, $4, $5, $6, $7)"
+    )
+
+    async def create(key: str | None, member: uuid.UUID | None) -> None:
+        async with tenant_transaction(api, org) as conn:
+            await conn.execute(insert, uuid.uuid4(), org, token(), category, unit, key, member)
+
+    await create("key-1", alice)
+    await create("key-1", bob)
+    with pytest.raises(asyncpg.UniqueViolationError):
+        await create("key-1", alice)
+    with pytest.raises(asyncpg.CheckViolationError):
+        await create("key-2", None)
+    with pytest.raises(asyncpg.CheckViolationError):
+        await create(None, alice)
+    with pytest.raises(asyncpg.CheckViolationError):
+        await create("k" * 256, alice)
