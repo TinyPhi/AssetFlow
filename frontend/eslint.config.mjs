@@ -39,6 +39,7 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
+      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
       "react/jsx-no-literals": ["error", { noStrings: false, ignoreProps: true }],
       "react/no-danger": "error",
@@ -46,12 +47,16 @@ export default tseslint.config(
     },
   },
   {
-    // Tests may use literal strings and read their own source tree (theme-regression scan).
+    // Tests may use literal strings and read their own source tree (theme-regression scan). They also
+    // compare fixture tokens with `===` (no secret is at stake, so no timing-attack risk) and use
+    // fixed test regexes on short fixture strings (no untrusted input, so no ReDoS risk).
     files: ["**/*.test.{ts,tsx}", "src/test/**"],
     rules: {
       "react/jsx-no-literals": "off",
       "security/detect-non-literal-fs-filename": "off",
       "security/detect-non-literal-regexp": "off",
+      "security/detect-possible-timing-attacks": "off",
+      "security/detect-unsafe-regex": "off",
     },
   },
 );
