@@ -106,12 +106,11 @@ AS $fn$
 $fn$
 """)
     op.execute("REVOKE ALL ON FUNCTION platform.resolve_organization(text) FROM PUBLIC")
+    op.execute("GRANT EXECUTE ON FUNCTION platform.resolve_organization(text) TO assetflow_api")
     # A new owner needs CREATE on the schema; it is granted only for the ownership change.
     op.execute("GRANT CREATE ON SCHEMA platform TO assetflow_resolver")
     op.execute("ALTER FUNCTION platform.resolve_organization(text) OWNER TO assetflow_resolver")
     op.execute("REVOKE CREATE ON SCHEMA platform FROM assetflow_resolver")
-    op.execute("REVOKE ALL ON FUNCTION platform.resolve_organization(text) FROM PUBLIC")
-    op.execute("GRANT EXECUTE ON FUNCTION platform.resolve_organization(text) TO assetflow_api")
 
 
 def downgrade() -> None:

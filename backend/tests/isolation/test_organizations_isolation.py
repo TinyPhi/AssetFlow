@@ -17,6 +17,7 @@ from pg_harness import IsolationDb, PoolFactory
 from app.core.db import platform_transaction, tenant_transaction
 
 RESOLVER = "platform.resolve_organization(text)"
+SLUG_FINDER = "platform.find_organization_id(text)"
 
 
 # ---------------------------------------------------------------- unstamped connections
@@ -33,17 +34,25 @@ async def test_unstamped_api_connection_sees_no_organizations(make_pool: PoolFac
 @pytest.mark.parametrize(
     "sql",
     [
-        "UPDATE public.organizations SET name = 'x'",
         "DELETE FROM public.organizations",
         "INSERT INTO public.organizations (id, slug, name, idp_organization_id, domain_key)"
         " VALUES (gen_random_uuid(), 'x', 'x', 'x', 'it')",
     ],
 )
-async def test_api_role_cannot_write_organizations(make_pool: PoolFactory, sql: str) -> None:
+async def test_api_role_cannot_delete_or_insert_without_matching_id(make_pool: PoolFactory, sql: str) -> None:
     pool = await make_pool("api")
     async with platform_transaction(pool) as conn:
         with pytest.raises(asyncpg.InsufficientPrivilegeError):
             await conn.execute(sql)
+
+
+async def test_api_role_has_update_but_rls_still_filters_to_zero_rows(make_pool: PoolFactory) -> None:
+    """0008 grants UPDATE to assetflow_api (needed by the settings API); the privilege check now
+    passes, but the fail-closed `organizations_update` policy still matches no row without a
+    stamped organization context, so the statement succeeds with zero rows changed."""
+    pool = await make_pool("api")
+    async with platform_transaction(pool) as conn:
+        assert await conn.execute("UPDATE public.organizations SET name = 'x'") == "UPDATE 0"
 
 
 async def test_unstamped_writes_affect_no_rows_even_for_the_table_owner(
@@ -264,6 +273,77 @@ async def test_app_roles_cannot_create_objects(make_pool: PoolFactory, kind: str
             await conn.execute("CREATE TABLE public.intruder (id int)")
         with pytest.raises(asyncpg.InsufficientPrivilegeError):
             await conn.execute("CREATE FUNCTION platform.intruder() RETURNS int LANGUAGE sql AS 'SELECT 1'")
+
+
+# ---------------------------------------------------------------- org create (CLI, assetflow_api INSERT)
+
+
+async def test_api_role_can_insert_its_own_row_but_not_anothers_id(
+    make_pool: PoolFactory, isolation_db: IsolationDb
+) -> None:
+    """The INSERT grant (migration 0007) only lifts the privilege check; RLS still decides."""
+    pool = await make_pool("api")
+    new_id = uuid.uuid4()
+    async with tenant_transaction(pool, new_id) as conn:
+        await conn.execute(
+            "INSERT INTO public.organizations (id, slug, name, idp_organization_id, domain_key)"
+            " VALUES ($1, 'new-org', 'New Org', 'idp-new-org', 'generic')",
+            new_id,
+        )
+        assert await conn.fetchval("SELECT count(*) FROM public.organizations") == 1
+    async with tenant_transaction(pool, new_id) as conn:
+        with pytest.raises(asyncpg.InsufficientPrivilegeError, match="row-level security"):
+            await conn.execute(
+                "INSERT INTO public.organizations (id, slug, name, idp_organization_id, domain_key)"
+                " VALUES ($1, 'mismatched', 'x', 'idp-mismatched', 'generic')",
+                uuid.uuid4(),
+            )
+
+
+async def test_slug_finder_resolves_only_id_and_nothing_else(
+    make_pool: PoolFactory, isolation_db: IsolationDb
+) -> None:
+    pool = await make_pool("api")
+    async with platform_transaction(pool) as conn:
+        assert await conn.fetchval("SELECT platform.find_organization_id($1)", "org-b") == isolation_db.org_b
+        assert await conn.fetchval("SELECT platform.find_organization_id($1)", "unknown-slug") is None
+        assert await conn.fetchval("SELECT platform.find_organization_id($1)", "%") is None
+        # Still nothing readable from the table itself.
+        assert await conn.fetchval("SELECT count(*) FROM public.organizations") == 0
+
+
+@pytest.mark.parametrize("kind", ["worker", "readonly"])
+async def test_slug_finder_is_refused_to_other_roles(
+    make_pool: PoolFactory, isolation_db: IsolationDb, kind: str
+) -> None:
+    pool = await make_pool(kind)
+    async with platform_transaction(pool) as conn:
+        with pytest.raises(asyncpg.InsufficientPrivilegeError):
+            await conn.fetch("SELECT platform.find_organization_id($1)", "org-a")
+
+
+async def test_slug_finder_privileges_and_definition(isolation_db: IsolationDb) -> None:
+    admin = await asyncpg.connect(isolation_db.admin_dsn)
+    try:
+        others = ("public", "assetflow_worker", "assetflow_readonly", isolation_db.users["worker"].name)
+        for grantee in others:
+            assert not await admin.fetchval(
+                "SELECT has_function_privilege($1, $2, 'EXECUTE')", grantee, SLUG_FINDER
+            ), grantee
+        assert await admin.fetchval(
+            "SELECT has_function_privilege($1, $2, 'EXECUTE')", isolation_db.users["api"].name, SLUG_FINDER
+        )
+        fn = await admin.fetchrow(
+            "SELECT p.prosecdef, p.proconfig, r.rolname AS owner"
+            " FROM pg_proc p JOIN pg_roles r ON r.oid = p.proowner WHERE p.oid = $1::regprocedure",
+            SLUG_FINDER,
+        )
+        assert fn is not None
+        assert fn["prosecdef"] is True
+        assert fn["proconfig"] == ["search_path=pg_catalog, pg_temp"]
+        assert fn["owner"] == "assetflow_resolver"
+    finally:
+        await admin.close()
 
 
 async def test_no_login_user_inherits_the_resolver_role(isolation_db: IsolationDb) -> None:

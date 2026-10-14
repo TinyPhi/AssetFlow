@@ -31,6 +31,38 @@ async def _sql(db: IsolationDb, sql: str) -> None:
         await conn.close()
 
 
+async def _release_roles_in_other_databases(db: IsolationDb) -> None:
+    """Drop the AssetFlow roles' rights in every other database of the cluster.
+
+    Roles are cluster-wide, and `DROP ROLE` fails while the role still holds a grant in any
+    database. Another test session (or a leftover database) on the same server would block the
+    `downgrade base` below, so its grants are released first. Only AssetFlow's own roles are touched.
+    """
+    admin = await asyncpg.connect(db.admin_dsn)
+    try:
+        names = [
+            r["datname"]
+            for r in await admin.fetch(
+                "SELECT datname FROM pg_database WHERE NOT datistemplate AND datname <> current_database()"
+            )
+        ]
+        roles = [
+            r["rolname"]
+            for r in await admin.fetch("SELECT rolname FROM pg_roles WHERE rolname LIKE 'assetflow%'")
+        ]
+    finally:
+        await admin.close()
+    for name in names:
+        conn = await asyncpg.connect(db.admin_dsn.rsplit("/", 1)[0] + "/" + name)
+        try:
+            for role in roles:
+                await conn.execute(f'DROP OWNED BY "{role}"')
+        except asyncpg.PostgresError:
+            pass  # a database we cannot enter or that is gone is not holding anything we can drop
+        finally:
+            await conn.close()
+
+
 def _ok(result: object) -> None:
     rc = getattr(result, "returncode", None)
     assert rc == 0, f"{getattr(result, 'stdout', '')}\n{getattr(result, 'stderr', '')}"
@@ -44,6 +76,7 @@ async def test_upgrade_downgrade_upgrade(isolation_db: IsolationDb) -> None:
         _ok(db.alembic("downgrade", "0000_roles"))
         assert await _objects(db) == (False, False, 5)
 
+        await _release_roles_in_other_databases(db)
         _ok(db.alembic("downgrade", "base"))
         assert await _objects(db) == (False, False, 0)
 
@@ -54,9 +87,53 @@ async def test_upgrade_downgrade_upgrade(isolation_db: IsolationDb) -> None:
         await db.provision()
 
 
+async def test_schema_migrations_run_as_a_non_superuser_migrator(isolation_db: IsolationDb) -> None:
+    """Deployments run every migration after 0000 as a migrator login without superuser rights.
+
+    Once 0001 hands platform.resolve_organization() to assetflow_resolver, the migrator is no longer
+    its owner and cannot grant on it; the API grant must therefore come before the owner change.
+    The rest of the suite migrates as the superuser and would not notice.
+    """
+    db = isolation_db
+    migrator = db.users["migrator"]
+    try:
+        _ok(db.alembic("downgrade", "0000_roles"))
+        # The operator bootstrap for the migrator (deploy/postgres/init-minimal.sh does the same).
+        await _sql(db, f'GRANT CREATE ON DATABASE "{db.database}" TO assetflow_migrator')
+        await _sql(db, "GRANT USAGE, CREATE ON SCHEMA public TO assetflow_migrator")
+        await _sql(db, "ALTER TABLE public.alembic_version OWNER TO assetflow_migrator")
+
+        migrator_dsn = db.server.dsn(db.database, migrator.name, migrator.password)
+        _ok(db.alembic("upgrade", "head", dsn=migrator_dsn))
+
+        conn = await asyncpg.connect(db.admin_dsn)
+        try:
+            api_can_execute = await conn.fetchval(
+                "SELECT has_function_privilege($1, 'platform.resolve_organization(text)', 'EXECUTE')",
+                db.users["api"].name,
+            )
+            owner = await conn.fetchval(
+                "SELECT proowner::regrole::text FROM pg_proc "
+                "WHERE oid = 'platform.resolve_organization(text)'::regprocedure"
+            )
+        finally:
+            await conn.close()
+        assert api_can_execute, "the api login lost EXECUTE on platform.resolve_organization"
+        assert owner == "assetflow_resolver"
+    finally:
+        _ok(db.alembic("downgrade", "0000_roles"))
+        # Undo the bootstrap grants so later tests can drop the roles.
+        await _sql(db, "ALTER TABLE public.alembic_version OWNER TO CURRENT_USER")
+        await _sql(db, "REVOKE USAGE, CREATE ON SCHEMA public FROM assetflow_migrator")
+        await _sql(db, f'REVOKE CREATE ON DATABASE "{db.database}" FROM assetflow_migrator')
+        db.upgrade_head()
+        await db.provision()
+
+
 async def test_roles_migration_is_idempotent_and_refuses_unsafe_roles(isolation_db: IsolationDb) -> None:
     db = isolation_db
     try:
+        await _release_roles_in_other_databases(db)
         _ok(db.alembic("downgrade", "base"))
 
         # A role left from an earlier install with safe attributes is reused.
