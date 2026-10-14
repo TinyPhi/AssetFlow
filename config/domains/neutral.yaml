@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: 2026 TinyPhi
+# SPDX-License-Identifier: AGPL-3.0-only
+# Neutral generic domain template (§B7.3, M1.6-T8)
+domain_key: neutral
+
+modules:
+  - assets
+  - maintenance
+
+automations:
+  - when: team_member.added
+    then:
+      recipients:
+        - holder
+      channels:
+        - inapp
+      template: team-member-added
