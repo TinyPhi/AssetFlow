@@ -191,6 +191,7 @@ def test_a_category_that_is_its_own_parent_is_a_cycle() -> None:
         ({"key": "k", "label": "K", "type": "text", "options": ["a"]}, "options are only allowed on select"),
         ({"key": "k", "label": "K", "type": "number", "min": 5, "max": 1}, "min 5 is greater than max 1"),
         ({"key": "k", "label": "K", "type": "text", "regex": "("}, "regex does not compile"),
+        ({"key": "k", "label": "K", "type": "text", "regex": r"(?=a)b"}, "regex does not compile"),
         (
             {"key": "k", "label": "K", "type": "number", "regex": "^a$"},
             "regex is only allowed on text fields",

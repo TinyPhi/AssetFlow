@@ -16,18 +16,17 @@ changes only some fields).
 from __future__ import annotations
 
 import json
-import re
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal, InvalidOperation
-from functools import lru_cache
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
 from app.core.problems import FieldError, ValidationFailedError
 from app.modules.assets.errors import CustomFieldValidationError
+from app.modules.assets.field_regex import compile_field_regex
 
 __all__ = [
     "CleanValues",
@@ -39,28 +38,15 @@ __all__ = [
 
 CustomFieldType = Literal["text", "number", "date", "boolean", "select", "multi_select", "json"]
 
-#: Bounds a text value before it ever reaches `re.fullmatch`, regardless of its own min/max rule
-#: (§B10): the regex-timeout defense is a bounded input length plus a cached, length-capped
-#: pattern (`compile_field_regex`), not a separate timer.
+#: Bounds a text value before it reaches the pattern check, regardless of its own min/max rule
+#: (§B10). Patterns run on RE2 (`field_regex.py`), which is linear in the input, so this cap and
+#: the 200-character pattern cap bound the work; no pattern can backtrack.
 MAX_TEXT_LENGTH = 10_000
-
-#: A regex pattern over 200 characters is refused when the definition itself is saved (P8-07);
-#: `compile_field_regex` enforces the same cap here so a value can never be checked against a
-#: pattern the definition layer would have refused.
-MAX_REGEX_PATTERN_LENGTH = 200
 
 #: `json` field values: serialized size cap (§B8.1).
 MAX_JSON_BYTES = 16 * 1024
 
 type JsonValue = str | int | float | bool | list["JsonValue"] | dict[str, "JsonValue"] | None
-
-
-@lru_cache(maxsize=256)
-def compile_field_regex(pattern: str) -> re.Pattern[str]:
-    """Compile a `text` field's `regex` rule once; refuses an over-long pattern (§B10, §B8.1)."""
-    if len(pattern) > MAX_REGEX_PATTERN_LENGTH:
-        raise ValueError(f"regex must be at most {MAX_REGEX_PATTERN_LENGTH} characters")
-    return re.compile(pattern)
 
 
 class _Strict(BaseModel):

@@ -1223,7 +1223,7 @@ ALTER TABLE ONLY public.asset_categories
     ADD CONSTRAINT fk_asset_categories__parent_id__asset_categories FOREIGN KEY (organization_id, parent_id) REFERENCES public.asset_categories(organization_id, id) ON DELETE RESTRICT;
 
 ALTER TABLE ONLY public.asset_categories
-    ADD CONSTRAINT fk_asset_categories__responsible_team_id__teams FOREIGN KEY (organization_id, responsible_team_id) REFERENCES public.teams(organization_id, id) ON DELETE SET NULL;
+    ADD CONSTRAINT fk_asset_categories__responsible_team_id__teams FOREIGN KEY (organization_id, responsible_team_id) REFERENCES public.teams(organization_id, id) ON DELETE SET NULL (responsible_team_id);
 
 ALTER TABLE ONLY public.asset_components
     ADD CONSTRAINT fk_asset_components__child_asset_id__assets FOREIGN KEY (organization_id, child_asset_id) REFERENCES public.assets(organization_id, id) ON DELETE RESTRICT;
@@ -1244,19 +1244,19 @@ ALTER TABLE ONLY public.assets
     ADD CONSTRAINT fk_assets__category_id__asset_categories FOREIGN KEY (organization_id, category_id) REFERENCES public.asset_categories(organization_id, id) ON DELETE RESTRICT;
 
 ALTER TABLE ONLY public.assets
-    ADD CONSTRAINT fk_assets__holder_location_id__locations FOREIGN KEY (organization_id, holder_location_id) REFERENCES public.locations(organization_id, id) ON DELETE SET NULL;
+    ADD CONSTRAINT fk_assets__holder_location_id__locations FOREIGN KEY (organization_id, holder_location_id) REFERENCES public.locations(organization_id, id) ON DELETE SET NULL (holder_location_id);
 
 ALTER TABLE ONLY public.assets
-    ADD CONSTRAINT fk_assets__holder_member_id__members FOREIGN KEY (organization_id, holder_member_id) REFERENCES public.members(organization_id, id) ON DELETE SET NULL;
+    ADD CONSTRAINT fk_assets__holder_member_id__members FOREIGN KEY (organization_id, holder_member_id) REFERENCES public.members(organization_id, id) ON DELETE SET NULL (holder_member_id);
 
 ALTER TABLE ONLY public.assets
-    ADD CONSTRAINT fk_assets__holder_team_id__teams FOREIGN KEY (organization_id, holder_team_id) REFERENCES public.teams(organization_id, id) ON DELETE SET NULL;
+    ADD CONSTRAINT fk_assets__holder_team_id__teams FOREIGN KEY (organization_id, holder_team_id) REFERENCES public.teams(organization_id, id) ON DELETE SET NULL (holder_team_id);
 
 ALTER TABLE ONLY public.assets
-    ADD CONSTRAINT fk_assets__location_id__locations FOREIGN KEY (organization_id, location_id) REFERENCES public.locations(organization_id, id) ON DELETE SET NULL;
+    ADD CONSTRAINT fk_assets__location_id__locations FOREIGN KEY (organization_id, location_id) REFERENCES public.locations(organization_id, id) ON DELETE SET NULL (location_id);
 
 ALTER TABLE ONLY public.assets
-    ADD CONSTRAINT fk_assets__manufacturer_id__manufacturers FOREIGN KEY (organization_id, manufacturer_id) REFERENCES public.manufacturers(organization_id, id) ON DELETE SET NULL;
+    ADD CONSTRAINT fk_assets__manufacturer_id__manufacturers FOREIGN KEY (organization_id, manufacturer_id) REFERENCES public.manufacturers(organization_id, id) ON DELETE SET NULL (manufacturer_id);
 
 ALTER TABLE ONLY public.assets
     ADD CONSTRAINT fk_assets__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
@@ -1265,7 +1265,7 @@ ALTER TABLE ONLY public.assets
     ADD CONSTRAINT fk_assets__owner_org_unit_id__org_units FOREIGN KEY (organization_id, owner_org_unit_id) REFERENCES public.org_units(organization_id, id) ON DELETE RESTRICT;
 
 ALTER TABLE ONLY public.assets
-    ADD CONSTRAINT fk_assets__supplier_id__suppliers FOREIGN KEY (organization_id, supplier_id) REFERENCES public.suppliers(organization_id, id) ON DELETE SET NULL;
+    ADD CONSTRAINT fk_assets__supplier_id__suppliers FOREIGN KEY (organization_id, supplier_id) REFERENCES public.suppliers(organization_id, id) ON DELETE SET NULL (supplier_id);
 
 ALTER TABLE public.audit_events
     ADD CONSTRAINT fk_audit_events__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
@@ -1310,7 +1310,7 @@ ALTER TABLE ONLY public.meter_readings
     ADD CONSTRAINT fk_meter_readings__organization_id__organizations FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE RESTRICT;
 
 ALTER TABLE ONLY public.meter_readings
-    ADD CONSTRAINT fk_meter_readings__recorded_by_member_id__members FOREIGN KEY (organization_id, recorded_by_member_id) REFERENCES public.members(organization_id, id) ON DELETE SET NULL;
+    ADD CONSTRAINT fk_meter_readings__recorded_by_member_id__members FOREIGN KEY (organization_id, recorded_by_member_id) REFERENCES public.members(organization_id, id) ON DELETE SET NULL (recorded_by_member_id);
 
 ALTER TABLE ONLY public.meters
     ADD CONSTRAINT fk_meters__asset_id__assets FOREIGN KEY (organization_id, asset_id) REFERENCES public.assets(organization_id, id) ON DELETE RESTRICT;

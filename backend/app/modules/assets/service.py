@@ -395,6 +395,74 @@ async def _component_view(
 # ==============================================================================
 
 
+#: `Idempotency-Key` header: 1-255 visible ASCII characters. Bounded so an over-long key is a clean
+#: 422, not a B-tree index-row overflow (500).
+MAX_IDEMPOTENCY_KEY_LENGTH = 255
+
+
+def _check_idempotency_key(key: str) -> None:
+    if not 0 < len(key) <= MAX_IDEMPOTENCY_KEY_LENGTH or not all("!" <= ch <= "~" for ch in key):
+        raise ValidationFailedError(
+            errors=[
+                FieldError(
+                    field="Idempotency-Key",
+                    message=f"must be 1 to {MAX_IDEMPOTENCY_KEY_LENGTH} visible ASCII characters",
+                )
+            ]
+        )
+
+
+def _same_create_request(existing: Any, data: AssetCreate) -> bool:
+    """A replay must repeat the request that created the asset: same name, category and owner unit,
+    and the same tag when one was supplied. A key reused for another asset is refused (422)."""
+    same = (
+        existing["name"] == data.name
+        and existing["category_id"] == data.category_id
+        and existing["owner_org_unit_id"] == data.owner_org_unit_id
+    )
+    return same and (data.tag is None or existing["tag"] == data.tag)
+
+
+async def _replay_create(
+    pool: Pool,
+    *,
+    organization_id: UUID,
+    caller: MemberContext,
+    secrets_provider: SecretsProvider,
+    data: AssetCreate,
+    idempotency_key: str,
+) -> AssetRead | None:
+    """The asset an earlier create with this `Idempotency-Key` made, or None for a new request."""
+    _check_idempotency_key(idempotency_key)
+    async with tenant_transaction(pool, organization_id) as conn:
+        existing = await _asset_repo.get_by_idempotency_key(
+            conn, organization_id=organization_id, idempotency_key=idempotency_key
+        )
+        if existing is not None:
+            # A replay returns the stored asset only to a caller who may read it (else 404, so a
+            # key never works as a bearer token, §C4.5), and only for the same request.
+            if not default_scope_resolver.check_access(caller, READ_PERMISSION, _current_resource(existing)):
+                raise AssetNotFoundError()
+            if not _same_create_request(existing, data):
+                raise ValidationFailedError(
+                    "This Idempotency-Key was already used for a different request.",
+                    errors=[
+                        FieldError(field="Idempotency-Key", message="already used for a different request")
+                    ],
+                )
+            detail = _require_just_written(
+                await _asset_repo.get_detail(conn, organization_id=organization_id, asset_id=existing["id"])
+            )
+            return await _to_asset_read(
+                conn,
+                detail,
+                organization_id=organization_id,
+                caller=caller,
+                secrets_provider=secrets_provider,
+            )
+    return None
+
+
 async def create_asset(
     pool: Pool,
     *,
@@ -406,29 +474,22 @@ async def create_asset(
     idempotency_key: str | None = None,
     config_base_dir: Path | None = None,
 ) -> AssetRead:
-    if idempotency_key:
-        async with tenant_transaction(pool, organization_id) as conn:
-            existing = await _asset_repo.get_by_idempotency_key(
-                conn, organization_id=organization_id, idempotency_key=idempotency_key
-            )
-            if existing is not None:
-                detail = _require_just_written(
-                    await _asset_repo.get_detail(
-                        conn, organization_id=organization_id, asset_id=existing["id"]
-                    )
-                )
-                return await _to_asset_read(
-                    conn,
-                    detail,
-                    organization_id=organization_id,
-                    caller=caller,
-                    secrets_provider=secrets_provider,
-                )
-
     if not default_scope_resolver.has_permission(caller, CREATE_PERMISSION):
-        # Fails closed before any lookup: a caller with no `asset.create` grant at all is refused
-        # without probing whether the target org unit exists (never leaks that, §C4.5).
+        # Fails closed before any lookup, including the idempotency replay below: a caller with no
+        # `asset.create` grant at all is refused without probing whether the key or org unit exists.
         raise PermissionDeniedError(f"Permission {CREATE_PERMISSION!r} denied.")
+
+    if idempotency_key is not None:
+        replayed = await _replay_create(
+            pool,
+            organization_id=organization_id,
+            caller=caller,
+            secrets_provider=secrets_provider,
+            data=data,
+            idempotency_key=idempotency_key,
+        )
+        if replayed is not None:
+            return replayed
 
     async with tenant_transaction(pool, organization_id) as conn:
         owner_path = await _org_unit_path(conn, organization_id, data.owner_org_unit_id)
