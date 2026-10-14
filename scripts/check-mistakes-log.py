@@ -268,7 +268,8 @@ class Log:
         return f"M-{max((int(i[2:]) for i in self.kinds), default=0) + 1:03d}"
 
     def new_trace_id(self, date: str) -> str:
-        """Date plus 4 random hex digits: unique across parallel branches, sortable by date."""
+        """Date plus 4 random hex digits, sortable by date. Unique within this log only: two branches
+        can draw the same id, which `sync` reports after a merge."""
         while True:
             ident = f"T-{date.replace('-', '')}-{secrets.token_hex(2)}"
             if ident not in self.traces:

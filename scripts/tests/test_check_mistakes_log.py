@@ -98,10 +98,14 @@ def test_seen_adds_a_trace_with_its_context(repo: Path) -> None:
     assert problems(repo) == []
 
 
-def test_trace_ids_never_collide(repo: Path) -> None:
+def test_trace_ids_never_collide(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A drawn id already in the log is skipped. Deterministic: 50 real draws from 65,536 values
+    collided about once in 50 runs (PR #351 review)."""
     log = mlog.Log(repo)
-    ids = {log.new_trace_id("2026-10-08") for _ in range(50)}
-    assert len(ids) == 50 and all(i.startswith("T-20261008-") for i in ids)
+    log.traces["T-20261008-abcd"] = mlog.Trace(ident="T-20261008-abcd", date="2026-10-08", kind="M-001")
+    draws = iter(["abcd", "abcd", "1234"])
+    monkeypatch.setattr(mlog.secrets, "token_hex", lambda _n: next(draws))
+    assert log.new_trace_id("2026-10-08") == "T-20261008-1234"
 
 
 def test_third_trace_demands_a_tooling_check(repo: Path) -> None:
