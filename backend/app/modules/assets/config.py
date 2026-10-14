@@ -27,6 +27,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 from app.engines.automation.conditions import referenced_fields
 from app.engines.automation.models import Condition
+from app.modules.assets.field_regex import compile_field_regex
 
 __all__ = [
     "ASSET_FIELDS",
@@ -201,8 +202,8 @@ class CustomField(_Strict):
             if self.type != "text":
                 raise ValueError("regex is only allowed on text fields")
             try:
-                re.compile(self.regex)
-            except re.error as exc:
+                compile_field_regex(self.regex)  # RE2: linear-time, no look-arounds (field_regex.py)
+            except ValueError as exc:
                 raise ValueError(f"regex does not compile: {exc}") from exc
         if self.is_unique and self.is_encrypted:
             raise ValueError("an encrypted field cannot be unique (encrypted values cannot be compared)")

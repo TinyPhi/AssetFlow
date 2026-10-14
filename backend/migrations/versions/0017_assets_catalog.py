@@ -109,25 +109,25 @@ CREATE TABLE public.assets (
             REFERENCES public.asset_categories (organization_id, id) ON DELETE RESTRICT,
     CONSTRAINT fk_assets__manufacturer_id__manufacturers
         FOREIGN KEY (organization_id, manufacturer_id)
-            REFERENCES public.manufacturers (organization_id, id) ON DELETE SET NULL,
+            REFERENCES public.manufacturers (organization_id, id) ON DELETE SET NULL (manufacturer_id),
     CONSTRAINT fk_assets__supplier_id__suppliers
         FOREIGN KEY (organization_id, supplier_id)
-            REFERENCES public.suppliers (organization_id, id) ON DELETE SET NULL,
+            REFERENCES public.suppliers (organization_id, id) ON DELETE SET NULL (supplier_id),
     CONSTRAINT fk_assets__owner_org_unit_id__org_units
         FOREIGN KEY (organization_id, owner_org_unit_id)
             REFERENCES public.org_units (organization_id, id) ON DELETE RESTRICT,
     CONSTRAINT fk_assets__location_id__locations
         FOREIGN KEY (organization_id, location_id)
-            REFERENCES public.locations (organization_id, id) ON DELETE SET NULL,
+            REFERENCES public.locations (organization_id, id) ON DELETE SET NULL (location_id),
     CONSTRAINT fk_assets__holder_member_id__members
         FOREIGN KEY (organization_id, holder_member_id)
-            REFERENCES public.members (organization_id, id) ON DELETE SET NULL,
+            REFERENCES public.members (organization_id, id) ON DELETE SET NULL (holder_member_id),
     CONSTRAINT fk_assets__holder_team_id__teams
         FOREIGN KEY (organization_id, holder_team_id)
-            REFERENCES public.teams (organization_id, id) ON DELETE SET NULL,
+            REFERENCES public.teams (organization_id, id) ON DELETE SET NULL (holder_team_id),
     CONSTRAINT fk_assets__holder_location_id__locations
         FOREIGN KEY (organization_id, holder_location_id)
-            REFERENCES public.locations (organization_id, id) ON DELETE SET NULL,
+            REFERENCES public.locations (organization_id, id) ON DELETE SET NULL (holder_location_id),
     CONSTRAINT ck_assets__one_holder CHECK (
         num_nonnulls(holder_member_id, holder_team_id, holder_location_id) <= 1
     ),
@@ -431,7 +431,7 @@ CREATE TABLE public.meter_readings (
             REFERENCES public.meters (organization_id, id) ON DELETE RESTRICT,
     CONSTRAINT fk_meter_readings__recorded_by_member_id__members
         FOREIGN KEY (organization_id, recorded_by_member_id)
-            REFERENCES public.members (organization_id, id) ON DELETE SET NULL,
+            REFERENCES public.members (organization_id, id) ON DELETE SET NULL (recorded_by_member_id),
     CONSTRAINT ck_meter_readings__source CHECK (source IN ('manual', 'work_order', 'import'))
 )
 """)
