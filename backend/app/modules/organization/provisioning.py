@@ -86,6 +86,23 @@ async def resolve_member_context(
     )
 
 
+async def load_member_context(
+    conn: DbConn, organization_id: UUID, member_id: UUID, *, is_suspended: bool
+) -> MemberContext:
+    """The `MemberContext` an existing member would get at sign-in: grants, teams, primary unit.
+
+    Used to show another member's effective access; it never links, provisions or writes anything.
+    """
+    return MemberContext(
+        member_id=str(member_id),
+        organization_id=str(organization_id),
+        is_suspended=is_suspended,
+        grants=await _load_grants(conn, organization_id, member_id),
+        team_ids=await _load_team_ids(conn, organization_id, member_id),
+        primary_org_unit_path=await _load_primary_org_unit_path(conn, organization_id, member_id),
+    )
+
+
 async def _link_pending_invite(
     conn: DbConn, organization_id: UUID, principal: Principal
 ) -> asyncpg.Record | None:
