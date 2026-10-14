@@ -21,6 +21,7 @@ dependencies = [
     "cryptography~=50.0",
     "jinja2~=3.1.6",
     "aiosmtplib~=5.1",
+    "google-re2~=1.1",
 ]
 
 [project.optional-dependencies]
@@ -106,6 +107,12 @@ disallow_untyped_defs = true
 warn_unused_configs = true
 warn_redundant_casts = true
 warn_unused_ignores = true
+
+
+# google-re2 ships no type information (`re2`); it is wrapped in app/modules/assets/field_regex.py.
+[[tool.mypy.overrides]]
+module = ["re2"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
