@@ -198,6 +198,18 @@ async def _organization_domain_key(conn: Any, organization_id: UUID) -> str | No
     return value
 
 
+def _check_criticality(value: str | None, assets_config: AssetsConfig | None) -> None:
+    """A criticality is text validated from config: it must be one of the template's levels. With no
+    template there are no levels, so only an empty value is accepted."""
+    if value is None:
+        return
+    levels = assets_config.criticality if assets_config is not None else []
+    if value not in levels:
+        raise ValidationFailedError(
+            errors=[FieldError(field="criticality", message=f"unknown criticality {value!r}")]
+        )
+
+
 # ==============================================================================
 # Reference lookups
 # ==============================================================================
@@ -579,6 +591,7 @@ async def _insert_new_asset(
 
         domain_key = await _organization_domain_key(conn, organization_id)
         assets_config = _load_assets_config(domain_key, config_base_dir) if domain_key else None
+        _check_criticality(data.criticality, assets_config)
         initial_status = assets_config.initial if assets_config is not None else "active"
         tag_config = assets_config.tag if assets_config is not None else None
 
@@ -818,6 +831,7 @@ async def update_asset(
     asset_id: UUID,
     data: AssetUpdate,
     request_id: str | None = None,
+    config_base_dir: Path | None = None,
 ) -> AssetRead:
     async with tenant_transaction(pool, organization_id) as conn:
         current = await _asset_repo.get_by_id(
@@ -849,6 +863,11 @@ async def update_asset(
             )
             if category is None:
                 raise ValidationFailedError(errors=[FieldError(field="category_id", message="not found")])
+
+        if data.criticality is not None:
+            domain_key = await _organization_domain_key(conn, organization_id)
+            assets_config = _load_assets_config(domain_key, config_base_dir) if domain_key else None
+            _check_criticality(data.criticality, assets_config)
 
         sets = _build_simple_sets(data)
         await _apply_custom_field_update(
