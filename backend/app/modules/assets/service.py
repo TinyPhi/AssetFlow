@@ -27,6 +27,8 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+import asyncpg
+
 from app.core.config import resolve_config_path
 from app.core.db import Pool, tenant_transaction
 from app.core.ids import uuid7
@@ -196,6 +198,18 @@ async def _organization_domain_key(conn: Any, organization_id: UUID) -> str | No
     return value
 
 
+def _check_criticality(value: str | None, assets_config: AssetsConfig | None) -> None:
+    """A criticality is text validated from config: it must be one of the template's levels. With no
+    template there are no levels, so only an empty value is accepted."""
+    if value is None:
+        return
+    levels = assets_config.criticality if assets_config is not None else []
+    if value not in levels:
+        raise ValidationFailedError(
+            errors=[FieldError(field="criticality", message=f"unknown criticality {value!r}")]
+        )
+
+
 # ==============================================================================
 # Reference lookups
 # ==============================================================================
@@ -292,14 +306,37 @@ def _apply_departed_marker(row: dict[str, Any], departed: set[UUID]) -> None:
         row["holder_display_name"] = "Former member"
 
 
+@dataclass(frozen=True)
+class _PendingRead:
+    """A read model built inside a transaction, with the ciphertexts it still has to decrypt.
+
+    Decryption calls the secrets provider (OpenBao over the network in production), so it runs only
+    after the transaction has closed: no pooled connection or row lock waits on it (§B8.1)."""
+
+    read: AssetRead
+    ciphertexts: dict[str, str]
+
+
+async def _finish_read(
+    pending: _PendingRead, *, organization_id: UUID, secrets_provider: SecretsProvider
+) -> AssetRead:
+    """Decrypt the pending ciphertexts in one batch, outside any transaction."""
+    if not pending.ciphertexts:
+        return pending.read
+    decrypted: dict[str, JsonValue] = await decrypt_custom_fields(
+        secrets_provider, organization_id=str(organization_id), ciphertexts=pending.ciphertexts
+    )
+    return pending.read.model_copy(update={"encrypted_fields": dict(decrypted)})
+
+
 async def _to_asset_read(
     conn: Any,
     row: Any,
     *,
     organization_id: UUID,
     caller: MemberContext,
-    secrets_provider: SecretsProvider,
-) -> AssetRead:
+) -> _PendingRead:
+    """The read model of `row`. Encrypted values the caller may read are left for `_finish_read`."""
     data = dict(row)
     custom_fields = _as_dict(data["custom_fields"])
     encrypted_raw = _as_dict(data["encrypted_fields"])
@@ -308,14 +345,13 @@ async def _to_asset_read(
     )
     encrypted_keys = {d.key for d in encrypted_defs if d.is_encrypted}
 
+    ciphertexts: dict[str, str] = {}
     if (
         default_scope_resolver.check_access(caller, READ_SENSITIVE_PERMISSION, _resource(row))
         and encrypted_raw
     ):
-        decrypted: dict[str, JsonValue] = await decrypt_custom_fields(
-            secrets_provider, organization_id=str(organization_id), ciphertexts=encrypted_raw
-        )
-        encrypted_view: dict[str, object] = dict(decrypted)
+        ciphertexts = dict(encrypted_raw)
+        encrypted_view: dict[str, object] = {}
     else:
         encrypted_view = dict(encrypted_field_presence(encrypted_keys, encrypted_raw))
 
@@ -329,7 +365,7 @@ async def _to_asset_read(
         conn, organization_id=organization_id, caller=caller, asset_id=data["id"]
     )
 
-    return AssetRead(
+    read = AssetRead(
         id=data["id"],
         organization_id=data["organization_id"],
         tag=data["tag"],
@@ -362,6 +398,7 @@ async def _to_asset_read(
         created_at=data["created_at"],
         updated_at=data["updated_at"],
     )
+    return _PendingRead(read=read, ciphertexts=ciphertexts)
 
 
 async def _component_view(
@@ -438,6 +475,7 @@ async def _replay_create(
     member_id = _actor_id(caller)
     if member_id is None:
         return None
+    pending: _PendingRead | None = None
     async with tenant_transaction(pool, organization_id) as conn:
         existing = await _asset_repo.get_by_idempotency_key(
             conn, organization_id=organization_id, member_id=member_id, idempotency_key=idempotency_key
@@ -457,14 +495,10 @@ async def _replay_create(
             detail = _require_just_written(
                 await _asset_repo.get_detail(conn, organization_id=organization_id, asset_id=existing["id"])
             )
-            return await _to_asset_read(
-                conn,
-                detail,
-                organization_id=organization_id,
-                caller=caller,
-                secrets_provider=secrets_provider,
-            )
-    return None
+            pending = await _to_asset_read(conn, detail, organization_id=organization_id, caller=caller)
+    if pending is None:
+        return None
+    return await _finish_read(pending, organization_id=organization_id, secrets_provider=secrets_provider)
 
 
 async def create_asset(
@@ -494,7 +528,65 @@ async def create_asset(
         )
         if replayed is not None:
             return replayed
+    try:
+        return await _insert_new_asset(
+            pool,
+            organization_id=organization_id,
+            caller=caller,
+            secrets_provider=secrets_provider,
+            data=data,
+            request_id=request_id,
+            idempotency_key=idempotency_key,
+            config_base_dir=config_base_dir,
+        )
+    except asyncpg.UniqueViolationError as exc:
+        # Two requests with the same key in flight at once: both found nothing to replay and both
+        # inserted; the second hit the key's unique index (#360). Its transaction rolled back, so
+        # replay the first request's asset instead of answering 500.
+        if idempotency_key is None or exc.constraint_name != IDEMPOTENCY_UNIQUE_INDEX:
+            raise
+        replayed = await _replay_create(
+            pool,
+            organization_id=organization_id,
+            caller=caller,
+            secrets_provider=secrets_provider,
+            data=data,
+            idempotency_key=idempotency_key,
+        )
+        if replayed is None:
+            raise
+        return replayed
+
+
+#: The unique index binding an `Idempotency-Key` to its member (migration 0019).
+IDEMPOTENCY_UNIQUE_INDEX = "uq_assets__organization_id_idempotency_member_id_key"
+
+
+async def _insert_new_asset(
+    pool: Pool,
+    *,
+    organization_id: UUID,
+    caller: MemberContext,
+    secrets_provider: SecretsProvider,
+    data: AssetCreate,
+    request_id: str | None,
+    idempotency_key: str | None,
+    config_base_dir: Path | None,
+) -> AssetRead:
+    """The create itself, in one transaction (the replay check has already run).
+
+    Custom fields are validated and encrypted first, from a short read transaction, so the secrets
+    provider is never called while the write transaction holds a connection or a lock (§B8.1)."""
     key_member_id = _actor_id(caller) if idempotency_key is not None else None
+
+    async with tenant_transaction(pool, organization_id) as conn:
+        definitions = await _field_definitions(
+            conn, organization_id=organization_id, category_id=data.category_id
+        )
+    clean: CleanValues = validate_custom_fields(definitions, data.custom_fields)
+    encrypted_fields = await encrypt_custom_fields(
+        secrets_provider, organization_id=str(organization_id), plaintexts=clean.to_encrypt
+    )
 
     async with tenant_transaction(pool, organization_id) as conn:
         owner_path = await _org_unit_path(conn, organization_id, data.owner_org_unit_id)
@@ -521,16 +613,9 @@ async def create_asset(
         if category is None:
             raise ValidationFailedError(errors=[FieldError(field="category_id", message="not found")])
 
-        definitions = await _field_definitions(
-            conn, organization_id=organization_id, category_id=data.category_id
-        )
-        clean: CleanValues = validate_custom_fields(definitions, data.custom_fields)
-        encrypted_fields = await encrypt_custom_fields(
-            secrets_provider, organization_id=str(organization_id), plaintexts=clean.to_encrypt
-        )
-
         domain_key = await _organization_domain_key(conn, organization_id)
         assets_config = _load_assets_config(domain_key, config_base_dir) if domain_key else None
+        _check_criticality(data.criticality, assets_config)
         initial_status = assets_config.initial if assets_config is not None else "active"
         tag_config = assets_config.tag if assets_config is not None else None
 
@@ -618,9 +703,8 @@ async def create_asset(
         detail = _require_just_written(
             await _asset_repo.get_detail(conn, organization_id=organization_id, asset_id=asset_id)
         )
-        return await _to_asset_read(
-            conn, detail, organization_id=organization_id, caller=caller, secrets_provider=secrets_provider
-        )
+        pending = await _to_asset_read(conn, detail, organization_id=organization_id, caller=caller)
+    return await _finish_read(pending, organization_id=organization_id, secrets_provider=secrets_provider)
 
 
 # ==============================================================================
@@ -705,26 +789,62 @@ def _build_simple_sets(data: AssetUpdate) -> dict[str, Any]:
     return sets
 
 
+@dataclass(frozen=True)
+class _PreparedCustomFields:
+    """An edit's custom fields, validated and encrypted before its write transaction opened."""
+
+    definitions: list[Any]
+    clean: CleanValues
+    new_ciphertexts: dict[str, str]
+
+
+async def _prepare_custom_field_update(
+    pool: Pool,
+    *,
+    organization_id: UUID,
+    caller: MemberContext,
+    asset_id: UUID,
+    data: AssetUpdate,
+    secrets_provider: SecretsProvider,
+) -> _PreparedCustomFields | None:
+    """Validate and encrypt an edit's custom fields from a short read transaction, so the secrets
+    provider is never called while the write transaction holds the asset's row lock (§B8.1).
+
+    The values are checked against the category the edit leaves the asset in, read at
+    `data.version`. If the asset has moved on since, the edit is a version conflict anyway, so it is
+    refused here rather than checked against a category it may no longer have."""
+    if data.custom_fields is None:
+        return None
+    async with tenant_transaction(pool, organization_id) as conn:
+        current = await _asset_repo.get_by_id(conn, organization_id=organization_id, asset_id=asset_id)
+        if current is None:
+            raise AssetNotFoundError()
+        require_in_scope(caller, UPDATE_PERMISSION, _current_resource(current))
+        if current["version"] != data.version:
+            raise AssetVersionConflictError()
+        category_id = data.category_id if data.category_id is not None else current["category_id"]
+        definitions = await _field_definitions(conn, organization_id=organization_id, category_id=category_id)
+    clean = validate_custom_fields(definitions, data.custom_fields, partial=True)
+    new_ciphertexts = await encrypt_custom_fields(
+        secrets_provider, organization_id=str(organization_id), plaintexts=clean.to_encrypt
+    )
+    return _PreparedCustomFields(definitions=list(definitions), clean=clean, new_ciphertexts=new_ciphertexts)
+
+
 async def _apply_custom_field_update(
     conn: Any,
     *,
     organization_id: UUID,
     asset_id: UUID,
-    category_id: UUID,
     current: Any,
-    data: AssetUpdate,
-    secrets_provider: SecretsProvider,
+    prepared: _PreparedCustomFields | None,
     sets: dict[str, Any],
 ) -> None:
-    if data.custom_fields is None:
+    if prepared is None:
         return
-    definitions = await _field_definitions(conn, organization_id=organization_id, category_id=category_id)
-    clean = validate_custom_fields(definitions, data.custom_fields, partial=True)
+    definitions, clean, new_ciphertexts = prepared.definitions, prepared.clean, prepared.new_ciphertexts
     current_plain = _as_dict(current["custom_fields"])
     current_encrypted = _as_dict(current["encrypted_fields"])
-    new_ciphertexts = await encrypt_custom_fields(
-        secrets_provider, organization_id=str(organization_id), plaintexts=clean.to_encrypt
-    )
 
     unique_defs = {d.key: d for d in definitions if d.is_unique}
     for key, value in clean.plain.items():
@@ -770,7 +890,16 @@ async def update_asset(
     asset_id: UUID,
     data: AssetUpdate,
     request_id: str | None = None,
+    config_base_dir: Path | None = None,
 ) -> AssetRead:
+    prepared = await _prepare_custom_field_update(
+        pool,
+        organization_id=organization_id,
+        caller=caller,
+        asset_id=asset_id,
+        data=data,
+        secrets_provider=secrets_provider,
+    )
     async with tenant_transaction(pool, organization_id) as conn:
         current = await _asset_repo.get_by_id(
             conn, organization_id=organization_id, asset_id=asset_id, for_update=True
@@ -780,7 +909,6 @@ async def update_asset(
 
         require_in_scope(caller, UPDATE_PERMISSION, _current_resource(current))
 
-        new_category_id = data.category_id if data.category_id is not None else current["category_id"]
         await _check_owner_unit_move(
             conn,
             organization_id=organization_id,
@@ -802,15 +930,18 @@ async def update_asset(
             if category is None:
                 raise ValidationFailedError(errors=[FieldError(field="category_id", message="not found")])
 
+        if data.criticality is not None:
+            domain_key = await _organization_domain_key(conn, organization_id)
+            assets_config = _load_assets_config(domain_key, config_base_dir) if domain_key else None
+            _check_criticality(data.criticality, assets_config)
+
         sets = _build_simple_sets(data)
         await _apply_custom_field_update(
             conn,
             organization_id=organization_id,
             asset_id=asset_id,
-            category_id=new_category_id,
             current=current,
-            data=data,
-            secrets_provider=secrets_provider,
+            prepared=prepared,
             sets=sets,
         )
 
@@ -863,9 +994,8 @@ async def update_asset(
         detail = _require_just_written(
             await _asset_repo.get_detail(conn, organization_id=organization_id, asset_id=asset_id)
         )
-        return await _to_asset_read(
-            conn, detail, organization_id=organization_id, caller=caller, secrets_provider=secrets_provider
-        )
+        pending = await _to_asset_read(conn, detail, organization_id=organization_id, caller=caller)
+    return await _finish_read(pending, organization_id=organization_id, secrets_provider=secrets_provider)
 
 
 # ==============================================================================
@@ -886,9 +1016,8 @@ async def get_asset(
         if row is None:
             raise AssetNotFoundError()
         _require_read_detail(caller, row)
-        return await _to_asset_read(
-            conn, row, organization_id=organization_id, caller=caller, secrets_provider=secrets_provider
-        )
+        pending = await _to_asset_read(conn, row, organization_id=organization_id, caller=caller)
+    return await _finish_read(pending, organization_id=organization_id, secrets_provider=secrets_provider)
 
 
 # ==============================================================================
@@ -1162,9 +1291,8 @@ async def change_status(
         detail = _require_just_written(
             await _asset_repo.get_detail(conn, organization_id=organization_id, asset_id=asset_id)
         )
-        return await _to_asset_read(
-            conn, detail, organization_id=organization_id, caller=caller, secrets_provider=secrets_provider
-        )
+        pending = await _to_asset_read(conn, detail, organization_id=organization_id, caller=caller)
+    return await _finish_read(pending, organization_id=organization_id, secrets_provider=secrets_provider)
 
 
 async def list_transitions(

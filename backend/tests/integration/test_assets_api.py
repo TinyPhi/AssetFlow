@@ -185,7 +185,7 @@ async def test_idempotency_key_replay_returns_the_same_asset(
 ) -> None:
     pool = await make_pool("api")
     org_id, unit_id, category_id = await _setup(pool)
-    headers = {**_headers(org_id), "Idempotency-Key": "replay-key-1"}
+    headers = {**_headers(org_id), "Idempotency-Key": str(uuid4())}
 
     body = {"name": "Laptop 1", "category_id": str(category_id), "owner_org_unit_id": str(unit_id)}
     first = await client.post(BASE, json=body, headers=headers)
@@ -198,6 +198,105 @@ async def test_idempotency_key_replay_returns_the_same_asset(
     async with tenant_transaction(pool, org_id) as conn:
         count = await conn.fetchval("SELECT count(*) FROM public.assets WHERE organization_id = $1", org_id)
     assert count == 1
+
+
+async def _count_assets(pool: Pool, org_id: UUID) -> int:
+    async with tenant_transaction(pool, org_id) as conn:
+        count: int = await conn.fetchval(
+            "SELECT count(*) FROM public.assets WHERE organization_id = $1", org_id
+        )
+    return count
+
+
+async def test_idempotency_key_from_another_member_creates_a_new_asset(
+    client: httpx.AsyncClient, make_pool: PoolFactory
+) -> None:
+    """#359: a key belongs to the member who sent it, so another member's same key never replays."""
+    pool = await make_pool("api")
+    org_id, unit_id, category_id = await _setup(pool)
+    key = str(uuid4())
+    body = {"name": "Shared key", "category_id": str(category_id), "owner_org_unit_id": str(unit_id)}
+
+    by_a = await client.post(
+        BASE, json=body, headers={**_headers(org_id, member_id=uuid4()), "Idempotency-Key": key}
+    )
+    by_b = await client.post(
+        BASE, json=body, headers={**_headers(org_id, member_id=uuid4()), "Idempotency-Key": key}
+    )
+
+    assert by_a.status_code == 201
+    assert by_b.status_code == 201
+    assert by_a.json()["data"]["id"] != by_b.json()["data"]["id"]
+    assert await _count_assets(pool, org_id) == 2
+
+
+async def test_idempotency_replay_outside_the_callers_scope_is_a_404(
+    client: httpx.AsyncClient, make_pool: PoolFactory
+) -> None:
+    pool = await make_pool("api")
+    org_id, unit_id, category_id = await _setup(pool)
+    member_id, key = uuid4(), str(uuid4())
+    body = {"name": "Scoped replay", "category_id": str(category_id), "owner_org_unit_id": str(unit_id)}
+    first = await client.post(
+        BASE, json=body, headers={**_headers(org_id, member_id=member_id), "Idempotency-Key": key}
+    )
+    assert first.status_code == 201
+
+    narrowed = {
+        **_headers(org_id, member_id=member_id),
+        "x-scope-type": "org_unit",
+        "x-scope-id": str(uuid4()),
+        "x-org-unit-path": _token(),
+        "Idempotency-Key": key,
+    }
+    replay = await client.post(BASE, json=body, headers=narrowed)
+    assert replay.status_code == 404
+    assert first.json()["data"]["id"] not in replay.text
+    assert await _count_assets(pool, org_id) == 1
+
+
+async def test_idempotency_key_reused_with_a_different_body_is_a_422(
+    client: httpx.AsyncClient, make_pool: PoolFactory
+) -> None:
+    pool = await make_pool("api")
+    org_id, unit_id, category_id = await _setup(pool)
+    headers = {**_headers(org_id, member_id=uuid4()), "Idempotency-Key": str(uuid4())}
+    body = {"name": "First body", "category_id": str(category_id), "owner_org_unit_id": str(unit_id)}
+
+    assert (await client.post(BASE, json=body, headers=headers)).status_code == 201
+    other = await client.post(BASE, json={**body, "name": "Second body"}, headers=headers)
+    assert other.status_code == 422
+    assert await _count_assets(pool, org_id) == 1
+
+
+async def test_idempotency_replay_without_asset_create_is_a_403(
+    client: httpx.AsyncClient, make_pool: PoolFactory
+) -> None:
+    pool = await make_pool("api")
+    org_id, unit_id, category_id = await _setup(pool)
+    member_id, key = uuid4(), str(uuid4())
+    body = {"name": "No create", "category_id": str(category_id), "owner_org_unit_id": str(unit_id)}
+    created = await client.post(
+        BASE, json=body, headers={**_headers(org_id, member_id=member_id), "Idempotency-Key": key}
+    )
+    assert created.status_code == 201
+
+    reader = {**_headers(org_id, role="member", member_id=member_id), "Idempotency-Key": key}
+    replay = await client.post(BASE, json=body, headers=reader)
+    assert replay.status_code == 403
+    assert created.json()["data"]["id"] not in replay.text
+
+
+@pytest.mark.parametrize("key", ["x" * 256, "has space", "tab	key"])
+async def test_a_malformed_or_over_long_idempotency_key_is_a_422(
+    client: httpx.AsyncClient, make_pool: PoolFactory, key: str
+) -> None:
+    pool = await make_pool("api")
+    org_id, unit_id, category_id = await _setup(pool)
+    body = {"name": "Bad key", "category_id": str(category_id), "owner_org_unit_id": str(unit_id)}
+    res = await client.post(BASE, json=body, headers={**_headers(org_id), "Idempotency-Key": key})
+    assert res.status_code == 422
+    assert await _count_assets(pool, org_id) == 0
 
 
 # ==============================================================================

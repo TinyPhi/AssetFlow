@@ -18,6 +18,8 @@ from starlette.requests import Request
 from app.core.problems import RateLimitedError
 from app.modules.assets.components.router import _components_rate_limit
 from app.modules.assets.router import _assets_rate_limit
+from app.modules.assets.saved_views import _saved_views_rate_limit
+from app.modules.assets.saved_views import router as saved_views_router
 
 
 def _request(member_id: str | None, path: str = "/api/v1/assets") -> Request:
@@ -82,3 +84,18 @@ async def test_asset_budget_is_shared_across_asset_ids() -> None:
         await _assets_rate_limit(_request("member-f", path=path))
     with pytest.raises(RateLimitedError):
         await _assets_rate_limit(_request("member-f", path="/api/v1/assets/vocabulary"))
+
+
+async def test_saved_views_router_rate_limits_a_single_member() -> None:
+    """Every saved-view write adds an audit row and an outbox row (#352 review, M3)."""
+    for i in range(60):
+        path = f"/api/v1/asset-saved-views/00000000-0000-0000-0000-{i:012d}"
+        await _saved_views_rate_limit(_request("member-g", path=path))
+    with pytest.raises(RateLimitedError):
+        await _saved_views_rate_limit(_request("member-g", path="/api/v1/asset-saved-views"))
+    await _saved_views_rate_limit(_request("member-h", path="/api/v1/asset-saved-views"))
+
+
+def test_saved_views_router_declares_the_rate_limit() -> None:
+    calls = [d.dependency for d in saved_views_router.dependencies]
+    assert _saved_views_rate_limit in calls

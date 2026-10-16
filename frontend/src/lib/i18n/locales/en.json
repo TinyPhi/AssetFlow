@@ -197,7 +197,6 @@
         "too_long": "Use at most {max} characters.",
         "min_length": "Use at least {min} characters.",
         "max_length": "Use at most {max} characters.",
-        "pattern": "This value does not match the expected format.",
         "number": "Enter a number.",
         "min_number": "Enter a number of at least {min}.",
         "max_number": "Enter a number of at most {max}.",

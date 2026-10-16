@@ -3,3 +3,17 @@
 # Synthetic fixture value in a scrubber test (historic commit; fixed in the tree).
 321e93b40bb060813abda35a04233db29a88c73f:backend/tests/contract/telemetry/test_otel_scrubber.py:generic-api-key:24
 15d9cedea08cb3349e6fb507ed5ca04b6f8e8a23:backend/tests/contract/telemetry/test_otel_scrubber.py:generic-api-key:24
+# False positive (generic-api-key), not a real secret.
+# File:    docs/tracker/gate-g1.md, line 24 (commit 5292d1d, branch regroup/12-docs-and-config).
+# Matched: the public name of the ChaCha20 Poly1305 encryption method, in a docs table row
+#          describing the encrypted sign-in session (written here with a space so it does not match).
+# Proof:   - The text is an algorithm name. It holds no key, password or token.
+#          - gitleaks v8.30.1 on main alone: no leaks found.
+#          - gitleaks on all upstream branches: this is the only finding.
+#          - gitleaks on each open part 6-11 branch (main..branch): no leaks found.
+#          - The commit is only on an old branch whose PR (#295) is merged; it is not on main.
+# Scope:   Ignores this one fingerprint only. Any other finding, in this file or elsewhere, still fails.
+5292d1db2c47b72674c81df5f97ff821c7d7c331:docs/tracker/gate-g1.md:generic-api-key:24
+# Same false positive: the first version of this note (commit 403e775, line 9) quoted that
+# docs row word for word, so it matched too. The note above no longer quotes it.
+403e7750e380d541a5d02d2b442dcb8e3611adf4:.gitleaksignore:generic-api-key:9
