@@ -21,13 +21,21 @@ from dataclasses import dataclass, field
 from typing import Any, Final
 from uuid import UUID
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from app.api.auth import mock_router as mock_auth_router
+from app.api.auth import router as auth_router
+from app.api.cors import ConfiguredCORSMiddleware
+from app.api.deps import require_principal
 from app.api.health import router as health_router
+from app.api.member_resolver import resolve_member
+from app.api.policy import allowed_origins, docs_enabled, mock_auth_enabled, session_cookie_key
+from app.api.public_config import router as public_config_router
 from app.api.v1.router import router as v1_router
+from app.core.auth_middleware import AuthMiddleware
 from app.core.ids import uuid7_str
 from app.core.problems import (
     ProblemError,
@@ -36,6 +44,7 @@ from app.core.problems import (
     request_validation_handler,
     unhandled_exception_handler,
 )
+from app.providers.auth.oidc import OidcAuthProvider
 
 logger = logging.getLogger("assetflow.main")
 
@@ -123,6 +132,31 @@ class RequestIdMiddleware:
         await self.app(scope, receive, send_with_id)
 
 
+DOCS_PATHS: Final = frozenset({"/docs", "/redoc", "/openapi.json", "/docs/oauth2-redirect"})
+MOCK_AUTH_PATH_PREFIX: Final = "/api/auth/mock"
+
+
+def apply_environment_policy(app: FastAPI, config: Any) -> None:
+    """Unmount what the environment must not serve (AF-033, NEW-3).
+
+    The interactive docs and the OpenAPI document exist only in development and test; the mock
+    sign-in routes only for the ``mock`` auth provider in development or test.
+    """
+    drop_docs = not docs_enabled(config)
+    drop_mock = not mock_auth_enabled(config)
+    if not (drop_docs or drop_mock):
+        return
+
+    def keep(route: Any) -> bool:
+        path = getattr(route, "path", "")
+        if drop_docs and path in DOCS_PATHS:
+            return False
+        return not (drop_mock and path.startswith(MOCK_AUTH_PATH_PREFIX))
+
+    app.router.routes[:] = [route for route in app.router.routes if keep(route)]
+    app.openapi_schema = None
+
+
 def _make_lifespan(bootstrap: Bootstrap) -> Callable[[FastAPI], Any]:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
@@ -130,6 +164,19 @@ def _make_lifespan(bootstrap: Bootstrap) -> Callable[[FastAPI], Any]:
         registry = bootstrap.build_registry(config)
         if inspect.isawaitable(registry):
             registry = await registry
+        try:
+            auth_provider = getattr(registry, "auth", None)
+            if isinstance(auth_provider, OidcAuthProvider):
+                auth_provider.secret_resolver = registry.resolve_secret  # AF-015: client_secret via OpenBao
+            cookie_key = await session_cookie_key(config, registry.resolve_secret)
+            allowed_origins(config)  # refuses '*' outside development/test before anything is opened
+        except BaseException:
+            closer = getattr(registry, "aclose", None)
+            if closer is not None:
+                await closer()
+            raise
+        app.state.session_cookie_key = cookie_key
+        apply_environment_policy(app, config)
         pool = await bootstrap.open_pool(config, registry.resolve_secret)
         app.state.config = config
         app.state.registry = registry
@@ -157,8 +204,11 @@ def create_app(*, bootstrap: Bootstrap | None = None) -> FastAPI:
         version=API_VERSION,
         description="AssetFlow asset and maintenance management API",
         lifespan=_make_lifespan(bootstrap or Bootstrap()),
+        dependencies=[Depends(require_principal)],  # AF-005: every route needs a principal unless public
     )
     app.add_middleware(RequestIdMiddleware)
+    app.add_middleware(AuthMiddleware, resolver=resolve_member)
+    app.add_middleware(ConfiguredCORSMiddleware)  # outermost: answers preflights before auth
 
     app.add_exception_handler(ProblemError, problem_error_handler)
     app.add_exception_handler(RequestValidationError, request_validation_handler)
@@ -166,6 +216,9 @@ def create_app(*, bootstrap: Bootstrap | None = None) -> FastAPI:
     app.add_exception_handler(Exception, unhandled_exception_handler)
 
     app.include_router(health_router)
+    app.include_router(public_config_router, prefix="/api")
+    app.include_router(auth_router, prefix="/api")
+    app.include_router(mock_auth_router, prefix="/api")
     app.include_router(v1_router, prefix="/api/v1")
     return app
 

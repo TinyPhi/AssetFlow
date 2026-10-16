@@ -12,6 +12,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
+from app.core.openapi_meta import public_extra
 from app.core.problems import ConflictError, FieldError
 from app.main import create_app
 
@@ -22,15 +23,15 @@ LEAKY_TEXT = "SELECT * FROM members WHERE password='hunter2'"
 def _app() -> FastAPI:
     app = create_app()
 
-    @app.get("/api/v1/_probe/items/{item_id}")
+    @app.get("/api/v1/_probe/items/{item_id}", openapi_extra=public_extra())
     async def get_item(item_id: int, limit: int = 10) -> dict[str, int]:
         return {"item_id": item_id, "limit": limit}
 
-    @app.get("/api/v1/_probe/boom")
+    @app.get("/api/v1/_probe/boom", openapi_extra=public_extra())
     async def boom() -> None:
         raise RuntimeError(LEAKY_TEXT)
 
-    @app.get("/api/v1/_probe/conflict")
+    @app.get("/api/v1/_probe/conflict", openapi_extra=public_extra())
     async def conflict() -> None:
         raise ConflictError(
             "The work order changed since you loaded it.",
@@ -95,7 +96,8 @@ async def test_unexpected_exception_is_generic_and_logged(
     assert body["detail"] == "An unexpected error occurred. Quote the request id when reporting it."
     records = [r for r in caplog.records if r.getMessage() == "http.unhandled_exception"]
     assert len(records) == 1
-    assert records[0].exc_info is not None
+    # The root log filter (AF-035) swaps exc_info for scrubbed exc_text; either way the failure is kept.
+    assert records[0].exc_info is not None or bool(records[0].exc_text)
     assert getattr(records[0], "request_id", None) == body["request_id"]
 
 
