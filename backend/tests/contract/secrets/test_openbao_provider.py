@@ -16,6 +16,7 @@ import pytest
 from app.core.config import ConfigError
 from app.core.problems import SecretsUnavailableError
 from app.providers.context import ProviderContext
+from app.providers.secrets.base import SecretDecryptionError
 from app.providers.secrets.openbao import OpenBaoSecretsProvider
 from tests.contract.secrets.fake_bao import FakeBao
 
@@ -165,6 +166,46 @@ async def test_openbao_encrypt_many_result_count_mismatch_is_refused(monkeypatch
     _Bao(monkeypatch, lambda r: httpx.Response(200, json={"data": {"batch_results": [{"ciphertext": "x"}]}}))
     with pytest.raises(SecretsUnavailableError):
         await _provider().encrypt_many([("ctx-1", "a"), ("ctx-2", "b")])
+
+
+async def test_openbao_decrypt_many_sends_one_batch_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Detail reads decrypt every sensitive field in one round trip (PR #352 review, M1)."""
+    bao = _Bao(
+        monkeypatch,
+        lambda r: httpx.Response(
+            200,
+            json={"data": {"batch_results": [{"plaintext": "YWFh"}, {"plaintext": "YmJi"}]}},
+        ),
+    )
+    items = [("asset:org-a:ssn", "vault:v1:aaa"), ("asset:org-a:pin", "vault:v1:bbb")]
+    assert await _provider().decrypt_many(items) == ["aaa", "bbb"]
+    assert len(bao.requests) == 1
+    body = json.loads(bao.requests[0].content)
+    assert [item["ciphertext"] for item in body["batch_input"]] == ["vault:v1:aaa", "vault:v1:bbb"]
+    assert body["batch_input"][0]["context"] != body["batch_input"][1]["context"]
+
+
+async def test_openbao_decrypt_many_of_nothing_sends_no_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    bao = _Bao(monkeypatch, lambda r: httpx.Response(200, json={"data": {"batch_results": []}}))
+    assert await _provider().decrypt_many([]) == []
+    assert bao.requests == []
+
+
+@pytest.mark.parametrize("status", [403, 500])
+async def test_openbao_decrypt_many_refused_is_a_generic_error(
+    monkeypatch: pytest.MonkeyPatch, status: int
+) -> None:
+    _Bao(monkeypatch, lambda r: httpx.Response(status, json={"errors": ["denied"]}))
+    with pytest.raises(SecretDecryptionError):
+        await _provider().decrypt_many([("ctx", "vault:v1:aaa")])
+
+
+async def test_openbao_decrypt_many_result_count_mismatch_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    _Bao(
+        monkeypatch, lambda r: httpx.Response(200, json={"data": {"batch_results": [{"plaintext": "YQ=="}]}})
+    )
+    with pytest.raises(SecretDecryptionError):
+        await _provider().decrypt_many([("ctx-1", "vault:v1:a"), ("ctx-2", "vault:v1:b")])
 
 
 # ------------------------------------------------------------------------------ token lifecycle
