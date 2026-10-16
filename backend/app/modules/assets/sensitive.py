@@ -60,16 +60,18 @@ async def decrypt_custom_fields(
     organization_id: str,
     ciphertexts: Mapping[str, str],
 ) -> dict[str, JsonValue]:
-    """Decrypt every `{field_key: ciphertext}` pair; detail reads only, gated by `asset.read_sensitive`.
+    """Decrypt every `{field_key: ciphertext}` pair in a single `decrypt_many` call; detail reads
+    only, gated by `asset.read_sensitive`. Like encryption, this must run outside any transaction.
 
     Each plaintext was JSON-encoded by `custom_fields._store` before encryption (so any field type,
     not only text, round-trips exactly); this reverses that encoding back to the typed value.
     """
-    out: dict[str, JsonValue] = {}
-    for key, ciphertext in ciphertexts.items():
-        plaintext = await provider.decrypt(sensitive_field_context(organization_id, key), ciphertext)
-        out[key] = json.loads(plaintext)
-    return out
+    if not ciphertexts:
+        return {}
+    keys = list(ciphertexts.keys())
+    items = [(sensitive_field_context(organization_id, key), ciphertexts[key]) for key in keys]
+    plaintexts = await provider.decrypt_many(items)
+    return {key: json.loads(plaintext) for key, plaintext in zip(keys, plaintexts, strict=True)}
 
 
 def encrypted_field_presence(

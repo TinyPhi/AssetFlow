@@ -70,6 +70,15 @@ class SecretsProvider(ABC):
     async def decrypt(self, context: str, ciphertext: str) -> str:
         """Decrypt a value produced by :meth:`encrypt` with the same ``context``."""
 
+    async def decrypt_many(self, items: Sequence[tuple[str, str]]) -> list[str]:
+        """Decrypt many ``(context, ciphertext)`` pairs in one call, the mirror of :meth:`encrypt_many`.
+
+        Default implementation loops over :meth:`decrypt`; a provider with a native batch endpoint
+        (OpenBao transit) overrides this for one round trip. Order of the result matches the order
+        of ``items``; any failure raises :class:`SecretDecryptionError` for the whole call.
+        """
+        return [await self.decrypt(context, ciphertext) for context, ciphertext in items]
+
     @abstractmethod
     async def health(self) -> dict[str, Any]:
         """Return ``{"status": ...}`` without secret values or filesystem paths."""

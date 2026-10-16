@@ -87,7 +87,7 @@ def repo(monkeypatch: pytest.MonkeyPatch) -> _Repo:
         yield object()
 
     async def _read(conn: Any, detail: Any, **kwargs: Any) -> Any:
-        return SENTINEL
+        return service._PendingRead(read=SENTINEL, ciphertexts={})
 
     monkeypatch.setattr(service, "tenant_transaction", _no_db)
     monkeypatch.setattr(service, "_asset_repo", fake)
