@@ -10,6 +10,7 @@ suite's real database, with no fakes.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import shutil
 import uuid
@@ -237,3 +238,32 @@ async def test_a_malformed_key_is_a_422_and_writes_nothing(
             )
             == 0
         )
+
+
+async def test_concurrent_creates_with_the_same_key_all_return_the_one_asset(
+    make_pool: PoolFactory, isolation_db: IsolationDb, provider: FileSecretsProvider, config_base: Path
+) -> None:
+    """#360: requests with the same key in flight at once used to race past the replay check; the
+    loser hit the key's unique index and got a 500. Now every request returns the one stored asset."""
+    pool, org = await make_pool("api"), isolation_db.org_a
+    category_id, unit_id, _, member_a, _ = await _setup(pool, org)
+    key = str(uuid.uuid4())
+    caller = _caller(org, member_a)
+
+    results = await asyncio.gather(
+        *(
+            create_asset(
+                pool,
+                organization_id=org,
+                caller=caller,
+                secrets_provider=provider,
+                data=_body(category_id, unit_id),
+                idempotency_key=key,
+                config_base_dir=config_base,
+            )
+            for _ in range(8)
+        )
+    )
+
+    assert len({r.id for r in results}) == 1
+    assert await _count_with_key(pool, org, key) == 1

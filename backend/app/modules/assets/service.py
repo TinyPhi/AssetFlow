@@ -27,6 +27,8 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+import asyncpg
+
 from app.core.config import resolve_config_path
 from app.core.db import Pool, tenant_transaction
 from app.core.ids import uuid7
@@ -494,6 +496,52 @@ async def create_asset(
         )
         if replayed is not None:
             return replayed
+    try:
+        return await _insert_new_asset(
+            pool,
+            organization_id=organization_id,
+            caller=caller,
+            secrets_provider=secrets_provider,
+            data=data,
+            request_id=request_id,
+            idempotency_key=idempotency_key,
+            config_base_dir=config_base_dir,
+        )
+    except asyncpg.UniqueViolationError as exc:
+        # Two requests with the same key in flight at once: both found nothing to replay and both
+        # inserted; the second hit the key's unique index (#360). Its transaction rolled back, so
+        # replay the first request's asset instead of answering 500.
+        if idempotency_key is None or exc.constraint_name != IDEMPOTENCY_UNIQUE_INDEX:
+            raise
+        replayed = await _replay_create(
+            pool,
+            organization_id=organization_id,
+            caller=caller,
+            secrets_provider=secrets_provider,
+            data=data,
+            idempotency_key=idempotency_key,
+        )
+        if replayed is None:
+            raise
+        return replayed
+
+
+#: The unique index binding an `Idempotency-Key` to its member (migration 0019).
+IDEMPOTENCY_UNIQUE_INDEX = "uq_assets__organization_id_idempotency_member_id_key"
+
+
+async def _insert_new_asset(
+    pool: Pool,
+    *,
+    organization_id: UUID,
+    caller: MemberContext,
+    secrets_provider: SecretsProvider,
+    data: AssetCreate,
+    request_id: str | None,
+    idempotency_key: str | None,
+    config_base_dir: Path | None,
+) -> AssetRead:
+    """The create itself, in one transaction (the replay check has already run)."""
     key_member_id = _actor_id(caller) if idempotency_key is not None else None
 
     async with tenant_transaction(pool, organization_id) as conn:
