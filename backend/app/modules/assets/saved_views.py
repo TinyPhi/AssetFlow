@@ -25,6 +25,7 @@ from app.core.envelope import success_response
 from app.core.ids import uuid7
 from app.core.openapi_meta import permission_extra
 from app.core.problems import FieldError, ValidationFailedError
+from app.core.rate_limit import InMemoryRateLimitStore, RateLimiter
 from app.core.scope import MemberContext, default_scope_resolver
 from app.modules.assets.errors import (
     AssetSavedViewNameConflictError,
@@ -422,8 +423,30 @@ async def delete_view(
 # Routes
 # ==============================================================================
 
+# Every route declares a permission and a rate limit (§B7.2). Each write also adds an audit row and
+# an outbox row, so an unlimited caller could flood the outbox. Member-keyed, same pattern as
+# app.modules.assets.router, with its own budget so list polling there does not use this one up.
+_SAVED_VIEWS_RATE_LIMIT_STORE = InMemoryRateLimitStore()
+_SAVED_VIEWS_RATE_LIMIT = RateLimiter(
+    times=60,
+    seconds=60,
+    store=_SAVED_VIEWS_RATE_LIMIT_STORE,
+    key_prefix="asset-saved-views",
+    bucket="saved-view-ops",  # one budget per member across every saved-view route and view id
+)
+
+
+async def _saved_views_rate_limit(request: Request) -> None:
+    member = getattr(request.state, "member", None)
+    if member is not None:
+        request.state.member_id = member.member_id
+    await _SAVED_VIEWS_RATE_LIMIT(request)
+
+
 router = APIRouter(
-    prefix="/asset-saved-views", tags=["assets"], dependencies=[Depends(require_module("assets"))]
+    prefix="/asset-saved-views",
+    tags=["assets"],
+    dependencies=[Depends(require_module("assets")), Depends(_saved_views_rate_limit)],
 )
 
 
