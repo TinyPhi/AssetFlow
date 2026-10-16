@@ -35,7 +35,7 @@ const errors = (defs: CustomFieldDefinition[], values: Record<string, string | s
 };
 
 describe("custom field schema built from definitions", () => {
-  it("text: required, length bounds and a regex", () => {
+  it("text: required and length bounds; the regex is left to the server", () => {
     const field = def({
       key: "code",
       field_type: "text",
@@ -47,8 +47,21 @@ describe("custom field schema built from definitions", () => {
     expect(errors([field], { code: "ABCDEF" })).toEqual({
       code: t("assets.form.errors.max_length", { max: 5 }),
     });
-    expect(errors([field], { code: "ab" })).toEqual({ code: t("assets.form.errors.pattern") });
+    // The pattern is matched on the server (RE2): the browser does not run it (issue 358).
+    expect(ok([field], { code: "ab" })).toEqual({ code: "ab" });
     expect(ok([field], { code: "AB" })).toEqual({ code: "AB" });
+  });
+
+  it("never runs an admin-saved pattern, so a catastrophic one cannot freeze the form (issue 358)", () => {
+    const field = def({
+      key: "code",
+      field_type: "text",
+      rules: { min: null, max: null, regex: "^(a+)+$", options: [] },
+    });
+    const value = `${"a".repeat(40)}!`;
+    const started = performance.now();
+    expect(ok([field], { code: value })).toEqual({ code: value });
+    expect(performance.now() - started).toBeLessThan(100);
   });
 
   it("number: typed value with min and max", () => {
