@@ -1,0 +1,108 @@
+# SPDX-FileCopyrightText: 2026 TinyPhi
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# IT assets domain template (§B7.3, M2.1). Asset sections only; the maintenance sections arrive with
+# master Phase 3. Industry words are allowed here and nowhere else in the code (§C12).
+domain_key: it-assets
+
+modules:
+  - assets
+
+assets:
+  tag:
+    prefix: AST
+    separator: "-"
+    digits: 5
+
+  initial: in_stock
+  statuses:
+    - { key: in_stock, label: In stock, category: available }
+    - { key: assigned, label: Assigned, category: in_use }
+    - { key: in_service, label: In service, category: in_use }
+    - { key: under_maintenance, label: Under maintenance, category: unavailable, set_only_by: maintenance }
+    - { key: in_repair, label: In repair, category: unavailable }
+    - { key: retired, label: Retired, category: ended, is_final: true }
+    - { key: lost, label: Lost, category: ended, is_final: true }
+    - { key: disposed, label: Disposed, category: ended, is_final: true }
+
+  # A move to an ended status is refused while the asset has a holder (§B8.1).
+  transitions:
+    - { from: in_stock, to: assigned, permission: asset.assign }
+    - { from: assigned, to: in_stock, permission: asset.return }
+    - { from: in_stock, to: in_service, permission: asset.update }
+    - { from: in_service, to: in_stock, permission: asset.update }
+    - { from: assigned, to: in_repair, permission: asset.update }
+    - { from: in_repair, to: in_stock, permission: asset.update }
+    - from: in_stock
+      to: retired
+      permission: asset.retire
+      requires_reason: true
+      conditions:
+        - { field: holder, operator: exists, value: false }
+    - from: in_stock
+      to: lost
+      permission: asset.retire
+      requires_reason: true
+      conditions:
+        - { field: holder, operator: exists, value: false }
+    - from: in_stock
+      to: disposed
+      permission: asset.retire
+      requires_reason: true
+      conditions:
+        - { field: holder, operator: exists, value: false }
+    - from: in_repair
+      to: retired
+      permission: asset.retire
+      requires_reason: true
+      conditions:
+        - { field: holder, operator: exists, value: false }
+
+  criticality: [low, medium, high, critical]
+
+  categories:
+    - code: computer
+      label: Computers
+      default_criticality: medium
+    - code: laptop
+      label: Laptop
+      parent_code: computer
+      default_criticality: medium
+      responsible_team_code: it_service_desk
+      custom_fields:
+        - { key: ram_gb, label: RAM (GB), type: number, required: true, min: 1, max: 4096 }
+        - key: os
+          label: OS
+          type: select
+          options: [Windows, macOS, Linux]
+        - { key: asset_password, label: Local admin password, type: text, is_encrypted: true }
+    - code: server
+      label: Server
+      parent_code: computer
+      default_criticality: high
+      tag_prefix: SRV
+      responsible_team_code: it_service_desk
+      custom_fields:
+        - { key: rack_position, label: Rack position, type: text, regex: "^[A-Z]{1,2}[0-9]{1,2}-U[0-9]{1,2}$" }
+        - { key: hostname, label: Hostname, type: text, is_unique: true }
+    - code: monitor
+      label: Monitor
+      default_criticality: low
+      responsible_team_code: it_service_desk
+      custom_fields:
+        - { key: screen_inches, label: Screen size (inches), type: number, min: 5, max: 120 }
+    - code: network_device
+      label: Network device
+      default_criticality: high
+      responsible_team_code: it_service_desk
+
+  public_scan_fields: [tag, name, category, status, owner_org_unit]
+  public_report: true
+
+  acknowledgement:
+    required: true
+    remind_after_hours: 24
+    escalate_after_hours: 72
+
+  owner_follows_holder: true
+  cascade_on_member_move: ask
