@@ -78,8 +78,8 @@ ZITADEL_MASTERKEY=your-secret-1
 ZITADEL_ADMIN_PASSWORD=your-secret-2
 ZITADEL_DB_PASSWORD=your-secret-3
 ZITADEL_DB_USER_PASSWORD=your-secret-4
-ZITADEL_URL=http://localhost:8081
-ZITADEL_ISSUER=http://localhost:8081
+ZITADEL_URL=http://localhost:19081
+ZITADEL_ISSUER=http://localhost:19081
 ZITADEL_PROJECT_ID=your-project-id
 ZITADEL_WEB_CLIENT_ID=your-web-client-id
 ZITADEL_BFF_CLIENT_ID=your-bff-client-id
@@ -140,7 +140,7 @@ which returned `200 {"active": true}`.
 
 The summary prints the console URL. With the defaults:
 
-- Console: `http://localhost:8081/ui/console`
+- Console: `http://localhost:19081/ui/console`
 - User: `admin` (the value of `ZITADEL_ADMIN_USERNAME`, default `admin`)
 - Password: `ZITADEL_ADMIN_PASSWORD` in `.env.local` (`your-secret-2`)
 
@@ -250,7 +250,7 @@ and the compose validation, and the development path live.
 | Idempotent | `scripts/bootstrap.sh` (second run) | `==> No changes.` |
 | Nothing planned | `scripts/bootstrap.sh --dry-run` | `0 planned change(s)` |
 | Unit tests | `make test-scripts` | `12 passed` |
-| Console | open `http://localhost:8081/ui/console` | sign-in page |
+| Console | open `http://localhost:19081/ui/console` | sign-in page |
 
 ## Customize for your installation
 

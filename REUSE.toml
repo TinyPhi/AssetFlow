@@ -5,3 +5,10 @@ path = ["**"]
 precedence = "closest"
 SPDX-FileCopyrightText = "2026 TinyPhi"
 SPDX-License-Identifier = "AGPL-3.0-only"
+
+[[annotations]]
+path = ["docs/security/asvs/asvs-5.0.v5.0.0.json"]
+precedence = "override"
+SPDX-FileCopyrightText = "OWASP Foundation"
+SPDX-License-Identifier = "CC-BY-SA-4.0"
+

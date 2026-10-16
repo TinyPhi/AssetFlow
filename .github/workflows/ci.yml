@@ -27,6 +27,7 @@ permissions: {}
 
 env:
   ASSETFLOW_ENV: test
+  ASSETFLOW_AUTH_PROVIDER: mock
 
 jobs:
   changes:
@@ -42,6 +43,7 @@ jobs:
       migrations: ${{ steps.filter.outputs.migrations }}
       providers: ${{ steps.filter.outputs.providers }}
       channels: ${{ steps.filter.outputs.channels }}
+      contract: ${{ steps.filter.outputs.contract }}
       docs: ${{ steps.filter.outputs.docs }}
       deploy: ${{ steps.filter.outputs.deploy }}
     steps:
@@ -65,6 +67,11 @@ jobs:
               - 'backend/app/providers/**'
             channels:
               - 'backend/app/channels/**'
+            # The contract suites exercise the core (config, context, registry) and live under
+            # backend/tests, so a change to either must run them too (AF-044).
+            contract:
+              - 'backend/app/core/**'
+              - 'backend/tests/**'
             docs:
               - 'docs/**'
               - '*.md'
@@ -231,7 +238,7 @@ jobs:
   contract:
     name: Contract tests
     needs: [changes]
-    if: needs.changes.outputs.providers == 'true' || needs.changes.outputs.channels == 'true'
+    if: needs.changes.outputs.providers == 'true' || needs.changes.outputs.channels == 'true' || needs.changes.outputs.contract == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
