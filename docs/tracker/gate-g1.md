@@ -39,9 +39,9 @@ Gate G1 defines the technical and operational completion gate for Phase 1 of Ass
 - **M1.6-T4 (Administration & Core Screens):** Dashboard, Org Units tree, Locations, Teams, Members, Member Profile, Effective Access Matrix, Installed Modules, and Organization Settings verified responsive from 320px to 2560px.
 - **M1.6-T5 (Notification Center):** Header bell icon, real-time unread badge, flyout inbox, delivery log viewer, and member preferences matrix verified against M1.5 backend endpoints.
 - **M1.6-T6 (Schema-Driven Admin Forms):** Dynamic Pydantic JSON Schema forms with field-level validation, tooltips, and client-side error reflection.
-- **M1.6-T7 (Hardening & Security Headers):** Strict CSP (`default-src 'self'`), HSTS, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, and non-root, read-only rootfs Docker containers validated by `scripts/check-container-hardening.py`.
+- **M1.6-T7 (Hardening & Security Headers):** Strict CSP (`default-src 'self'`), HSTS, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`. Minimal-profile containers run non-root with read-only root filesystems and `cap_drop: [ALL]`; the `api` and `web` services got this in part 10 (#356), checked by `scripts/tests/test_compose_minimal.py`. *Open (corrected 2026-10-19):* the full profile is not hardened yet (#388), and no container has a memory limit yet, so `scripts/check-container-hardening.py` does not pass (#386).
 - **M1.6-T8 (One-Command Bootstrap):** `scripts/bootstrap.sh` and `setup.bat` verified on clean environments for both `minimal` and `full` profiles.
-- **M1.6-T9 (Backup, Recovery & DR Runbooks):** pgBackRest AES-256 encrypted backups, S3 Object Lock compliance storage, field-level encryption canary verification, `make restore`, and automated monthly restore drill (`scripts/restore-test.sh`).
+- **M1.6-T9 (Backup, Recovery & DR Runbooks):** pgBackRest AES-256 encrypted backups, S3 Object Lock compliance storage, field-level encryption canary verification, `make restore`, and automated monthly restore drill (`scripts/restore-test.sh`). *Open (corrected 2026-10-19):* WAL archiving is not configured (#382), nothing collects the backup metrics for the alerts (#381), and the restore drill does not yet restore a real backup (#380).
 
 ---
 

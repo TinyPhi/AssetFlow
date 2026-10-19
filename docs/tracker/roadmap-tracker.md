@@ -105,24 +105,26 @@ Phases P5 to P20 cover master milestones M1.4 to M4.3 and Gates G1 to G6. Each r
 
 | ID | Task | Issue | Done when | Status |
 | --- | --- | --- | --- | --- |
-| P7-01 | Frontend foundation: themes, routing, permission-aware navigation | #73 | Theme-regression source scan passes; nav follows permissions and installed modules | ☐ |
-| P7-03 | Translation setup and locale formatting | #74 | No raw UI text in components (CI check) | ☐ |
-| P7-07a | Hardened nginx: headers and rate limits | #75 | Every §C5.10 header on every response; rate-limit zones answer 429; ZAP baseline passes | ☐ |
-| P7-07b | Container hardening and the complete full profile | #76 | Containers run as non-root with read-only filesystems (both profiles); full profile healthy | ☐ |
-| P7-02a | BFF session endpoints | #77 | Session, refresh rotation, logout, policy E2E tests pass (mock; oidc recorded) | ☐ |
-| P7-02b | Frontend sign-in, idle logout, not-authorized screen | #78 | Sign-in flows work in both profiles | ☐ |
-| P7-04a | Screen APIs: members, profile, access view, modules | #79 | Every screen has a documented endpoint; "Org structure and access" API E2E passes | ☐ |
-| P7-04b | Screens: dashboard shell, org chart, locations | #80 | Screens pass the release-checklist widths | ☐ |
-| P7-04c | Screens: teams, members, member profile | #81 | Screens pass the release-checklist widths | ☐ |
-| P7-04d | Screens: access view, modules, organization settings | #82 | Screens pass the release-checklist widths | ☐ |
-| P7-05 | Notification bell, inbox and preferences | #83 | Works with the M1.5 APIs | ☐ |
-| P7-06 | Admin forms generated from schemas | #84 | Adding a schema field shows up in the form with no UI code | ☐ |
-| P7-10 | Authorization-matrix tests | #85 | Every route × role meets its expectation; an undeclared route fails the build | ☐ |
-| P7-08 | Bootstrap scripts, both profiles | #86 | A clean machine reaches a working sign-in with one command, in both profiles | ☐ |
-| P7-09a | Backup service (pgBackRest) and alerts | #87 | Encrypted full/diff/WAL backups off-site with a write-once copy; verify passes; four alerts fire | ☐ |
-| P7-09b | `make restore` and the monthly restore test | #88 | A restore onto a fresh machine passes: keys restored, sample field decrypted, smoke and isolation tests green | ☐ |
-| P7-11 | OWASP ASVS 5.0 Level 2 checklist file | #89 | The checklist file exists with every requirement listed; CI catches drift | ☐ |
-| P7-12 | Acceptance, Gate G1, docs and evidence | #90 | Every Gate G1 criterion passes with evidence; demo of both profiles recorded; docs written | ☐ |
+| P7-01 | Frontend foundation: themes, routing, permission-aware navigation | #73 | Theme-regression source scan passes; nav follows permissions and installed modules | ☑ |
+| P7-03 | Translation setup and locale formatting | #74 | No raw UI text in components (CI check) | ☑ |
+| P7-07a | Hardened nginx: headers and rate limits | #75 | Every §C5.10 header on every response; rate-limit zones answer 429; ZAP baseline passes | ☑ |
+| P7-07b | Container hardening and the complete full profile | #76 | Containers run as non-root with read-only filesystems (both profiles); full profile healthy | ◐ |
+| P7-02a | BFF session endpoints | #77 | Session, refresh rotation, logout, policy E2E tests pass (mock; oidc recorded) | ☑ |
+| P7-02b | Frontend sign-in, idle logout, not-authorized screen | #78 | Sign-in flows work in both profiles | ☑ |
+| P7-04a | Screen APIs: members, profile, access view, modules | #79 | Every screen has a documented endpoint; "Org structure and access" API E2E passes | ☑ |
+| P7-04b | Screens: dashboard shell, org chart, locations | #80 | Screens pass the release-checklist widths | ☑ |
+| P7-04c | Screens: teams, members, member profile | #81 | Screens pass the release-checklist widths | ☑ |
+| P7-04d | Screens: access view, modules, organization settings | #82 | Screens pass the release-checklist widths | ☑ |
+| P7-05 | Notification bell, inbox and preferences | #83 | Works with the M1.5 APIs | ☑ |
+| P7-06 | Admin forms generated from schemas | #84 | Adding a schema field shows up in the form with no UI code | ☑ |
+| P7-10 | Authorization-matrix tests | #85 | Every route × role meets its expectation; an undeclared route fails the build | ☑ |
+| P7-08 | Bootstrap scripts, both profiles | #86 | A clean machine reaches a working sign-in with one command, in both profiles | ☑ |
+| P7-09a | Backup service (pgBackRest) and alerts | #87 | Encrypted full/diff/WAL backups off-site with a write-once copy; verify passes; four alerts fire | ◐ |
+| P7-09b | `make restore` and the monthly restore test | #88 | A restore onto a fresh machine passes: keys restored, sample field decrypted, smoke and isolation tests green | ◐ |
+| P7-11 | OWASP ASVS 5.0 Level 2 checklist file | #89 | The checklist file exists with every requirement listed; CI catches drift | ☑ |
+| P7-12 | Acceptance, Gate G1, docs and evidence | #90 | Every Gate G1 criterion passes with evidence; demo of both profiles recorded; docs written | ☑ |
+
+P7 statuses set 2026-10-19 from the 2026-10-04 PROGRESS entry and a check of `main`. `◐` rows have open follow-ups: P7-07b: #388 (full profile), #386 (memory limits); P7-09a: #381 (metrics collector), #382 (WAL archiving); P7-09b: #380 (drill restores no real backup).
 
 ## P8 — Asset data and catalog (master M2.1) — epic #91
 
