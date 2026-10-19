@@ -9,6 +9,8 @@ import os
 import shutil
 import stat
 import subprocess
+import sys
+import tarfile
 from pathlib import Path
 
 import pytest
@@ -125,3 +127,79 @@ def test_an_environment_that_does_not_start_fails_the_drill(tmp_path: Path) -> N
     assert result["status"] == "failed"
     assert "environment" in result["failed_steps"]
     assert "migrate" in result["failed_steps"]
+
+
+# ---------------------------------------------------------- restore.sh fails loudly (PR #356 review)
+
+
+def _sh_path(path: Path) -> str:
+    """A path for the scripts' `tar`: Git for Windows' tar reads `C:` as a remote host name."""
+    posix = path.as_posix()
+    if sys.platform == "win32" and len(posix) > 1 and posix[1] == ":":
+        return f"/{posix[0].lower()}{posix[2:]}"
+    return posix
+
+
+def _restore(tmp_path: Path, *, docker: str, canary: str = "exit 0\n") -> subprocess.CompletedProcess[str]:
+    """Run restore.sh with a real keys archive, and `docker` and the canary's Python stubbed."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _stub(bin_dir, "docker", docker)
+    _stub(bin_dir, "python3", canary)
+    keys = tmp_path / "keys.tar.gz"
+    (tmp_path / "transit").mkdir()
+    (tmp_path / "transit" / "key").write_text("placeholder", encoding="utf-8")
+    with tarfile.open(keys, "w:gz") as archive:
+        archive.add(tmp_path / "transit", arcname="transit")
+    env = {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
+    env["RESTORE_SECRETS_DIR"] = (tmp_path / "secrets").as_posix()
+    return subprocess.run(
+        [BASH, RESTORE_SH.as_posix(), "--keys", _sh_path(keys)],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+
+
+@pytestmark_drill
+def test_a_restore_where_every_step_works_reports_success(tmp_path: Path) -> None:
+    done = _restore(tmp_path, docker="exit 0\n")
+    assert done.returncode == 0, done.stderr
+    assert "Restore completed successfully!" in done.stdout
+
+
+@pytestmark_drill
+def test_a_failed_pgbackrest_restore_stops_with_an_error(tmp_path: Path) -> None:
+    done = _restore(tmp_path, docker='case " $* " in *" exec "*) exit 1 ;; esac\nexit 0\n')
+    assert done.returncode != 0
+    assert "pgBackRest restore failed" in done.stderr
+    assert "Restore completed successfully" not in done.stdout
+
+
+@pytestmark_drill
+def test_a_failed_canary_fails_the_restore(tmp_path: Path) -> None:
+    done = _restore(tmp_path, docker="exit 0\n", canary="exit 1\n")
+    assert done.returncode != 0
+    assert "canary check failed" in done.stderr
+    assert "Restore completed successfully" not in done.stdout
+
+
+@pytestmark_drill
+def test_a_keys_archive_that_cannot_be_extracted_stops_the_restore(tmp_path: Path) -> None:
+    bad = tmp_path / "not-an-archive.tar.gz"
+    bad.write_text("not a tar file", encoding="utf-8")
+    env = {**os.environ, "RESTORE_SECRETS_DIR": (tmp_path / "secrets").as_posix()}
+    done = subprocess.run(
+        [BASH, RESTORE_SH.as_posix(), "--keys", _sh_path(bad)],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert done.returncode != 0
+    assert "could not extract the keys archive" in done.stderr
