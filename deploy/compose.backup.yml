@@ -17,6 +17,9 @@ services:
       postgres:
         condition: service_healthy
     environment:
+      # The rendered config (backup-daemon.sh writes it to tmpfs). Set here, not only in the daemon,
+      # so `docker compose exec backup pgbackrest ...` (scripts/restore.sh) reads the same file.
+      PGBACKREST_CONFIG: /tmp/pgbackrest.conf
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_USER: ${DATABASE_USER:-assetflow_app}
