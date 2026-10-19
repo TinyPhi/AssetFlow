@@ -77,10 +77,10 @@ V12.1.1:
   status: met
   test: backend/tests/unit/test_config.py
 V12.4.1:
-  code: deploy/nginx/default.conf, deploy/compose.minimal.yml
-  control: "\xA7B11.2: Docker container memory limits (512M) and client_max_body_size\
-    \ (10M)"
-  status: met
+  code: deploy/nginx/nginx.conf
+  control: "\xA7B11.2: request body size capped by nginx client_max_body_size (50M)"
+  status: open
+  notes: "No compose file sets container memory limits yet (#386); scripts/check-container-hardening.py reports every application service until they exist."
   test: scripts/check-container-hardening.py
 V13.1.1:
   code: backend/app/main.py
@@ -108,10 +108,11 @@ V14.1.1:
   test: make config-validate
 V14.2.1:
   code: deploy/compose.minimal.yml, deploy/compose.full.yml
-  control: "\xA7B11.2: Container hardening: non-root (10001:10001), readonly rootfs,\
-    \ cap_drop ALL"
-  status: met
-  test: scripts/check-container-hardening.py
+  control: "\xA7B11.2: Minimal profile api, worker and web run non-root (api and worker\
+    \ 10001, web 101), read-only rootfs, cap_drop ALL (api and web since part 10, #356)"
+  status: partial
+  notes: "Full profile not hardened yet: its api lacks read_only and cap_drop, and it has no web or worker service (#388)."
+  test: scripts/tests/test_compose_minimal.py
 V14.3.1:
   code: deploy/nginx/default.conf
   control: "\xA7C7.1: Hardened HTTP headers: CSP, X-Frame-Options: DENY, X-Content-Type-Options:\

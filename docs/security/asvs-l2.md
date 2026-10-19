@@ -12,9 +12,9 @@ SPDX-License-Identifier: AGPL-3.0-only
 ## Compliance Summary
 
 - **Total Requirements (L1 & L2):** 51
-- **Met:** 51 (100%)
-- **Partial:** 0
-- **Open / Planned:** 0
+- **Met:** 49 (96%)
+- **Partial:** 1
+- **Open / Planned:** 1
 - **Not Applicable:** 0
 
 ---
@@ -38,7 +38,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 | ID | Level | Requirement | Status | Control & Code | Test / Evidence | Notes |
 |---|---|---|---|---|---|---|
 | V12.1.1 | L1 | Verify that file path manipulation (directory traversal) is prevented when resolving resource paths. | **MET** | §C4.12: Path traversal prevention, all file operations resolved against strict base directories (`backend/app/core/config.py`) | backend/tests/unit/test_config.py | - |
-| V12.4.1 | L2 | Verify that resource limits (memory, execution timeout, request body size) are enforced to prevent DoS. | **MET** | §B11.2: Docker container memory limits (512M) and client_max_body_size (10M) (`deploy/nginx/default.conf, deploy/compose.minimal.yml`) | scripts/check-container-hardening.py | - |
+| V12.4.1 | L2 | Verify that resource limits (memory, execution timeout, request body size) are enforced to prevent DoS. | **OPEN** | §B11.2: request body size capped by nginx client_max_body_size (50M) (`deploy/nginx/nginx.conf`) | scripts/check-container-hardening.py | No compose file sets container memory limits yet (#386); scripts/check-container-hardening.py reports every application service until they exist. |
 
 ## V13: API and Web Service
 
@@ -53,7 +53,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 | ID | Level | Requirement | Status | Control & Code | Test / Evidence | Notes |
 |---|---|---|---|---|---|---|
 | V14.1.1 | L1 | Verify that production configurations do not contain default passwords, demo accounts, or debug settings. | **MET** | §B13.1: Production config validator refuses mock auth and file secrets in production (`backend/app/core/config.py`) | make config-validate | Audit remediation (AF-004, AF-015, AF-031, AF-034): env has no default and boot refuses when it is unset; every guard applies to all envs except development and test, so staging is guarded; plain OIDC secrets, static OpenBao tokens and known development passwords are refused outside development. |
-| V14.2.1 | L2 | Verify that container workloads run as non-root users with read-only root filesystems and dropped capabilities. | **MET** | §B11.2: Container hardening: non-root (10001:10001), readonly rootfs, cap_drop ALL (`deploy/compose.minimal.yml, deploy/compose.full.yml`) | scripts/check-container-hardening.py | - |
+| V14.2.1 | L2 | Verify that container workloads run as non-root users with read-only root filesystems and dropped capabilities. | **PARTIAL** | §B11.2: Minimal profile api, worker and web run non-root (api and worker 10001, web 101), read-only rootfs, cap_drop ALL (api and web since part 10, #356) (`deploy/compose.minimal.yml, deploy/compose.full.yml`) | scripts/tests/test_compose_minimal.py | Full profile not hardened yet: its api lacks read_only and cap_drop, and it has no web or worker service (#388). |
 | V14.3.1 | L1 | Verify that Content Security Policy (CSP), X-Content-Type-Options, and Frame-Options headers are enforced. | **MET** | §C7.1: Hardened HTTP headers: CSP, X-Frame-Options: DENY, X-Content-Type-Options: nosniff (`deploy/nginx/default.conf`) | backend/tests/e2e_api/test_session_flow.py | - |
 
 ## V1: Architecture, Design and Threat Modeling
