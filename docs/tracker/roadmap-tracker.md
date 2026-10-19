@@ -106,42 +106,42 @@ Phases P5 to P20 cover master milestones M1.4 to M4.3 and Gates G1 to G6. Each r
 | ID | Task | Issue | Done when | Status |
 | --- | --- | --- | --- | --- |
 | P7-01 | Frontend foundation: themes, routing, permission-aware navigation | #73 | Theme-regression source scan passes; nav follows permissions and installed modules | ☑ |
-| P7-03 | Translation setup and locale formatting | #74 | No raw UI text in components (CI check) | ☑ |
-| P7-07a | Hardened nginx: headers and rate limits | #75 | Every §C5.10 header on every response; rate-limit zones answer 429; ZAP baseline passes | ☑ |
+| P7-03 | Translation setup and locale formatting | #74 | No raw UI text in components (CI check) | ◐ |
+| P7-07a | Hardened nginx: headers and rate limits | #75 | Every §C5.10 header on every response; rate-limit zones answer 429; ZAP baseline passes | ◐ |
 | P7-07b | Container hardening and the complete full profile | #76 | Containers run as non-root with read-only filesystems (both profiles); full profile healthy | ◐ |
-| P7-02a | BFF session endpoints | #77 | Session, refresh rotation, logout, policy E2E tests pass (mock; oidc recorded) | ☑ |
+| P7-02a | BFF session endpoints | #77 | Session, refresh rotation, logout, policy E2E tests pass (mock; oidc recorded) | ◐ |
 | P7-02b | Frontend sign-in, idle logout, not-authorized screen | #78 | Sign-in flows work in both profiles | ◐ |
-| P7-04a | Screen APIs: members, profile, access view, modules | #79 | Every screen has a documented endpoint; "Org structure and access" API E2E passes | ☑ |
-| P7-04b | Screens: dashboard shell, org chart, locations | #80 | Screens pass the release-checklist widths | ☑ |
-| P7-04c | Screens: teams, members, member profile | #81 | Screens pass the release-checklist widths | ☑ |
-| P7-04d | Screens: access view, modules, organization settings | #82 | Screens pass the release-checklist widths | ☑ |
-| P7-05 | Notification bell, inbox and preferences | #83 | Works with the M1.5 APIs | ☑ |
-| P7-06 | Admin forms generated from schemas | #84 | Adding a schema field shows up in the form with no UI code | ☑ |
-| P7-10 | Authorization-matrix tests | #85 | Every route × role meets its expectation; an undeclared route fails the build | ☑ |
+| P7-04a | Screen APIs: members, profile, access view, modules | #79 | Every screen has a documented endpoint; "Org structure and access" API E2E passes | ◐ |
+| P7-04b | Screens: dashboard shell, org chart, locations | #80 | Screens pass the release-checklist widths | ◐ |
+| P7-04c | Screens: teams, members, member profile | #81 | Screens pass the release-checklist widths | ◐ |
+| P7-04d | Screens: access view, modules, organization settings | #82 | Screens pass the release-checklist widths | ◐ |
+| P7-05 | Notification bell, inbox and preferences | #83 | Works with the M1.5 APIs | ◐ |
+| P7-06 | Admin forms generated from schemas | #84 | Adding a schema field shows up in the form with no UI code | ◐ |
+| P7-10 | Authorization-matrix tests | #85 | Every route × role meets its expectation; an undeclared route fails the build | ◐ |
 | P7-08 | Bootstrap scripts, both profiles | #86 | A clean machine reaches a working sign-in with one command, in both profiles | ◐ |
 | P7-09a | Backup service (pgBackRest) and alerts | #87 | Encrypted full/diff/WAL backups off-site with a write-once copy; verify passes; four alerts fire | ◐ |
 | P7-09b | `make restore` and the monthly restore test | #88 | A restore onto a fresh machine passes: keys restored, sample field decrypted, smoke and isolation tests green | ◐ |
 | P7-11 | OWASP ASVS 5.0 Level 2 checklist file | #89 | The checklist file exists with every requirement listed; CI catches drift | ◐ |
 | P7-12 | Acceptance, Gate G1, docs and evidence | #90 | Every Gate G1 criterion passes with evidence; demo of both profiles recorded; docs written | ◐ |
 
-P7 statuses set 2026-10-19 from the 2026-10-04 PROGRESS entry and a check of `main`. `◐` rows have open follow-ups: P7-02b: #388 (no web service in the full profile); P7-07b: #388 (full profile), #386 (memory limits); P7-08: #388 (the full profile has no web service); P7-09a: #381 (metrics collector), #382 (WAL archiving); P7-09b: #380 (drill restores no real backup); P7-11: #389 (51 selected requirements, not the full ASVS 5.0 list); P7-12: Gate G1 is conditional (#380, #381, #382, #386, #388, #389).
+P7 and P8 statuses set 2026-10-19 by checking each task issue's acceptance list against `main`. `☑` = issue closed as done. `◐` = partly done; the open items are listed in the task issue (P7-02a #77, P7-03 #74, P7-04a–d #79–#82, P7-05 #83, P7-06 #84, P7-07a #75, P7-10 #85, P8-07 #98, P8-12 #103) or in follow-ups: P7-02b #388; P7-07b #388, #386; P7-08 #388; P7-09a #381, #382; P7-09b #380; P7-11 #389; P7-12 Gate G1 is conditional (#380, #381, #382, #386, #388, #389).
 
 ## P8 — Asset data and catalog (master M2.1) — epic #91
 
 | ID | Task | Issue | Done when | Status |
 | --- | --- | --- | --- | --- |
-| P8-01 | Domain template asset sections (`it-assets`, `facilities`) | #92 | Both templates load and validate; asset rules come from the template, not code | ☐ |
-| P8-02 | Catalog migrations a: categories, custom field definitions, manufacturers, suppliers | #93 | Migration check and isolation tests pass | ☐ |
-| P8-03 | Catalog migrations b: assets, components, meters, readings, indexes, views | #94 | Migration check and isolation tests pass; path trigger and index use proven | ☐ |
-| P8-04 | Custom field validation and encrypted fields | #95 | Unit tests for every field type; encrypted values never appear in list responses | ☐ |
-| P8-05 | Asset tag generation per organization | #96 | Tags are unique per organization | ☐ |
-| P8-06 | Catalog reference data API and template seed | #97 | Reference data managed with audit; seed idempotent | ☐ |
-| P8-07 | Asset API: create, edit, detail, list, saved views | #98 | Scoped CRUD and list with search, filters, saved views, sort, cursor | ☐ |
-| P8-08 | Lifecycle statuses and transitions | #99 | Invalid transitions are refused with a clear error | ☐ |
-| P8-09 | Components (move together) | #100 | API E2E test passes | ☐ |
-| P8-10 | Asset list screen | #101 | Screen works at every checklist width | ☐ |
-| P8-11 | Asset detail, create/edit and category admin screens | #102 | Screens work at every checklist width | ☐ |
-| P8-12 | Acceptance, docs and evidence for M2.1 | #103 | AssetManager's catalog features in §B15 pass; docs and evidence exist | ☐ |
+| P8-01 | Domain template asset sections (`it-assets`, `facilities`) | #92 | Both templates load and validate; asset rules come from the template, not code | ☑ |
+| P8-02 | Catalog migrations a: categories, custom field definitions, manufacturers, suppliers | #93 | Migration check and isolation tests pass | ☑ |
+| P8-03 | Catalog migrations b: assets, components, meters, readings, indexes, views | #94 | Migration check and isolation tests pass; path trigger and index use proven | ☑ |
+| P8-04 | Custom field validation and encrypted fields | #95 | Unit tests for every field type; encrypted values never appear in list responses | ☑ |
+| P8-05 | Asset tag generation per organization | #96 | Tags are unique per organization | ☑ |
+| P8-06 | Catalog reference data API and template seed | #97 | Reference data managed with audit; seed idempotent | ☑ |
+| P8-07 | Asset API: create, edit, detail, list, saved views | #98 | Scoped CRUD and list with search, filters, saved views, sort, cursor | ◐ |
+| P8-08 | Lifecycle statuses and transitions | #99 | Invalid transitions are refused with a clear error | ☑ |
+| P8-09 | Components (move together) | #100 | API E2E test passes | ☑ |
+| P8-10 | Asset list screen | #101 | Screen works at every checklist width | ☑ |
+| P8-11 | Asset detail, create/edit and category admin screens | #102 | Screens work at every checklist width | ☑ |
+| P8-12 | Acceptance, docs and evidence for M2.1 | #103 | AssetManager's catalog features in §B15 pass; docs and evidence exist | ◐ |
 
 ## P9 — Custody and QR (master M2.2) — epic #104
 
