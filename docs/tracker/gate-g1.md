@@ -7,7 +7,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 
 **Phase:** Phase 1 Foundation, Access & Web Shell (Master M1.6, Gate G1)  
 **Evaluated:** 2026-10-04  
-**Status:** **PASSED** (All 7 Criteria Met with Recorded Evidence)  
+**Status:** **CONDITIONAL** (corrected 2026-10-19): criteria 2–6 pass with the evidence cited; criteria 1 and 7 are partial, and M1.6-T7 and T9 have open items (§3). Open follow-ups: #380, #381, #382, #386, #388, #389.  
 
 ---
 
@@ -21,13 +21,13 @@ Gate G1 defines the technical and operational completion gate for Phase 1 of Ass
 
 | # | Gate G1 Criterion | Status | Evidence Reference | Technical Verification Details |
 |---|---|:---:|---|---|
-| **1** | **Full Profile Sign-in & Providers**<br>Sign-in through Zitadel, member provisioning by policy, and all providers healthy. | **PASSED** | `scripts/bootstrap.sh --profile full`<br>`backend/tests/e2e_api/test_session_flow.py`<br>`scripts/smoke-full.py` | Zitadel OIDC authentication flow, AES-256-GCM encrypted session cookies, and automated member provisioning policies (`invite_only`, `require_role`, `open`). All four production provider pillars (auth: `oidc`, secrets: `openbao`, telemetry: `otel`, events: `postgres`) report healthy. |
-| **2** | **Minimal Profile Standalone**<br>The minimal profile operates without external cloud services or network access. | **PASSED** | `deploy/compose.minimal.yml`<br>`scripts/bootstrap.sh --profile minimal` | Operates completely self-contained with PostgreSQL RLS, built-in mock auth, file secrets, in-memory events, and local Mailpit SMTP trap. Starts in < 15 seconds. |
+| **1** | **Full Profile Sign-in & Providers**<br>Sign-in through Zitadel, member provisioning by policy, and all providers healthy. | **PARTIAL** | `scripts/bootstrap.sh --profile full`<br>`backend/tests/e2e_api/test_session_flow.py`<br>`scripts/smoke-full.py` | Zitadel OIDC authentication flow, AES-256-GCM encrypted session cookies, and automated member provisioning policies (`invite_only`, `require_role`, `open`). All four production provider pillars (auth: `oidc`, secrets: `openbao`, telemetry: `otel`, events: `postgres`) report healthy. *Open:* the full profile has no `web` service, so browser sign-in cannot run in it yet (#388). |
+| **2** | **Minimal Profile Standalone**<br>The minimal profile operates without external cloud services or network access. | **PASSED** | `deploy/compose.minimal.yml`<br>`scripts/bootstrap.sh --profile minimal` | Operates completely self-contained with PostgreSQL RLS, built-in mock auth, file secrets, in-memory events, and local Mailpit SMTP trap. (Start-up time has not been measured.) |
 | **3** | **Tenant Isolation & Scope Leakage**<br>Zero cross-tenant data leakage; isolation and worker separation tests pass. | **PASSED** | `make test-isolation`<br>`backend/tests/isolation/` | PostgreSQL Row-Level Security (RLS) forced across all tenant tables. Every query filtered by `tenant_transaction` session context (`app.current_organization_id`). Worker processes operate with least-privilege credentials. |
 | **4** | **Authorization Matrix Verification**<br>Every route × role permutation verified against permissions and negative denials. | **PASSED** | `backend/tests/authz_matrix/test_matrix.py`<br>`docs/guides/testing.md` | 100% of API endpoints declare machine-readable `x-assetflow-permission` or `x-assetflow-public`. Automated test asserts 2xx on allowed roles and 403/404 on denied roles. Bidirectional platform-tenant boundary verified. |
 | **5** | **RLS Enforcement Gate in CI**<br>A table without row-level security is blocked in CI. | **PASSED** | `scripts/check-migrations.py`<br>`make lint-backend` | AST migration checker scans all Alembic revision files. Fails with non-zero exit code if any newly created tenant table lacks `ENABLE ROW LEVEL SECURITY`, `FORCE ROW LEVEL SECURITY`, or the 4 required tenant isolation policies. |
-| **6** | **End-to-End Notifications Pipeline**<br>Multi-channel delivery, retries, dead-letter queue, and failure handling. | **PASSED** | `backend/tests/e2e_api/test_inbox_api.py`<br>`backend/tests/integration/test_notifications_delivery.py` | In-app notifications with unread counter, email delivery via SMTP/Mailpit, webhook delivery with HMAC-SHA256 signatures, exponential backoff retries, and dead-letter queue alert generation. |
-| **7** | **OWASP ASVS 5.0 Level 2 Checklist**<br>Checklist file exists with every requirement mapped to controls and tests. | **PASSED** | `docs/security/asvs-l2.md`<br>`scripts/gen-asvs-checklist.py --check` | 51 Level 1 and Level 2 requirements across chapters V1–V14 mapped to architectural controls, implementation code paths, and verification tests. Zero unmapped omissions. |
+| **6** | **End-to-End Notifications Pipeline**<br>Multi-channel delivery, retries, dead-letter queue, and failure handling. | **PASSED** | `backend/tests/e2e_api/test_inbox_api.py`<br>`backend/tests/integration/test_notification_sender.py`<br>`backend/tests/e2e_api/test_notifications_acceptance.py` | In-app notifications with unread counter, email delivery via SMTP/Mailpit, webhook delivery with HMAC-SHA256 signatures, exponential backoff retries, and dead-letter queue alert generation. |
+| **7** | **OWASP ASVS 5.0 Level 2 Checklist**<br>Checklist file exists with every requirement mapped to controls and tests. | **PARTIAL** | `docs/security/asvs-l2.md`<br>`scripts/gen-asvs-checklist.py --check` | A self-assessment of 51 selected Level 1 and 2 requirements (reworded, ASVS 4.0 chapter names), not the full ASVS 5.0 list (#389). Every `met`/`partial` row cites code and tests that exist (`--check` enforces it): 44 met, 6 partial, 1 open. |
 
 ---
 
@@ -47,4 +47,4 @@ Gate G1 defines the technical and operational completion gate for Phase 1 of Ass
 
 ## 4. Conclusion & Gate G1 Sign-off
 
-Phase 1 development goals (Milestones M1.1 through M1.6) are complete. The system satisfies all security, tenancy, quality, and architectural requirements defined in the AssetFlow master specification. Gate G1 is formally **PASSED**.
+Phase 1 development goals (Milestones M1.1 through M1.6) are implemented, with the open items listed above. Gate G1 is **CONDITIONAL** (corrected 2026-10-19; the original 2026-10-04 evaluation said PASSED): it becomes PASSED when criteria 1 and 7 and M1.6-T7/T9 are closed through #380, #381, #382, #386, #388 and #389.
