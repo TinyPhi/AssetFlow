@@ -3,7 +3,10 @@
 
 // A Zod schema built at run time from a category's custom field definitions (§C4.9): it mirrors the
 // server's validation (backend/app/modules/assets/custom_fields.py, P8-04) so a form shows the same
-// refusals before it sends; the server still validates again. A form keeps every value as text (or a
+// refusals before it sends; the server still validates again. The one rule it does not repeat is a
+// text field's `regex`: the server matches it on RE2 (linear time), but a browser `RegExp`
+// backtracks, so an admin-saved pattern such as `(a+)+` would freeze the tab (issue 358). A mismatch comes
+// back as the server's 422 on that field instead. A form keeps every value as text (or a
 // list of texts for a multi-select); the schema turns it into the typed value the API wants.
 import { z } from "zod";
 import { t } from "@/lib/i18n";
@@ -27,19 +30,9 @@ function isEmpty(raw: FieldValue): boolean {
 
 function checkText(def: CustomFieldDefinition, text: string): Checked {
   if (text.length > MAX_TEXT_LENGTH) return fail(t("assets.form.errors.too_long", { max: MAX_TEXT_LENGTH }));
-  const { min, max, regex } = def.rules;
+  const { min, max } = def.rules;
   if (min !== null && text.length < min) return fail(t("assets.form.errors.min_length", { min }));
   if (max !== null && text.length > max) return fail(t("assets.form.errors.max_length", { max }));
-  if (regex !== null) {
-    let pattern: RegExp | null = null;
-    try {
-      pattern = new RegExp(`^(?:${regex})$`);
-    } catch {
-      // A pattern this browser cannot read (the server's flavour differs) is left to the server.
-      pattern = null;
-    }
-    if (pattern !== null && !pattern.test(text)) return fail(t("assets.form.errors.pattern"));
-  }
   return ok(text);
 }
 

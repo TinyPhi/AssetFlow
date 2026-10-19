@@ -53,3 +53,22 @@ def test_every_backend_service_sets_env_and_auth_provider(monkeypatch: pytest.Mo
         env = svc["environment"]
         assert env.get("ASSETFLOW_ENV") == "development", name
         assert env.get("ASSETFLOW_AUTH_PROVIDER") == "mock", name
+
+
+def test_api_web_and_worker_are_read_only_non_root_with_no_capabilities(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """PR #356 review: api and web lacked the hardening the worker has (§C5.10)."""
+    services = _render(monkeypatch)["services"]
+    for name in ("api", "web", "worker"):
+        svc = services[name]
+        assert svc.get("read_only") is True, name
+        assert svc.get("cap_drop") == ["ALL"], name
+        user = str(svc.get("user", ""))
+        assert user and not user.startswith("0") and user != "root", name
+
+
+def test_api_does_not_start_through_uv_run_on_its_read_only_root(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`uv run` (the image's ENTRYPOINT) needs a writable cache dir; the venv is started directly."""
+    entrypoint = _render(monkeypatch)["services"]["api"]["entrypoint"]
+    assert entrypoint[0] == "/app/.venv/bin/uvicorn"

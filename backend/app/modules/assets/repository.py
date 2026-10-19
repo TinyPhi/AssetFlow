@@ -266,8 +266,9 @@ class AssetRepository:
         clauses = ["version = version + 1", "updated_at = now()"]
         args: list[Any] = [organization_id, asset_id, version]
         for column, value in sets.items():
-            args.append(value)
-            cast = "::jsonb" if column in ("custom_fields", "encrypted_fields") else ""
+            is_json = column in ("custom_fields", "encrypted_fields")
+            args.append(json.dumps(value) if is_json else value)  # asyncpg sends jsonb as text
+            cast = "::jsonb" if is_json else ""
             clauses.append(f"{column} = ${len(args)}{cast}")
         sql = (
             f"UPDATE public.assets SET {', '.join(clauses)} "  # nosec B608  # noqa: S608

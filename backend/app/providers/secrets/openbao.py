@@ -316,6 +316,39 @@ class OpenBaoSecretsProvider(SecretsProvider):
                 logger.warning("Decryption failed: %s", exc)
                 raise SecretDecryptionError() from exc
 
+    async def decrypt_many(self, items: Sequence[tuple[str, str]]) -> list[str]:
+        """Decrypt many `(context, ciphertext)` pairs with transit's `batch_input` (one round trip)."""
+        if not items:
+            return []
+        batch_input = [
+            {"ciphertext": ciphertext, "context": base64.b64encode(context.encode("utf-8")).decode("ascii")}
+            for context, ciphertext in items
+        ]
+        url = (
+            f"{self.settings.address.rstrip('/')}/v1/"
+            f"{self.settings.transit_mount}/decrypt/{self.settings.transit_key}"
+        )
+        async with self._client() as client:
+            try:
+                res = await self._send(client, "POST", url, json={"batch_input": batch_input})
+                if res.status_code != 200:
+                    raise SecretDecryptionError()
+                results = res.json().get("data", {}).get("batch_results")
+                if not isinstance(results, list) or len(results) != len(items):
+                    raise SecretDecryptionError()
+                plaintexts: list[str] = []
+                for result in results:
+                    pt_b64 = result.get("plaintext") if isinstance(result, dict) else None
+                    if not isinstance(pt_b64, str):
+                        raise SecretDecryptionError()
+                    plaintexts.append(base64.b64decode(pt_b64.encode("ascii")).decode("utf-8"))
+                return plaintexts
+            except SecretDecryptionError:
+                raise
+            except Exception as exc:
+                logger.warning("Batch decryption failed: %s", type(exc).__name__)
+                raise SecretDecryptionError() from exc
+
     async def health(self) -> dict[str, Any]:
         """Return health status without exposing sensitive tokens or addresses."""
         health_url = f"{self.settings.address.rstrip('/')}/v1/sys/health"

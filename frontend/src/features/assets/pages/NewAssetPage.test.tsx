@@ -101,8 +101,8 @@ describe("NewAssetPage", () => {
     await user.type(await screen.findByLabelText(/^Hostname/), "BAD1");
     await user.type(screen.getByLabelText("Power"), "500");
     await user.click(screen.getByRole("button", { name: t("assets.form.create") }));
-    expect(await screen.findByText(t("assets.form.errors.pattern"))).toBeInTheDocument();
-    expect(screen.getByText(t("assets.form.errors.max_number", { max: 100 }))).toBeInTheDocument();
+    // A text pattern is checked by the server only (issue 358); the number rule still blocks the send.
+    expect(await screen.findByText(t("assets.form.errors.max_number", { max: 100 }))).toBeInTheDocument();
     expect(posted).toHaveLength(0);
   });
 
