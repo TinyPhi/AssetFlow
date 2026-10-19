@@ -21,13 +21,25 @@ path "sys/auth/approle" {
   capabilities = ["create", "read", "update", "sudo"]
 }
 
-# Policies (ACL) managed from deploy/openbao/policies and deploy/openbao/operator
-path "sys/policies/acl/*" {
-  capabilities = ["create", "read", "update", "list"]
+# Policies (ACL) managed from deploy/openbao/policies and deploy/openbao/operator. Only names starting
+# with assetflow- (AF-030): the operator cannot rewrite `default`, `root` or any other policy.
+path "sys/policies/acl/assetflow-*" {
+  capabilities = ["create", "read", "update"]
+}
+path "sys/policies/acl" {
+  capabilities = ["list"]
+}
+
+# File audit device (enabled by scripts/openbao-apply.py; the operator cannot disable it)
+path "sys/audit" {
+  capabilities = ["read", "sudo"]
+}
+path "sys/audit/file" {
+  capabilities = ["create", "update", "sudo"]
 }
 
 # AppRole roles, role ids and secret ids
-path "auth/approle/role/*" {
+path "auth/approle/role/assetflow-*" {
   capabilities = ["create", "read", "update", "list"]
 }
 

@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: 2026 TinyPhi
+# SPDX-License-Identifier: AGPL-3.0-only
+"""Tests of the `@KEY@` channel (§C6.7, §C8.4).
+
+The shared checks (schema export, write-only secrets, egress, health) already run for every channel
+registered in `channel_targets.py`, which this scaffold did for you. Add the checks that are specific
+to this destination here: recorded HTTP responses under `fixtures/@MODULE@/`, retry classification
+(timeouts and 5xx retry, 4xx do not), idempotency, and personal-data filtering.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from channel_targets import ORG
+
+from app.channels.base import ChannelContext, RenderedMessage
+from app.channels.@MODULE@ import @CLASS@Channel
+
+FIXTURES = Path(__file__).parent / "fixtures" / "@MODULE@"
+
+
+def test_declares_its_identity() -> None:
+    assert @CLASS@Channel.key == "@KEY@"
+    assert @CLASS@Channel.display_name
+
+
+def test_declares_the_hosts_it_may_reach() -> None:
+    assert all(host == host.lower() and "/" not in host for host in @CLASS@Channel.egress_hosts)
+
+
+def test_a_recorded_response_is_available_to_replay() -> None:
+    assert json.loads((FIXTURES / "ok.json").read_text(encoding="utf-8")) == {"ok": True}
+
+
+async def test_send_reports_a_result() -> None:
+    ctx = ChannelContext(organization_id=ORG, installation={})
+    message = RenderedMessage(subject="Subject", body="<p>Body</p>", text="Body")
+    result = await @CLASS@Channel().send(ctx, "member-id", message, "a" * 64)
+    assert isinstance(result.delivered, bool)
+
+
+async def test_health_reports_a_flag() -> None:
+    health = await @CLASS@Channel().health(ChannelContext(organization_id=ORG, installation={}))
+    assert isinstance(health["healthy"], bool)
