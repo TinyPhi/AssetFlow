@@ -27,8 +27,14 @@ services:
       BACKUP_S3_REGION: ${BACKUP_S3_REGION:-us-east-1}
       BACKUP_S3_KEY: ${BACKUP_S3_KEY:?set BACKUP_S3_KEY (see .env.example)}
       BACKUP_S3_SECRET: ${BACKUP_S3_SECRET:?set BACKUP_S3_SECRET (see .env.example)}
+      # Optional: size budget of the object-store bucket; repo_used_ratio is reported only when set.
+      BACKUP_REPO_QUOTA_BYTES: ${BACKUP_REPO_QUOTA_BYTES:-}
+      # WAL archive lag is read from pg_stat_archiver with the database login above.
+      POSTGRES_DB: ${DATABASE_NAME:-assetflow}
+      PGPASSWORD: ${DATABASE_PASSWORD:-}
     volumes:
-      - ./backup/pgbackrest.conf.template:/etc/pgbackrest/pgbackrest.conf:ro
+      # A template: backup-daemon.sh renders it to /tmp/pgbackrest.conf (tmpfs) before any call.
+      - ./backup/pgbackrest.conf.template:/etc/pgbackrest/pgbackrest.conf.template:ro
       - wal_archive:/var/lib/postgresql/archive
     read_only: true
     user: "10001:10001"
