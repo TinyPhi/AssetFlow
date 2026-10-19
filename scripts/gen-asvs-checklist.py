@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: 2026 TinyPhi
 # SPDX-License-Identifier: AGPL-3.0-only
-"""OWASP ASVS 5.0 Level 2 Checklist Generator (§B11.7, M1.6-T9).
+"""ASVS-based security self-assessment generator (§B11.7, M1.6-T9).
 
-Reads the pinned ASVS 5.0 export (`docs/security/asvs/asvs-5.0.v5.0.0.json`) and the control
-mapping (`docs/security/asvs/mapping.yaml`), and renders `docs/security/asvs-l2.md`.
-Verifies that every requirement is present and that mappings link to valid code and test paths.
+Reads the requirement list (`docs/security/asvs/asvs-5.0.v5.0.0.json`) and the control mapping
+(`docs/security/asvs/mapping.yaml`), and renders `docs/security/asvs-l2.md`.
+
+The requirement list is a selection of 51 Level 1 and 2 requirements, reworded, under ASVS 4.0
+chapter names. It is not the OWASP ASVS 5.0 export (that replacement is tracked in #389), and the
+rendered page says so.
+
+`--check` fails when the page is out of date, or when a `met` or `partial` entry cites a code or
+test path that does not exist (a glob must match at least one file; `file.py::test_name` must
+define that test). Commands and suite names (for example `make config-validate`) are not checked.
 
 Usage::
 
@@ -17,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -44,6 +52,36 @@ def load_mapping() -> dict[str, dict[str, Any]]:
         return yaml.safe_load(f) or {}
 
 
+def missing_evidence(mapping: dict[str, dict[str, Any]], root: Path = REPO_ROOT) -> list[str]:
+    """`<id> <field>: <path>` for every cited path of a met/partial entry that does not exist."""
+    missing: list[str] = []
+    for req_id, entry in sorted(mapping.items()):
+        if str(entry.get("status", "open")).lower() not in ("met", "partial"):
+            continue
+        for field in ("code", "test"):
+            for ref in re.split(r",\s*", str(entry.get(field) or "")):
+                ref = re.sub(r"\s*\([^)]*\)$", "", ref.strip())  # drop a trailing "(remark)"
+                if not ref or ref == "-":
+                    continue
+                if " " in ref and "/" not in ref.split()[0]:
+                    continue  # a command or a suite name, such as `make config-validate`
+                path, _, test_name = ref.partition("::")
+                if "*" in path:
+                    found = any(root.glob(path))
+                else:
+                    target = root / path
+                    found = target.is_file() or target.is_dir()
+                    if found and test_name:
+                        source = target.read_text(encoding="utf-8")
+                        found = (
+                            re.search(rf"^(async )?def {re.escape(test_name)}\(", source, re.MULTILINE)
+                            is not None
+                        )
+                if not found:
+                    missing.append(f"{req_id} {field}: {ref}")
+    return missing
+
+
 def render_markdown(requirements: list[dict[str, Any]], mapping: dict[str, dict[str, Any]]) -> str:
     lines: list[str] = [
         "<!--",
@@ -53,11 +91,15 @@ def render_markdown(requirements: list[dict[str, Any]], mapping: dict[str, dict[
         # REUSE-IgnoreEnd
         "-->",
         "",
-        "# OWASP ASVS 5.0 Level 2 Checklist",
+        "# ASVS-based Security Self-Assessment (partial)",
         "",
         "**Master plan:** Gate G1, §B11.6, §B11.7, §C5.9  ",
         "**Generated file:** Do not edit directly; update `docs/security/asvs/mapping.yaml` and run `python scripts/gen-asvs-checklist.py`.  ",
-        "**Standard:** OWASP Application Security Verification Standard (ASVS) 5.0, Levels 1 and 2.  ",
+        (
+            "**Scope:** a selection of 51 Level 1 and 2 requirements, reworded from OWASP ASVS, under ASVS 4.0 chapter names. "
+            "This is **not** the complete OWASP ASVS 5.0 list; replacing it with the official 5.0 export is tracked in #389.  "
+        ),
+        "**Evidence:** `met` and `partial` rows cite code and tests that exist; `scripts/gen-asvs-checklist.py --check` fails otherwise.  ",
         "",
     ]
 
@@ -76,7 +118,7 @@ def render_markdown(requirements: list[dict[str, Any]], mapping: dict[str, dict[
         [
             "## Compliance Summary",
             "",
-            f"- **Total Requirements (L1 & L2):** {total}",
+            f"- **Requirements assessed (selected L1 & L2):** {total}",
             f"- **Met:** {status_counts['met']} ({status_counts['met'] * 100 // total if total else 0}%)",
             f"- **Partial:** {status_counts['partial']}",
             f"- **Open / Planned:** {status_counts['open']}",
@@ -126,7 +168,7 @@ def render_markdown(requirements: list[dict[str, Any]], mapping: dict[str, dict[
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Generate or verify OWASP ASVS 5.0 L2 checklist")
+    parser = argparse.ArgumentParser(description="Generate or verify the ASVS-based self-assessment")
     parser.add_argument("--check", action="store_true", help="Check that committed asvs-l2.md is up-to-date")
     args = parser.parse_args(argv)
 
@@ -141,6 +183,11 @@ def main(argv: list[str] | None = None) -> int:
     rendered = render_markdown(requirements, mapping)
 
     if args.check:
+        missing = missing_evidence(mapping)
+        if missing:
+            sys.stderr.write("error: these checklist entries cite paths that do not exist:\n")
+            sys.stderr.write("".join(f"  {line}\n" for line in missing))
+            return 1
         if not OUTPUT_MD_PATH.is_file():
             sys.stderr.write(
                 f"error: {OUTPUT_MD_PATH} does not exist. Run python scripts/gen-asvs-checklist.py\n"

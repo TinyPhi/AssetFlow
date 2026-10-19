@@ -3,17 +3,18 @@ SPDX-FileCopyrightText: 2026 TinyPhi
 SPDX-License-Identifier: AGPL-3.0-only
 -->
 
-# OWASP ASVS 5.0 Level 2 Checklist
+# ASVS-based Security Self-Assessment (partial)
 
 **Master plan:** Gate G1, §B11.6, §B11.7, §C5.9  
 **Generated file:** Do not edit directly; update `docs/security/asvs/mapping.yaml` and run `python scripts/gen-asvs-checklist.py`.  
-**Standard:** OWASP Application Security Verification Standard (ASVS) 5.0, Levels 1 and 2.  
+**Scope:** a selection of 51 Level 1 and 2 requirements, reworded from OWASP ASVS, under ASVS 4.0 chapter names. This is **not** the complete OWASP ASVS 5.0 list; replacing it with the official 5.0 export is tracked in #389.  
+**Evidence:** `met` and `partial` rows cite code and tests that exist; `scripts/gen-asvs-checklist.py --check` fails otherwise.  
 
 ## Compliance Summary
 
-- **Total Requirements (L1 & L2):** 51
-- **Met:** 49 (96%)
-- **Partial:** 1
+- **Requirements assessed (selected L1 & L2):** 51
+- **Met:** 44 (86%)
+- **Partial:** 6
 - **Open / Planned:** 1
 - **Not Applicable:** 0
 
@@ -30,8 +31,8 @@ SPDX-License-Identifier: AGPL-3.0-only
 
 | ID | Level | Requirement | Status | Control & Code | Test / Evidence | Notes |
 |---|---|---|---|---|---|---|
-| V11.1.1 | L1 | Verify that business logic flows (such as approvals, transitions, imports) execute sequentially and cannot be bypassed. | **MET** | §B5.2: State machine validation with named archive blockers and cycle prevention (`backend/app/modules/organization/service.py`) | backend/tests/integration/test_org_structure.py | - |
-| V11.2.1 | L2 | Verify that batch imports and bulk operations execute atomically and validate all items before commit. | **MET** | §B5.7: Bulk import preview (read-only) and commit (all-or-nothing transaction, idempotent) (`backend/app/modules/organization/bulk_import.py`) | backend/tests/integration/test_bulk_import.py | - |
+| V11.1.1 | L1 | Verify that business logic flows (such as approvals, transitions, imports) execute sequentially and cannot be bypassed. | **MET** | §B5.2: State machine validation with named archive blockers and cycle prevention (`backend/app/modules/organization/service.py`) | backend/tests/e2e_api/test_org_structure_api.py | - |
+| V11.2.1 | L2 | Verify that batch imports and bulk operations execute atomically and validate all items before commit. | **MET** | §B5.7: Bulk import preview (read-only) and commit (all-or-nothing transaction, idempotent) (`backend/app/modules/organization/bulk_import.py`) | backend/tests/integration/test_bulk_import_api.py | - |
 
 ## V12: File and Resources
 
@@ -46,7 +47,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 |---|---|---|---|---|---|---|
 | V13.1.1 | L1 | Verify that APIs validate request Content-Type and reject unexpected or spoofed media types. | **MET** | §C4.3: Request Content-Type validation (application/json) and reject unexpected types (`backend/app/main.py`) | backend/tests/unit/test_problems.py | - |
 | V13.2.1 | L1 | Verify that rate limiting is enforced on all API endpoints to protect against abuse and credential stuffing. | **MET** | §C11: Application-wide rate limiting (global 100 req/s, auth 10 req/s) (`deploy/nginx/default.conf`) | backend/tests/authz_matrix/test_matrix.py::test_rate_limit_declarations | Audit remediation (AF-014, AF-027): the app rate limiter trusts X-Forwarded-For only from configured proxy CIDRs and keys on the route template. |
-| V13.3.1 | L2 | Verify that cross-origin resource sharing (CORS) strictly restricts origins to trusted domains. | **MET** | §C7.1: CORS restricted strictly to configured application host origins (`backend/app/main.py`) | backend/tests/unit/test_cors.py | - |
+| V13.3.1 | L2 | Verify that cross-origin resource sharing (CORS) strictly restricts origins to trusted domains. | **MET** | §C7.1: CORS restricted strictly to configured application host origins (`backend/app/main.py`) | backend/tests/e2e_api/test_api_environment.py | - |
 
 ## V14: Configuration
 
@@ -67,8 +68,8 @@ SPDX-License-Identifier: AGPL-3.0-only
 | V1.4.1 | L1 | Verify that access control architecture enforces least privilege across tenants, roles, and administrative functions. | **MET** | §B5, §C4.5: Scoped RBAC, least privilege permission checks (`backend/app/core/scope.py, backend/app/core/permissions.py`) | uv run pytest tests/authz_matrix | - |
 | V1.4.2 | L2 | Verify that tenant isolation and separation mechanisms prevent access to data belonging to other tenants. | **MET** | §B5.1, §C4.8: Tenant isolation via PostgreSQL Row-Level Security (RLS) on all tables (`backend/migrations/versions/`) | make test-isolation (backend/tests/isolation/) | - |
 | V1.5.1 | L1 | Verify that input validation and sanitization architecture enforces a fail-closed strategy. | **MET** | §C4.4: Pydantic v2 fail-closed schema validation with extra='forbid' (`backend/app/modules/*/schemas.py`) | backend/tests/unit/ | - |
-| V1.8.1 | L2 | Verify that sensitive operations are protected against transaction replay and race conditions. | **MET** | §B5.2: Optimistic concurrency control via version fields and atomic CTE recomputation (`backend/app/modules/organization/service.py`) | backend/tests/integration/test_org_structure.py | - |
-| V1.14.1 | L1 | Verify that the application architecture enforces separation between presentation, application logic, and data storage. | **MET** | §B11.3: BFF architecture separating SPA frontend, FastAPI backend, and PostgreSQL database (`deploy/nginx/default.conf, backend/app/main.py`) | deploy/nginx/nginx.conf, test_session_flow.py | - |
+| V1.8.1 | L2 | Verify that sensitive operations are protected against transaction replay and race conditions. | **PARTIAL** | §B5.2: Optimistic concurrency control via version fields and atomic CTE recomputation (`backend/app/modules/organization/service.py`) | backend/tests/e2e_api/test_org_structure_api.py | Every org-structure write carries a version, but no test sends a stale version and expects 409. |
+| V1.14.1 | L1 | Verify that the application architecture enforces separation between presentation, application logic, and data storage. | **MET** | §B11.3: BFF architecture separating SPA frontend, FastAPI backend, and PostgreSQL database (`deploy/nginx/default.conf, backend/app/main.py`) | deploy/nginx/nginx.conf, backend/tests/e2e_api/test_session_flow.py | - |
 
 ## V2: Authentication
 
@@ -77,17 +78,17 @@ SPDX-License-Identifier: AGPL-3.0-only
 | V2.1.1 | L1 | Verify that user passwords are at least 12 characters in length (or 8 characters with MFA). | **MET** | §B5.5, §B5.7: Zitadel enterprise identity provider password complexity policy (`scripts/bootstrap_zitadel.py`) | scripts/tests/test_bootstrap_zitadel.py | - |
 | V2.1.2 | L2 | Verify that passwords are checked against a list of compromised passwords. | **MET** | §B5.5: Zitadel compromised password check integration (`scripts/bootstrap_zitadel.py`) | scripts/tests/test_bootstrap_zitadel.py | - |
 | V2.2.1 | L1 | Verify that credentials are protected against automated brute-force attacks via rate limiting or lockout. | **MET** | §C11: Nginx rate limiting on auth endpoints (10 req/s with burst 20) (`deploy/nginx/default.conf`) | backend/tests/authz_matrix/test_matrix.py::test_rate_limit_declarations | - |
-| V2.4.1 | L1 | Verify that passwords are stored using salted modern adaptive hashing functions such as Argon2id or bcrypt. | **MET** | §B5.5: Zitadel storage using modern salted password hashing (`deploy/zitadel/zitadel.yaml`) | scripts/tests/test_bootstrap_zitadel.py | - |
-| V2.8.1 | L2 | Verify that single sign-on (SSO) and OIDC tokens are cryptographically verified and validated for issuer, audience, and expiration. | **MET** | §B5.5: OIDC ID token signature, issuer, audience, and exp verification (`backend/app/providers/auth/oidc.py`) | backend/tests/contract/auth/test_oidc_contract.py | Audit remediation (AF-002, AF-003, AF-011): iss must equal the configured issuer, aud must contain the client or project id (required outside development/test), nbf/iat checked with 60 s leeway, https issuer required outside development/test, roles taken only from the token's own organization. |
+| V2.4.1 | L1 | Verify that passwords are stored using salted modern adaptive hashing functions such as Argon2id or bcrypt. | **PARTIAL** | §B5.5: Zitadel storage using modern salted password hashing (`deploy/zitadel/config.yaml`) | scripts/tests/test_bootstrap_zitadel.py | Relies on Zitadel's built-in password hashing; nothing in this repository configures or tests the hasher. |
+| V2.8.1 | L2 | Verify that single sign-on (SSO) and OIDC tokens are cryptographically verified and validated for issuer, audience, and expiration. | **MET** | §B5.5: OIDC ID token signature, issuer, audience, and exp verification (`backend/app/providers/auth/oidc.py`) | backend/tests/contract/auth/test_oidc_provider.py | Audit remediation (AF-002, AF-003, AF-011): iss must equal the configured issuer, aud must contain the client or project id (required outside development/test), nbf/iat checked with 60 s leeway, https issuer required outside development/test, roles taken only from the token's own organization. |
 
 ## V3: Session Management
 
 | ID | Level | Requirement | Status | Control & Code | Test / Evidence | Notes |
 |---|---|---|---|---|---|---|
-| V3.1.1 | L1 | Verify that session tokens are generated using a cryptographically secure pseudo-random number generator. | **MET** | §B5.5, §C5.5: Cryptographically random UUIDv7 and AES-256-GCM nonces (`backend/app/core/cookie_crypto.py`) | backend/tests/unit/test_cookie_crypto.py | Audit remediation (AF-025): login uses PKCE (S256) with state and nonce; the backend requires code_verifier. |
+| V3.1.1 | L1 | Verify that session tokens are generated using a cryptographically secure pseudo-random number generator. | **MET** | §B5.5, §C5.5: Cryptographically random UUIDv7 and AES-256-GCM nonces (`backend/app/core/cookie_crypto.py`) | backend/tests/e2e_api/test_session_flow.py | Audit remediation (AF-025): login uses PKCE (S256) with state and nonce; the backend requires code_verifier. |
 | V3.2.1 | L1 | Verify that session tokens are transmitted with Secure, HttpOnly, and SameSite attributes in cookies. | **MET** | §B5.5, §C7.1: HttpOnly, Secure, SameSite=Lax/Strict session cookies (`backend/app/api/auth.py`) | backend/tests/e2e_api/test_session_flow.py | - |
-| V3.2.2 | L2 | Verify that session tokens are encrypted or signed if they contain state or claims. | **MET** | §B5.5: Encrypted session cookies (AES-256-GCM AEAD authenticated encryption) (`backend/app/core/cookie_crypto.py`) | backend/tests/unit/test_cookie_crypto.py | Audit remediation (NEW-1): the session cookie key comes from OpenBao (secret://), is required outside development/test, and boot refuses without it; no built-in fallback key. |
-| V3.3.1 | L1 | Verify that session timeout terminates sessions after a defined idle timeout period. | **MET** | §B5.5: Server-side token expiry and idle timeout enforcement (`backend/app/core/auth_middleware.py, frontend/src/features/auth/useSessionTimeout.ts`) | frontend/src/features/auth/__tests__/useSessionTimeout.test.ts | - |
+| V3.2.2 | L2 | Verify that session tokens are encrypted or signed if they contain state or claims. | **MET** | §B5.5: Encrypted session cookies (AES-256-GCM AEAD authenticated encryption) (`backend/app/core/cookie_crypto.py`) | backend/tests/e2e_api/test_session_flow.py | Audit remediation (NEW-1): the session cookie key comes from OpenBao (secret://), is required outside development/test, and boot refuses without it; no built-in fallback key. |
+| V3.3.1 | L1 | Verify that session timeout terminates sessions after a defined idle timeout period. | **PARTIAL** | §B5.5: Server-side token expiry and idle timeout enforcement (`backend/app/core/auth_middleware.py, frontend/src/features/auth/useIdleTimer.ts`) | backend/tests/contract/auth/test_oidc_provider.py | Server-side token expiry is tested; the browser idle timer (useIdleTimer.ts) has no test. |
 | V3.3.2 | L2 | Verify that logout invalidates the session server-side and clears client cookies. | **MET** | §B5.5: POST /api/auth/logout clearing cookies and revoking tokens (`backend/app/api/auth.py`) | backend/tests/e2e_api/test_session_flow.py | Audit remediation (AF-012): the revocation set is capped (LRU) and access tokens are short-lived (5 minutes); a shared denylist is backlog. |
 
 ## V4: Access Control
@@ -105,7 +106,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 | ID | Level | Requirement | Status | Control & Code | Test / Evidence | Notes |
 |---|---|---|---|---|---|---|
 | V5.1.1 | L1 | Verify that input validation is performed on the server tier before processing. | **MET** | §C4.4: Server-side validation on every input payload (`backend/app/api/v1/*.py`) | backend/tests/unit/ | - |
-| V5.1.2 | L2 | Verify that structured data (such as JSON) is strictly validated against a schema defining type, length, and allowed characters. | **MET** | §C4.4, §B8.1: Pydantic models with min/max length, regex constraints and extra='forbid'; custom field values validated against their definition (7 types; required, min, max, regex, options, size, unknown key refused) before any write (`backend/app/modules/*/schemas.py, backend/app/modules/assets/custom_fields.py`) | backend/tests/unit/test_schemas.py, backend/tests/unit/test_custom_fields.py, backend/tests/e2e_api/test_m21_catalog_acceptance.py | - |
+| V5.1.2 | L2 | Verify that structured data (such as JSON) is strictly validated against a schema defining type, length, and allowed characters. | **PARTIAL** | §C4.4, §B8.1: Pydantic models with min/max length, regex constraints and extra='forbid'; custom field values validated against their definition (7 types; required, min, max, regex, options, size, unknown key refused) before any write (`backend/app/modules/*/schemas.py, backend/app/modules/assets/custom_fields.py`) | backend/tests/unit/test_custom_fields.py, backend/tests/e2e_api/test_m21_catalog_acceptance.py | Pydantic models set length and pattern limits, but no test asserts extra='forbid' across the module schemas (custom field validation is tested). |
 | V5.2.1 | L1 | Verify that output encoding is applied before rendering untrusted input into HTML, attributes, JavaScript, or CSS. | **MET** | §C7.1: React automated contextual output escaping and CSP headers (`deploy/nginx/default.conf, frontend/src/`) | frontend test suite, make lint-frontend | - |
 | V5.3.1 | L1 | Verify that database queries use parameterized interfaces or ORM/query builders to prevent SQL injection. | **MET** | §C4.7: AsyncPG parameterized queries ($1, $2) exclusively, zero string formatting in SQL; custom field list filters bind the field key as a parameter (`backend/app/modules/*/service.py`) | make test-backend, backend/tests/integration/test_assets_list.py (injection attempt refused) | - |
 
@@ -122,8 +123,8 @@ SPDX-License-Identifier: AGPL-3.0-only
 | ID | Level | Requirement | Status | Control & Code | Test / Evidence | Notes |
 |---|---|---|---|---|---|---|
 | V7.1.1 | L1 | Verify that error messages do not reveal sensitive information, internal implementation details, or stack traces. | **MET** | §C4.3: RFC 9457 Problem Details for all errors, no stack traces leaked in production (`backend/app/core/problems.py`) | backend/tests/unit/test_problems.py | - |
-| V7.2.1 | L2 | Verify that security events (authentication success/failure, access denial, permission changes) are logged with timestamp and user id. | **MET** | §B5.8: Audit store recording every state change with actor, timestamp, and organization (`backend/app/modules/audit/service.py`) | backend/tests/integration/test_audit_store.py | - |
-| V7.3.1 | L2 | Verify that sensitive data (passwords, tokens, personal PII) is redacted or excluded from logs. | **MET** | §B5.8, §C5.7: Automatic PII hashing and secret redaction before audit storage (`backend/app/modules/audit/redaction.py`) | backend/tests/unit/test_audit_redaction.py | Audit remediation (AF-035, AF-036, AF-048): exception text is scrubbed before logging; the scrubber also covers phones, IPv4/IPv6, bare JWTs and token-shaped strings, with whole-word key matching. |
+| V7.2.1 | L2 | Verify that security events (authentication success/failure, access denial, permission changes) are logged with timestamp and user id. | **MET** | §B5.8: Audit store recording every state change with actor, timestamp, and organization (`backend/app/modules/audit/service.py`) | backend/tests/unit/test_audit_store.py | - |
+| V7.3.1 | L2 | Verify that sensitive data (passwords, tokens, personal PII) is redacted or excluded from logs. | **PARTIAL** | §B5.8, §C5.7: Automatic PII hashing and secret redaction before audit storage (`backend/app/modules/audit/service.py`) | backend/tests/unit/test_audit_store.py | Personal values are redacted out of audit states (redact_personal_fields, tested); no hashing of personal data was found. |
 
 ## V8: Data Protection
 

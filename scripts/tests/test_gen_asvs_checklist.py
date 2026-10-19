@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 import sys
@@ -36,3 +37,44 @@ def test_every_asvs_requirement_present_in_markdown() -> None:
     content = CHECKLIST_MD.read_text(encoding="utf-8")
     for req in reqs:
         assert req["id"] in content, f"Requirement {req['id']} missing from asvs-l2.md"
+
+
+def _generator() -> object:
+    spec = importlib.util.spec_from_file_location("gen_asvs_checklist", GEN_SCRIPT)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_check_reports_met_or_partial_rows_citing_paths_that_do_not_exist(tmp_path: Path) -> None:
+    """PR #357 review: MET rows cited tests that never existed and nothing caught it."""
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "real.py").write_text("async def test_real():\n    pass\n", encoding="utf-8")
+    mapping = {
+        "V1": {"status": "met", "code": "pkg/real.py", "test": "pkg/real.py::test_real"},
+        "V2": {"status": "met", "code": "pkg/gone.py", "test": "-"},
+        "V3": {"status": "partial", "code": "pkg/*.py", "test": "pkg/real.py::test_gone"},
+        "V4": {"status": "met", "code": "nope/*.py", "test": "make config-validate"},
+        "V5": {"status": "open", "code": "pkg/gone.py"},
+        "V6": {"status": "met", "test": "pkg/real.py (injection attempt refused), frontend test suite"},
+        "V7": {"status": "met", "test": "pkg/real.py pkg/also.py"},
+    }
+    missing = _generator().missing_evidence(mapping, tmp_path)  # type: ignore[attr-defined]
+    assert missing == [
+        "V2 code: pkg/gone.py",
+        "V3 test: pkg/real.py::test_gone",
+        "V4 code: nope/*.py",
+        "V7 test: pkg/real.py pkg/also.py",
+    ]
+
+
+def test_every_cited_path_in_the_real_mapping_exists() -> None:
+    generator = _generator()
+    assert generator.missing_evidence(generator.load_mapping()) == []  # type: ignore[attr-defined]
+
+
+def test_the_page_does_not_claim_to_be_the_full_asvs_5_list() -> None:
+    content = CHECKLIST_MD.read_text(encoding="utf-8")
+    assert "# OWASP ASVS 5.0 Level 2 Checklist" not in content
+    assert "not** the complete OWASP ASVS 5.0 list" in content
